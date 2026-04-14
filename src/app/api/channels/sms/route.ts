@@ -3,59 +3,75 @@ import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/db/prisma";
 import { getSession } from "@/lib/auth/session";
 
+export async function GET() {
+  const session = await getSession();
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  try {
+    const channel = await prisma.channel.findUnique({
+      where: { accountId_type: { accountId: session.accountId, type: "SMS" } },
+    });
+    const cfg = (channel?.config as any) || {};
+    return NextResponse.json({
+      accountSid: cfg.accountSid || "",
+      authToken: cfg.authToken || "",
+      phoneNumber: cfg.phoneNumber || "",
+      messagingServiceSid: cfg.messagingServiceSid || "",
+      enabled: channel?.isEnabled || false,
+    });
+  } catch {
+    return NextResponse.json({ accountSid: "", authToken: "", phoneNumber: "", messagingServiceSid: "", enabled: false });
+  }
+}
+
 export async function POST(req: NextRequest) {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
   const body = await req.json();
   const { action } = body;
-  const accountId = session.account.id;
 
   try {
-    switch (action) {
-      case "test": {
-        const { twilioAccountSid, twilioAuthToken, twilioPhoneNumber, testPhone } = body;
-        if (!twilioAccountSid || !twilioAuthToken || !twilioPhoneNumber) {
-          return NextResponse.json({ error: "All Twilio fields required" }, { status: 400 });
-        }
-        const url = `https://api.twilio.com/2010-04-01/Accounts/${twilioAccountSid}/Messages.json`;
-        const res = await fetch(url, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/x-www-form-urlencoded",
-            Authorization: "Basic " + Buffer.from(`${twilioAccountSid}:${twilioAuthToken}`).toString("base64"),
-          },
-          body: new URLSearchParams({
-            To: testPhone || twilioPhoneNumber,
-            From: twilioPhoneNumber,
-            Body: "Test SMS - your channel is configured.",
-          }),
-        });
-        const data = await res.json();
-        if (!res.ok) return NextResponse.json({ success: false, error: data.message });
-        return NextResponse.json({ success: true, sid: data.sid });
-      }
+    const channel = await prisma.channel.findUnique({
+      where: { accountId_type: { accountId: session.accountId, type: "SMS" } },
+    });
+    const cfg = (channel?.config as any) || {};
 
-      case "save": {
-        const { twilioAccountSid, twilioAuthToken, twilioPhoneNumber, enabled } = body;
-        const config: Record<string, any> = {
-          twilioAccountSid: twilioAccountSid || "",
-          twilioPhoneNumber: twilioPhoneNumber || "",
-        };
-        if (twilioAuthToken) config.twilioAuthToken = twilioAuthToken;
-
-        await prisma.channel.upsert({
-          where: { accountId_type: { accountId, type: "SMS" } },
-          create: { accountId, type: "SMS", isEnabled: enabled ?? false, config },
-          update: { isEnabled: enabled ?? false, config },
-        });
-        return NextResponse.json({ success: true });
-      }
-
-      default:
-        return NextResponse.json({ error: "Invalid action" }, { status: 400 });
+    if (action === "save") {
+      await prisma.channel.upsert({
+        where: { accountId_type: { accountId: session.accountId, type: "SMS" } },
+        create: {
+          accountId: session.accountId, type: "SMS", isEnabled: true,
+          config: { accountSid: body.accountSid, authToken: body.authToken, phoneNumber: body.phoneNumber, messagingServiceSid: body.messagingServiceSid || null },
+        },
+        update: {
+          isEnabled: true,
+          config: { accountSid: body.accountSid, authToken: body.authToken, phoneNumber: body.phoneNumber, messagingServiceSid: body.messagingServiceSid || null },
+        },
+      });
+      return NextResponse.json({ success: true });
     }
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
+
+    if (action === "test") {
+      const sid = cfg.accountSid;
+      const token = cfg.authToken;
+      const from = cfg.phoneNumber;
+      if (!sid || !token || !from) return NextResponse.json({ error: "Twilio não configurado" }, { status: 400 });
+      const auth = Buffer.from(`${sid}:${token}`).toString("base64");
+      const params = new URLSearchParams({ To: body.to, From: from, Body: "Teste do Marketing Digital AI — Se recebeu, o SMS está funcionando!" });
+      const r = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`, {
+        method: "POST",
+        headers: { Authorization: `Basic ${auth}`, "Content-Type": "application/x-www-form-urlencoded" },
+        body: params.toString(),
+      });
+      if (r.ok) return NextResponse.json({ success: true });
+      const err = await r.json();
+      return NextResponse.json({ error: err.message || "Erro Twilio" }, { status: 400 });
+    }
+
+    if (action === "disable") {
+      if (channel) await prisma.channel.update({ where: { id: channel.id }, data: { isEnabled: false } });
+      return NextResponse.json({ success: true });
+    }
+
+    return NextResponse.json({ error: "Invalid action" }, { status: 400 });
+  } catch (e: any) { console.error("SMS error:", e.message); return NextResponse.json({ error: e.message }, { status: 500 }); }
 }

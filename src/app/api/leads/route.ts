@@ -1,50 +1,51 @@
-import { NextRequest, NextResponse } from "next/server";
-import { getSession } from "@/lib/auth/session";
+// src/app/api/leads/route.ts
+import { NextResponse } from "next/server";
 import prisma from "@/lib/db/prisma";
-import type { Prisma } from "@prisma/client";
+import { getSession } from "@/lib/auth/session";
 
-export async function GET(req: NextRequest) {
-  const session = await getSession();
-  if (!session) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+export async function GET() {
+  try {
+    const session = await getSession();
+    if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    const leads = await prisma.lead.findMany({
+      where: { accountId: session.accountId },
+      orderBy: { createdAt: "desc" },
+      take: 200,
+      include: {
+        campaign: { select: { name: true } },
+        conversations: {
+          select: { id: true, isActive: true, isAIEnabled: true, channel: true, lastMessageAt: true },
+          take: 1,
+          orderBy: { lastMessageAt: "desc" },
+        },
+      },
+    });
+
+    return NextResponse.json(leads.map((l) => {
+      const conv = l.conversations[0];
+      return {
+        id: l.id,
+        name: l.name,
+        email: l.email,
+        phone: l.phone,
+        status: l.status,
+        source: l.source,
+        countryCode: l.countryCode || "BR",
+        score: l.score || 0,
+        tags: l.tags || [],
+        campaignName: l.campaign?.name || null,
+        createdAt: l.createdAt.toISOString(),
+        lastContactAt: conv?.lastMessageAt?.toISOString() || null,
+        conversationId: conv?.id || null,
+        channel: conv?.channel || null,
+        hasActiveConversation: conv?.isActive || false,
+        isAIActive: conv?.isAIEnabled || false,
+      };
+    }));
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : "Unknown error";
+    console.error("GET /api/leads error:", msg);
+    return NextResponse.json({ error: "Internal error" }, { status: 500 });
   }
-
-  const { searchParams } = new URL(req.url);
-  const search = searchParams.get("search") || "";
-  const status = searchParams.get("status") || "all";
-
-  const where: Prisma.LeadWhereInput = {
-    accountId: session.accountId,
-  };
-
-  if (status !== "all") {
-    where.status = status as Prisma.EnumLeadStatusFilter["equals"];
-  }
-
-  if (search) {
-    where.OR = [
-      { name: { contains: search, mode: "insensitive" } },
-      { email: { contains: search, mode: "insensitive" } },
-      { phone: { contains: search } },
-    ];
-  }
-
-  const leads = await prisma.lead.findMany({
-    where,
-    orderBy: { createdAt: "desc" },
-    take: 50,
-    select: {
-      id: true,
-      name: true,
-      phone: true,
-      email: true,
-      status: true,
-      source: true,
-      createdAt: true,
-    },
-  });
-
-  return NextResponse.json(
-    leads.map((l) => ({ ...l, createdAt: l.createdAt.toISOString() }))
-  );
 }

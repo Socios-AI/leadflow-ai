@@ -9,7 +9,8 @@ import { Sidebar } from '@/components/layout/sidebar'
 import { Header } from '@/components/layout/header'
 import { cn } from '@/lib/utils'
 
-const FULL_BLEED_ROUTES = ['/conversations', '/campaigns/new']
+// Apenas rotas que precisam ocupar 100% da altura SEM scroll (ex: CRM split-pane)
+const FULL_BLEED_ROUTES = ['/conversations']
 
 export function DashboardShell({ children }: { children: React.ReactNode }) {
   const [collapsed, setCollapsed] = useState(false)
@@ -32,27 +33,18 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
       </aside>
 
       <div className="flex-1 flex flex-col min-w-0">
-        {/* Desktop header */}
-        <div className="hidden lg:block shrink-0">
-          <Header />
-        </div>
-        {/* Mobile header */}
+        <div className="hidden lg:block shrink-0"><Header /></div>
         <div className="lg:hidden shrink-0 flex items-center justify-between gap-3 px-4 h-14 border-b border-border bg-background/80 backdrop-blur-xl">
           <div className="flex items-center gap-3">
-            <button onClick={() => setMobileOpen(true)} className="p-2 -ml-2 text-muted-foreground hover:text-foreground rounded-lg cursor-pointer">
-              <Menu className="w-5 h-5" />
-            </button>
+            <button onClick={() => setMobileOpen(true)} className="p-2 -ml-2 text-muted-foreground hover:text-foreground rounded-lg cursor-pointer"><Menu className="w-5 h-5" /></button>
             <div className="flex items-center gap-2.5">
-              <div className="w-7 h-7 rounded-lg overflow-hidden">
-                <Image src="/logo.png" alt="MDAI" width={28} height={28} className="rounded-lg object-contain" />
-              </div>
+              <div className="w-7 h-7 rounded-lg overflow-hidden"><Image src="/logo.png" alt="MDAI" width={28} height={28} className="rounded-lg object-contain" /></div>
               <span className="text-sm font-bold text-foreground tracking-tight">Marketing Digital AI</span>
             </div>
           </div>
           <Header />
         </div>
 
-        {/* Content: full-bleed = children direto, normal = com padding e scroll */}
         {isFullBleed ? children : (
           <main className="flex-1 overflow-y-auto">
             <div className="p-4 md:p-6 lg:p-8 max-w-[1920px] mx-auto w-full">{children}</div>

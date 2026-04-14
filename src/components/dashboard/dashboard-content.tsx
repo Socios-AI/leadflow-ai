@@ -2,28 +2,16 @@
 "use client";
 
 import React from "react";
+import { useTranslations } from "next-intl";
 import {
-  Users,
-  MessageSquare,
-  Target,
-  Zap,
-  Clock,
-  TrendingUp,
-  TrendingDown,
-  ChevronRight,
-  Activity,
-  Bot,
-  Phone,
-  Mail,
-  Smartphone,
-  Megaphone,
-  ArrowUpRight,
-  Send,
+  Users, MessageSquare, TrendingUp, Brain, Phone, Mail,
+  Smartphone, Clock, ArrowUpRight, ArrowDownRight, Target,
+  Headphones, ChevronRight, BarChart3,
 } from "lucide-react";
+import { cn } from "@/lib/utils";
+import Link from "next/link";
 
-/* ═══════════════════════════════════════════
-   TYPES
-   ═══════════════════════════════════════════ */
+/* ═══ TYPES ═══ */
 export interface DashboardData {
   totalLeads: number;
   leadsThisMonth: number;
@@ -37,339 +25,211 @@ export interface DashboardData {
   conversionAssist: number;
   messagesToday: number;
   activeChats: number;
-  recentLeads: Array<{
-    id: string;
-    name: string | null;
-    phone: string | null;
-    email: string | null;
-    status: string;
-    source: string;
-    createdAt: string;
-  }>;
-  campaigns: Array<{
-    id: string;
-    name: string;
-    totalLeads: number;
-    convertedLeads: number;
-    conversionRate: number;
-  }>;
-  channelDistribution: Array<{
-    channel: string;
-    count: number;
-    percentage: number;
-  }>;
+  recentLeads: { id: string; name: string | null; phone: string | null; email: string | null; status: string; source: string; createdAt: string }[];
+  campaigns: { id: string; name: string; totalLeads: number; convertedLeads: number; conversionRate: number }[];
+  channelDistribution: { channel: string; count: number; percentage: number }[];
 }
 
-interface DashboardContentProps {
-  data: DashboardData;
-}
-
-/* ═══════════════════════════════════════════
-   MAPS
-   ═══════════════════════════════════════════ */
-const STATUS_CONFIG: Record<string, { label: string; className: string }> = {
-  NEW: { label: "Novo", className: "chip-brand" },
-  CONTACTED: { label: "Contactado", className: "chip-brand" },
-  IN_CONVERSATION: { label: "Em conversa", className: "chip-brand" },
-  ENGAGED: { label: "Engajado", className: "chip-recover" },
-  CONVERTED: { label: "Convertido", className: "chip-recover" },
-  QUALIFIED: { label: "Qualificado", className: "chip-recover" },
-  LOST: { label: "Perdido", className: "chip-danger" },
-  UNRESPONSIVE: { label: "Sem resposta", className: "chip-danger" },
-  FOLLOW_UP: { label: "Follow-up", className: "chip-brand" },
+/* ═══ HELPERS ═══ */
+const STATUS: Record<string, { cls: string }> = {
+  NEW: { cls: "bg-blue-500/10 text-blue-400 border-blue-500/20" },
+  CONTACTED: { cls: "bg-sky-500/10 text-sky-400 border-sky-500/20" },
+  IN_CONVERSATION: { cls: "bg-amber-500/10 text-amber-400 border-amber-500/20" },
+  QUALIFIED: { cls: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" },
+  CONVERTED: { cls: "bg-primary/10 text-primary border-primary/20" },
+  LOST: { cls: "bg-red-500/10 text-red-400 border-red-500/20" },
+  UNRESPONSIVE: { cls: "bg-muted text-muted-foreground border-border" },
 };
 
-interface ChannelInfo {
-  icon: React.ComponentType<React.SVGProps<SVGSVGElement>>;
-  label: string;
-  color: string;
-}
-
-const CHANNEL_CONFIG: Record<string, ChannelInfo> = {
-  WHATSAPP: { icon: Phone, label: "WhatsApp", color: "#22c55e" },
-  EMAIL: { icon: Mail, label: "Email", color: "#6366f1" },
-  SMS: { icon: Smartphone, label: "SMS", color: "#a855f7" },
+const CH_ICON: Record<string, React.ComponentType<{ className?: string }>> = {
+  WHATSAPP: Phone, EMAIL: Mail, SMS: Smartphone,
 };
 
-/* ═══════════════════════════════════════════
-   HELPERS
-   ═══════════════════════════════════════════ */
-function fmt(n: number): string {
-  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1).replace(".", ",") + "M";
-  if (n >= 1_000) return (n / 1_000).toFixed(1).replace(".", ",") + "k";
-  return n.toLocaleString("pt-BR");
-}
+function ini(n: string | null) { if (!n) return "??"; return n.split(" ").filter(Boolean).map(w => w[0]).join("").toUpperCase().slice(0, 2); }
+function ago(d: string) { const m = Math.floor((Date.now() - new Date(d).getTime()) / 60000); if (m < 1) return "now"; if (m < 60) return `${m}min`; if (m < 1440) return `${Math.floor(m / 60)}h`; return `${Math.floor(m / 1440)}d`; }
 
-function fmtDec(n: number): string {
-  return n.toFixed(1).replace(".", ",");
-}
-
-function timeAgo(dateStr: string): string {
-  const diff = Math.floor((Date.now() - new Date(dateStr).getTime()) / 60000);
-  if (diff < 1) return "agora";
-  if (diff < 60) return `${diff}min`;
-  if (diff < 1440) return `${Math.floor(diff / 60)}h`;
-  return new Date(dateStr).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" });
-}
-
-function initials(name: string | null): string {
-  if (!name) return "??";
-  return name.split(" ").filter(Boolean).map((n: string) => n[0]).join("").toUpperCase().slice(0, 2);
-}
-
-/* ═══════════════════════════════════════════
-   SUB-COMPONENTS
-   ═══════════════════════════════════════════ */
-function Chip({ status }: { status: string }) {
-  const c = STATUS_CONFIG[status] || { label: status, className: "chip-brand" };
-  return <span className={`chip ${c.className}`}>{c.label}</span>;
-}
-
-function StatCard({
-  icon: Icon,
-  label,
-  value,
-  suffix,
-  change,
-  accent = "stats-card-brand",
-}: {
-  icon: React.ComponentType<{ className?: string }>;
-  label: string;
-  value: string;
-  suffix?: string;
-  change?: number;
-  accent?: string;
-}) {
-  const hasChange = change !== undefined && change !== 0;
-  const up = (change ?? 0) >= 0;
-
+function ChangeIndicator({ value }: { value: number }) {
+  if (value === 0) return null;
+  const up = value > 0;
   return (
-    <div className={`stats-card ${accent} p-5`}>
-      <div className="flex items-center justify-between mb-3.5">
-        <div className="w-10 h-10 rounded-xl bg-muted/50 border border-border flex items-center justify-center">
-          <Icon className="w-4.5 h-4.5 text-muted-foreground" />
-        </div>
-        {hasChange && (
-          <div
-            className={`flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-lg border ${
-              up
-                ? "text-[#5eead4] bg-[rgba(20,184,166,0.1)] border-[rgba(20,184,166,0.2)]"
-                : "text-[#fca5a5] bg-[rgba(239,68,68,0.1)] border-[rgba(239,68,68,0.2)]"
-            }`}
-          >
-            {up ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
-            {fmtDec(Math.abs(change!))}%
-          </div>
-        )}
-      </div>
-      <div className="font-space-grotesk text-[28px] font-bold text-foreground tracking-tight leading-none">
-        {value}
-        {suffix && (
-          <span className="text-base font-medium text-muted-foreground ml-0.5">{suffix}</span>
-        )}
-      </div>
-      <p className="text-xs text-muted-foreground mt-1.5 font-medium">{label}</p>
-    </div>
+    <span className={cn("inline-flex items-center gap-0.5 text-[10px] font-semibold", up ? "text-emerald-400" : "text-red-400")}>
+      {up ? <ArrowUpRight className="w-3 h-3" /> : <ArrowDownRight className="w-3 h-3" />}
+      {Math.abs(value)}%
+    </span>
   );
 }
 
-/* ═══════════════════════════════════════════
-   MAIN
-   ═══════════════════════════════════════════ */
-export function DashboardContent({ data }: DashboardContentProps) {
+/* ═══ COMPONENT ═══ */
+export function DashboardContent({ data }: { data: DashboardData }) {
+  const t = useTranslations("dashboard");
+  const tc = useTranslations("common");
+  const ts = useTranslations("status");
+
   return (
-    <div className="space-y-5 animate-fade-in">
-      {/* ── Header ── */}
-      <div className="flex items-end justify-between">
-        <div>
-          <h1 className="font-space-grotesk text-2xl font-bold text-foreground tracking-tight">
-            Dashboard
-          </h1>
-          <p className="text-sm text-muted-foreground mt-0.5">
-            Visão geral da sua operação
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full glass-card text-xs font-medium text-muted-foreground">
-            <div className={`w-1.5 h-1.5 rounded-full ${data.activeConversations > 0 ? "bg-[#22c55e] shadow-[0_0_6px_rgba(34,197,94,0.5)]" : "bg-muted-foreground/30"}`} />
-            {data.activeConversations > 0
-              ? `${data.activeConversations} conversas ativas`
-              : "Nenhuma conversa ativa"}
-          </div>
-        </div>
+    <div className="space-y-6">
+      {/* Header */}
+      <div>
+        <h1 className="font-space-grotesk text-2xl font-bold text-foreground tracking-tight">{t("title")}</h1>
+        <p className="text-sm text-muted-foreground mt-0.5 font-dm-sans">{t("subtitle")}</p>
       </div>
 
-      {/* ── Stats ── */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5 stagger-children">
-        <StatCard icon={Users} label="Total de Leads" value={fmt(data.totalLeads)} change={data.leadsChange} accent="stats-card-brand" />
-        <StatCard icon={Send} label="Mensagens Este Mês" value={fmt(data.messagesThisMonth)} change={data.messagesChange} accent="stats-card-recover" />
-        <StatCard icon={Target} label="Taxa de Conversão" value={fmtDec(data.conversionRate)} suffix="%" accent="stats-card-amber" />
-        <StatCard icon={Zap} label="Leads Este Mês" value={fmt(data.leadsThisMonth)} change={data.leadsChange} accent="stats-card-rose" />
-      </div>
-
-      {/* ── Main Grid ── */}
-      <div className="grid grid-cols-1 xl:grid-cols-5 gap-3.5">
-        {/* Leads Recentes — 3 cols */}
-        <div className="xl:col-span-3 glass-card overflow-hidden">
-          <div className="flex items-center justify-between px-5 pt-5 pb-3">
-            <div>
-              <h2 className="font-space-grotesk text-sm font-semibold text-foreground">Leads Recentes</h2>
-              <p className="text-[11px] text-muted-foreground mt-0.5">Últimas entradas via webhook</p>
+      {/* ═══ Stats Grid ═══ */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        {[
+          {
+            label: t("stats.totalLeads"),
+            value: data.totalLeads,
+            sub: `${data.leadsThisMonth} ${t("stats.thisMonth")}`,
+            change: data.leadsChange,
+            icon: Users,
+            accent: "text-blue-400",
+            iconBg: "bg-blue-500/10",
+          },
+          {
+            label: t("stats.activeConversations"),
+            value: data.activeConversations,
+            sub: `${data.messagesToday} ${t("stats.messagesToday")}`,
+            change: null,
+            icon: Headphones,
+            accent: "text-amber-400",
+            iconBg: "bg-amber-500/10",
+          },
+          {
+            label: t("stats.conversionRate"),
+            value: `${data.conversionRate}%`,
+            sub: `${data.conversionAssist} ${t("stats.converted")}`,
+            change: null,
+            icon: TrendingUp,
+            accent: "text-emerald-400",
+            iconBg: "bg-emerald-500/10",
+          },
+          {
+            label: t("stats.aiRate"),
+            value: `${data.aiResponseRate}%`,
+            sub: `${data.messagesThisMonth} ${t("stats.messages")}`,
+            change: data.messagesChange,
+            icon: Brain,
+            accent: "text-primary",
+            iconBg: "bg-primary/10",
+          },
+        ].map(stat => (
+          <div key={stat.label} className="rounded-2xl border border-border bg-card p-4 hover:border-primary/20 transition-colors">
+            <div className="flex items-center justify-between mb-3">
+              <div className={cn("w-9 h-9 rounded-xl flex items-center justify-center", stat.iconBg)}>
+                <stat.icon className={cn("w-4 h-4", stat.accent)} />
+              </div>
+              {stat.change !== null && <ChangeIndicator value={stat.change} />}
             </div>
-            <button className="flex items-center gap-1 text-[11px] font-semibold text-(--chip-brand-text) hover:underline cursor-pointer transition-colors">
-              Ver todos <ArrowUpRight className="w-3 h-3" />
-            </button>
+            <p className="font-space-grotesk text-2xl font-bold text-foreground leading-none">{stat.value}</p>
+            <p className="text-[11px] text-muted-foreground mt-1 font-dm-sans">{stat.label}</p>
+            <p className="text-[10px] text-muted-foreground/50 mt-0.5 font-dm-sans">{stat.sub}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* ═══ Two columns ═══ */}
+      <div className="grid grid-cols-1 xl:grid-cols-5 gap-4">
+
+        {/* Recent Leads — 3 cols */}
+        <div className="xl:col-span-3 rounded-2xl border border-border bg-card overflow-hidden">
+          <div className="px-5 pt-5 pb-3 flex items-center justify-between">
+            <h2 className="font-space-grotesk text-[14px] font-semibold text-foreground">{t("recentLeads.title")}</h2>
+            <Link href="/leads" className="text-[11px] text-primary font-medium hover:underline flex items-center gap-0.5">
+              {t("recentLeads.viewAll")}<ChevronRight className="w-3 h-3" />
+            </Link>
           </div>
 
-          {data.recentLeads.length > 0 ? (
-            <div className="divide-y divide-border">
-              {data.recentLeads.map((lead: DashboardData["recentLeads"][number]) => (
-                <div key={lead.id} className="flex items-center justify-between px-5 py-3 hover:bg-muted/30 transition-all duration-200 cursor-pointer group">
-                  <div className="flex items-center gap-3 min-w-0 flex-1">
-                    <div className="w-9 h-9 rounded-full bg-muted flex items-center justify-center shrink-0 group-hover:bg-(--chip-brand-bg) border border-transparent transition-colors">
-                      <span className="text-[11px] font-semibold text-muted-foreground group-hover:text-(--chip-brand-text) transition-colors">
-                        {initials(lead.name)}
-                      </span>
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-xs font-medium text-foreground truncate">
-                        {lead.name || lead.phone || lead.email || "Sem nome"}
-                      </p>
-                      <p className="text-[10px] text-muted-foreground mt-0.5 truncate max-w-65">
-                        {lead.source} · {timeAgo(lead.createdAt)}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2 shrink-0 ml-2">
-                    <Chip status={lead.status} />
-                    <ChevronRight className="w-3.5 h-3.5 text-muted-foreground/30 group-hover:text-muted-foreground transition-colors" />
-                  </div>
-                </div>
-              ))}
+          {data.recentLeads.length === 0 ? (
+            <div className="px-5 pb-5 py-8 text-center">
+              <Users className="w-8 h-8 text-muted-foreground/20 mx-auto mb-2" />
+              <p className="text-[13px] text-muted-foreground font-dm-sans">{t("recentLeads.empty")}</p>
             </div>
           ) : (
-            <div className="px-5 py-12 text-center">
-              <div className="w-10 h-10 rounded-xl bg-muted flex items-center justify-center mx-auto mb-2">
-                <Users className="w-5 h-5 text-muted-foreground opacity-40" />
-              </div>
-              <p className="text-xs font-medium text-foreground">Nenhum lead ainda</p>
-              <p className="text-[11px] text-muted-foreground mt-1">Seus leads aparecerão aqui quando chegarem</p>
+            <div>
+              {data.recentLeads.map(lead => {
+                const st = STATUS[lead.status] || STATUS.NEW;
+                return (
+                  <div key={lead.id} className="flex items-center gap-3 px-5 py-3 border-t border-border/30 hover:bg-muted/20 transition-colors">
+                    <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center shrink-0">
+                      <span className="text-[9px] font-bold text-muted-foreground">{ini(lead.name)}</span>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[12px] font-medium text-foreground truncate">{lead.name || lead.phone || lead.email || tc("noName")}</p>
+                      <p className="text-[10px] text-muted-foreground truncate">{lead.email || lead.phone}</p>
+                    </div>
+                    <span className={cn("text-[9px] font-semibold px-2 py-0.5 rounded-md border shrink-0", st.cls)}>
+                      {ts(lead.status)}
+                    </span>
+                    <span className="text-[10px] text-muted-foreground/40 shrink-0 tabular-nums">{ago(lead.createdAt)}</span>
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
 
-        {/* Sidebar — 2 cols */}
-        <div className="xl:col-span-2 space-y-3.5">
-          {/* Canais */}
-          <div className="glass-card overflow-hidden">
-            <div className="px-5 pt-5 pb-3">
-              <h2 className="font-space-grotesk text-sm font-semibold text-foreground">Distribuição por Canal</h2>
-              <p className="text-[11px] text-muted-foreground mt-0.5">
-                {data.channelDistribution.reduce((s: number, ch: DashboardData["channelDistribution"][number]) => s + ch.count, 0)} conversas
-              </p>
-            </div>
+        {/* Right column — 2 cols */}
+        <div className="xl:col-span-2 space-y-4">
 
-            {data.channelDistribution.length > 0 ? (
-              <div className="px-5 pb-5 space-y-3">
-                {data.channelDistribution.map((ch: DashboardData["channelDistribution"][number]) => {
-                  const cfg = CHANNEL_CONFIG[ch.channel] || CHANNEL_CONFIG.WHATSAPP;
-                  const ChannelIcon = cfg.icon;
+          {/* Channels */}
+          <div className="rounded-2xl border border-border bg-card p-5">
+            <h2 className="font-space-grotesk text-[14px] font-semibold text-foreground mb-4">{t("channels.title")}</h2>
+            {data.channelDistribution.length === 0 ? (
+              <p className="text-[12px] text-muted-foreground font-dm-sans">{t("channels.empty")}</p>
+            ) : (
+              <div className="space-y-3">
+                {data.channelDistribution.map(ch => {
+                  const Icon = CH_ICON[ch.channel] || Phone;
                   return (
                     <div key={ch.channel} className="flex items-center gap-3">
-                      <div
-                        className="w-8 h-8 rounded-lg flex items-center justify-center"
-                        style={{ background: `${cfg.color}15` }}
-                      >
-                        <ChannelIcon className="w-4 h-4" style={{ color: cfg.color }} />
+                      <div className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center shrink-0">
+                        <Icon className="w-4 h-4 text-muted-foreground" />
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between mb-1">
-                          <span className="text-xs font-medium text-foreground">{cfg.label}</span>
-                          <span className="text-[11px] text-muted-foreground">{ch.count} · {fmtDec(ch.percentage)}%</span>
+                          <span className="text-[12px] font-medium text-foreground">{ch.channel}</span>
+                          <span className="text-[11px] text-muted-foreground tabular-nums">{ch.count} ({ch.percentage}%)</span>
                         </div>
                         <div className="h-1.5 bg-muted rounded-full overflow-hidden">
-                          <div className="h-full rounded-full transition-all duration-500" style={{ width: `${ch.percentage}%`, background: cfg.color }} />
+                          <div className="h-full bg-primary rounded-full transition-all" style={{ width: `${ch.percentage}%` }} />
                         </div>
                       </div>
                     </div>
                   );
                 })}
               </div>
-            ) : (
-              <div className="px-5 pb-5 py-8 text-center">
-                <p className="text-xs text-muted-foreground">Nenhum canal conectado</p>
-              </div>
             )}
           </div>
 
-          {/* Campanhas */}
-          <div className="glass-card overflow-hidden">
-            <div className="flex items-center justify-between px-5 pt-5 pb-3">
-              <div>
-                <h2 className="font-space-grotesk text-sm font-semibold text-foreground">Performance de Campanhas</h2>
-                <p className="text-[11px] text-muted-foreground mt-0.5">Taxa de conversão</p>
-              </div>
+          {/* Campaigns */}
+          <div className="rounded-2xl border border-border bg-card p-5">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="font-space-grotesk text-[14px] font-semibold text-foreground">{t("campaigns.title")}</h2>
+              <Link href="/campaigns" className="text-[11px] text-primary font-medium hover:underline flex items-center gap-0.5">
+                {tc("viewAll")}<ChevronRight className="w-3 h-3" />
+              </Link>
             </div>
-
-            {data.campaigns.length > 0 ? (
-              <div className="divide-y divide-border">
-                {data.campaigns.map((c: DashboardData["campaigns"][number]) => (
-                  <div key={c.id} className="flex items-center justify-between px-5 py-3 hover:bg-muted/30 transition-all duration-200 cursor-pointer group">
-                    <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                      <div className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center shrink-0 group-hover:bg-(--chip-brand-bg) transition-colors">
-                        <Megaphone className="w-3.5 h-3.5 text-muted-foreground group-hover:text-(--chip-brand-text) transition-colors" />
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-xs font-medium text-foreground truncate">{c.name}</p>
-                        <p className="text-[10px] text-muted-foreground mt-0.5">{c.totalLeads} leads · {c.convertedLeads} convertidos</p>
-                      </div>
+            {data.campaigns.length === 0 ? (
+              <p className="text-[12px] text-muted-foreground font-dm-sans">{t("campaigns.empty")}</p>
+            ) : (
+              <div className="space-y-2.5">
+                {data.campaigns.map(c => (
+                  <div key={c.id} className="flex items-center justify-between py-2 border-b border-border/20 last:border-0">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[12px] font-medium text-foreground truncate">{c.name}</p>
+                      <p className="text-[10px] text-muted-foreground mt-0.5">
+                        {c.totalLeads} leads · {c.convertedLeads} {t("campaigns.converted")}
+                      </p>
                     </div>
-                    <span className="font-space-grotesk text-sm font-semibold text-(--chip-brand-text) shrink-0 ml-3">{fmtDec(c.conversionRate)}%</span>
+                    <span className={cn("text-[12px] font-bold tabular-nums ml-3",
+                      c.conversionRate >= 10 ? "text-emerald-400" : c.conversionRate > 0 ? "text-amber-400" : "text-muted-foreground"
+                    )}>
+                      {c.conversionRate}%
+                    </span>
                   </div>
                 ))}
               </div>
-            ) : (
-              <div className="px-5 py-12 text-center">
-                <div className="w-10 h-10 rounded-xl bg-muted flex items-center justify-center mx-auto mb-2">
-                  <Megaphone className="w-5 h-5 text-muted-foreground opacity-40" />
-                </div>
-                <p className="text-xs font-medium text-foreground">Nenhuma campanha</p>
-                <p className="text-[11px] text-muted-foreground mt-1">Crie sua primeira campanha para começar</p>
-              </div>
             )}
-          </div>
-        </div>
-      </div>
-
-      {/* ── Bottom Stats ── */}
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-3.5 stagger-children">
-        <div className="glass-card p-4 flex items-center gap-3 cursor-pointer hover:bg-muted/20 transition-all duration-200">
-          <div className="w-9 h-9 rounded-xl bg-(--chip-brand-bg) border border-(--chip-brand-border) flex items-center justify-center">
-            <Bot className="w-4 h-4 text-(--chip-brand-text)" />
-          </div>
-          <div>
-            <p className="font-space-grotesk text-lg font-bold text-foreground leading-none">{fmtDec(data.aiResponseRate)}%</p>
-            <p className="text-[11px] text-muted-foreground">Taxa de resposta IA</p>
-          </div>
-        </div>
-
-        <div className="glass-card p-4 flex items-center gap-3 cursor-pointer hover:bg-muted/20 transition-all duration-200">
-          <div className="w-9 h-9 rounded-xl bg-(--chip-brand-bg) border border-(--chip-brand-border) flex items-center justify-center">
-            <Clock className="w-4 h-4 text-(--chip-brand-text)" />
-          </div>
-          <div>
-            <p className="font-space-grotesk text-lg font-bold text-foreground leading-none">{fmtDec(data.avgResponseTime)}s</p>
-            <p className="text-[11px] text-muted-foreground">Tempo médio de resposta</p>
-          </div>
-        </div>
-
-        <div className="glass-card p-4 flex items-center gap-3 cursor-pointer hover:bg-muted/20 transition-all duration-200">
-          <div className="w-9 h-9 rounded-xl bg-(--chip-brand-bg) border border-(--chip-brand-border) flex items-center justify-center">
-            <Activity className="w-4 h-4 text-(--chip-brand-text)" />
-          </div>
-          <div>
-            <p className="font-space-grotesk text-lg font-bold text-foreground leading-none">{fmt(data.messagesToday)}</p>
-            <p className="text-[11px] text-muted-foreground">Mensagens hoje</p>
           </div>
         </div>
       </div>
