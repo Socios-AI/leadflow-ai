@@ -18,9 +18,5 @@ export default async function DashboardLayout({
     redirect(`/${locale}/login`)
   }
 
-  return (
-    <DashboardShell>
-      <main className="p-5 lg:p-6">{children}</main>
-    </DashboardShell>
-  )
+  return <DashboardShell>{children}</DashboardShell>
 }

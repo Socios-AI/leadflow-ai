@@ -11,11 +11,13 @@ export interface LeadItem {
   phone: string | null;
   status: string;
   source: string;
+  countryCode: string;
   score: number;
-  tags: string[];
   campaignName: string | null;
-  lastContactAt: string | null;
   createdAt: string;
+  lastContactAt: string | null;
+  hasActiveConversation: boolean;
+  isAIActive: boolean;
 }
 
 async function getLeads(accountId: string): Promise<LeadItem[]> {
@@ -25,22 +27,32 @@ async function getLeads(accountId: string): Promise<LeadItem[]> {
     take: 100,
     include: {
       campaign: { select: { name: true } },
+      conversations: {
+        select: { isActive: true, isAIEnabled: true, lastMessageAt: true },
+        take: 1,
+        orderBy: { lastMessageAt: "desc" },
+      },
     },
   });
 
-  return leads.map((l) => ({
-    id: l.id,
-    name: l.name,
-    email: l.email,
-    phone: l.phone,
-    status: l.status,
-    source: l.source,
-    score: l.score,
-    tags: l.tags,
-    campaignName: l.campaign?.name || null,
-    lastContactAt: l.lastContactAt?.toISOString() || null,
-    createdAt: l.createdAt.toISOString(),
-  }));
+  return leads.map((l) => {
+    const conv = l.conversations[0];
+    return {
+      id: l.id,
+      name: l.name,
+      email: l.email,
+      phone: l.phone,
+      status: l.status,
+      source: l.source,
+      countryCode: l.countryCode || "BR",
+      score: l.score || 0,
+      campaignName: l.campaign?.name || null,
+      createdAt: l.createdAt.toISOString(),
+      lastContactAt: conv?.lastMessageAt?.toISOString() || null,
+      hasActiveConversation: conv?.isActive || false,
+      isAIActive: conv?.isAIEnabled || false,
+    };
+  });
 }
 
 export default async function LeadsPage() {
@@ -48,6 +60,5 @@ export default async function LeadsPage() {
   if (!session) return null;
 
   const leads = await getLeads(session.accountId);
-
   return <LeadsContent leads={leads} />;
 }

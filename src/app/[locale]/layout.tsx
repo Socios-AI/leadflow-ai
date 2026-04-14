@@ -5,7 +5,7 @@ import { getMessages } from 'next-intl/server'
 import { notFound } from 'next/navigation'
 import { routing } from '@/i18n/routing'
 import { ThemeProvider } from '@/components/layout/theme-provider'
-import { Toaster } from '@/components/ui/toaster'
+import { Toaster } from 'sonner'
 
 export default async function LocaleLayout({
   children,
@@ -20,9 +20,26 @@ export default async function LocaleLayout({
 
   return (
     <NextIntlClientProvider messages={messages}>
-      <ThemeProvider attribute="class" defaultTheme="dark" enableSystem disableTransitionOnChange>
+      <ThemeProvider
+        attribute="class"
+        defaultTheme="dark"
+        themes={['light', 'dark', 'purple']}
+        enableSystem={false}
+        disableTransitionOnChange
+      >
         {children}
-        <Toaster />
+        <Toaster
+          theme="dark"
+          position="top-right"
+          toastOptions={{
+            style: {
+              background: 'hsl(var(--card))',
+              border: '1px solid hsl(var(--border))',
+              color: 'hsl(var(--foreground))',
+              fontSize: '13px',
+            },
+          }}
+        />
       </ThemeProvider>
     </NextIntlClientProvider>
   )

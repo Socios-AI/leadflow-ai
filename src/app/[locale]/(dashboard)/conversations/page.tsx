@@ -6,50 +6,46 @@ import { ConversationsContent } from "./conversations-content";
 
 export interface ConversationItem {
   id: string;
-  channel: string;
-  isActive: boolean;
-  isAIEnabled: boolean;
-  lastMessageAt: string | null;
-  leadName: string | null;
+  leadName: string;
   leadPhone: string | null;
   leadEmail: string | null;
-  leadStatus: string;
-  lastMessageContent: string | null;
-  messageCount: number;
-  createdAt: string;
+  channel: string;
+  isAIEnabled: boolean;
+  isActive: boolean;
+  lastMessage: string | null;
+  lastMessageAt: string | null;
+  unreadCount: number;
+  sentiment: string | null;
 }
 
-async function getConversations(
-  accountId: string
-): Promise<ConversationItem[]> {
+async function getConversations(accountId: string): Promise<ConversationItem[]> {
   const conversations = await prisma.conversation.findMany({
     where: { accountId },
-    orderBy: { lastMessageAt: { sort: "desc", nulls: "last" } },
-    take: 50,
+    orderBy: { lastMessageAt: "desc" },
     include: {
-      lead: { select: { name: true, phone: true, email: true, status: true } },
+      lead: {
+        select: { name: true, phone: true, email: true },
+      },
       messages: {
         orderBy: { createdAt: "desc" },
         take: 1,
-        select: { content: true },
+        select: { content: true, createdAt: true },
       },
-      _count: { select: { messages: true } },
     },
   });
 
-  return conversations.map((c) => ({
-    id: c.id,
-    channel: c.channel,
-    isActive: c.isActive,
-    isAIEnabled: c.isAIEnabled,
-    lastMessageAt: c.lastMessageAt?.toISOString() || null,
-    leadName: c.lead.name,
-    leadPhone: c.lead.phone,
-    leadEmail: c.lead.email,
-    leadStatus: c.lead.status,
-    lastMessageContent: c.messages[0]?.content || null,
-    messageCount: c._count.messages,
-    createdAt: c.createdAt.toISOString(),
+  return conversations.map((conv) => ({
+    id: conv.id,
+    leadName: conv.lead.name || conv.lead.phone || conv.lead.email || "Sem nome",
+    leadPhone: conv.lead.phone,
+    leadEmail: conv.lead.email,
+    channel: conv.channel,
+    isAIEnabled: conv.isAIEnabled,
+    isActive: conv.isActive,
+    lastMessage: conv.messages[0]?.content || null,
+    lastMessageAt: conv.messages[0]?.createdAt?.toISOString() || conv.lastMessageAt?.toISOString() || null,
+    unreadCount: 0,
+    sentiment: conv.sentiment,
   }));
 }
 

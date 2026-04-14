@@ -20,11 +20,46 @@ import {
   ArrowUpRight,
   Send,
 } from "lucide-react";
-import type { DashboardData } from "@/app/[locale]/(dashboard)/page";
 
 /* ═══════════════════════════════════════════
    TYPES
    ═══════════════════════════════════════════ */
+export interface DashboardData {
+  totalLeads: number;
+  leadsThisMonth: number;
+  leadsChange: number;
+  activeConversations: number;
+  conversionRate: number;
+  messagesThisMonth: number;
+  messagesChange: number;
+  aiResponseRate: number;
+  avgResponseTime: number;
+  conversionAssist: number;
+  messagesToday: number;
+  activeChats: number;
+  recentLeads: Array<{
+    id: string;
+    name: string | null;
+    phone: string | null;
+    email: string | null;
+    status: string;
+    source: string;
+    createdAt: string;
+  }>;
+  campaigns: Array<{
+    id: string;
+    name: string;
+    totalLeads: number;
+    convertedLeads: number;
+    conversionRate: number;
+  }>;
+  channelDistribution: Array<{
+    channel: string;
+    count: number;
+    percentage: number;
+  }>;
+}
+
 interface DashboardContentProps {
   data: DashboardData;
 }
@@ -44,10 +79,13 @@ const STATUS_CONFIG: Record<string, { label: string; className: string }> = {
   FOLLOW_UP: { label: "Follow-up", className: "chip-brand" },
 };
 
-const CHANNEL_CONFIG: Record<
-  string,
-  { icon: React.ComponentType<{ className?: string }>; label: string; color: string }
-> = {
+interface ChannelInfo {
+  icon: React.ComponentType<React.SVGProps<SVGSVGElement>>;
+  label: string;
+  color: string;
+}
+
+const CHANNEL_CONFIG: Record<string, ChannelInfo> = {
   WHATSAPP: { icon: Phone, label: "WhatsApp", color: "#22c55e" },
   EMAIL: { icon: Mail, label: "Email", color: "#6366f1" },
   SMS: { icon: Smartphone, label: "SMS", color: "#a855f7" },
@@ -76,7 +114,7 @@ function timeAgo(dateStr: string): string {
 
 function initials(name: string | null): string {
   if (!name) return "??";
-  return name.split(" ").filter(Boolean).map((n) => n[0]).join("").toUpperCase().slice(0, 2);
+  return name.split(" ").filter(Boolean).map((n: string) => n[0]).join("").toUpperCase().slice(0, 2);
 }
 
 /* ═══════════════════════════════════════════
@@ -109,7 +147,7 @@ function StatCard({
     <div className={`stats-card ${accent} p-5`}>
       <div className="flex items-center justify-between mb-3.5">
         <div className="w-10 h-10 rounded-xl bg-muted/50 border border-border flex items-center justify-center">
-          <Icon className="w-[18px] h-[18px] text-muted-foreground" />
+          <Icon className="w-4.5 h-4.5 text-muted-foreground" />
         </div>
         {hasChange && (
           <div
@@ -163,34 +201,10 @@ export function DashboardContent({ data }: DashboardContentProps) {
 
       {/* ── Stats ── */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5 stagger-children">
-        <StatCard
-          icon={Users}
-          label="Total de Leads"
-          value={fmt(data.totalLeads)}
-          change={data.leadsChange}
-          accent="stats-card-brand"
-        />
-        <StatCard
-          icon={Send}
-          label="Mensagens Este Mês"
-          value={fmt(data.messagesThisMonth)}
-          change={data.messagesChange}
-          accent="stats-card-recover"
-        />
-        <StatCard
-          icon={Target}
-          label="Taxa de Conversão"
-          value={fmtDec(data.conversionRate)}
-          suffix="%"
-          accent="stats-card-amber"
-        />
-        <StatCard
-          icon={Zap}
-          label="Leads Este Mês"
-          value={fmt(data.leadsThisMonth)}
-          change={data.leadsChange}
-          accent="stats-card-rose"
-        />
+        <StatCard icon={Users} label="Total de Leads" value={fmt(data.totalLeads)} change={data.leadsChange} accent="stats-card-brand" />
+        <StatCard icon={Send} label="Mensagens Este Mês" value={fmt(data.messagesThisMonth)} change={data.messagesChange} accent="stats-card-recover" />
+        <StatCard icon={Target} label="Taxa de Conversão" value={fmtDec(data.conversionRate)} suffix="%" accent="stats-card-amber" />
+        <StatCard icon={Zap} label="Leads Este Mês" value={fmt(data.leadsThisMonth)} change={data.leadsChange} accent="stats-card-rose" />
       </div>
 
       {/* ── Main Grid ── */}
@@ -199,151 +213,118 @@ export function DashboardContent({ data }: DashboardContentProps) {
         <div className="xl:col-span-3 glass-card overflow-hidden">
           <div className="flex items-center justify-between px-5 pt-5 pb-3">
             <div>
-              <h2 className="font-space-grotesk text-sm font-semibold text-foreground">
-                Leads Recentes
-              </h2>
-              <p className="text-[11px] text-muted-foreground mt-0.5">
-                Últimas entradas via webhook
-              </p>
+              <h2 className="font-space-grotesk text-sm font-semibold text-foreground">Leads Recentes</h2>
+              <p className="text-[11px] text-muted-foreground mt-0.5">Últimas entradas via webhook</p>
             </div>
-            <button className="flex items-center gap-1 text-[11px] font-semibold text-[var(--chip-brand-text)] hover:underline cursor-pointer transition-colors">
+            <button className="flex items-center gap-1 text-[11px] font-semibold text-(--chip-brand-text) hover:underline cursor-pointer transition-colors">
               Ver todos <ArrowUpRight className="w-3 h-3" />
             </button>
           </div>
 
           {data.recentLeads.length > 0 ? (
             <div className="divide-y divide-border">
-              {data.recentLeads.map((lead) => (
-                <div
-                  key={lead.id}
-                  className="flex items-center gap-3 px-5 py-3.5 hover:bg-muted/30 transition-all duration-200 cursor-pointer group"
-                >
-                  <div className="w-9 h-9 rounded-xl bg-muted border border-border flex items-center justify-center shrink-0 group-hover:border-[var(--glass-border-hover)] transition-colors">
-                    <span className="text-[11px] font-bold text-muted-foreground">
-                      {initials(lead.name)}
-                    </span>
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="text-[13px] font-semibold text-foreground truncate">
-                        {lead.name || lead.phone || lead.email || "—"}
+              {data.recentLeads.map((lead: DashboardData["recentLeads"][number]) => (
+                <div key={lead.id} className="flex items-center justify-between px-5 py-3 hover:bg-muted/30 transition-all duration-200 cursor-pointer group">
+                  <div className="flex items-center gap-3 min-w-0 flex-1">
+                    <div className="w-9 h-9 rounded-full bg-muted flex items-center justify-center shrink-0 group-hover:bg-(--chip-brand-bg) border border-transparent transition-colors">
+                      <span className="text-[11px] font-semibold text-muted-foreground group-hover:text-(--chip-brand-text) transition-colors">
+                        {initials(lead.name)}
                       </span>
-                      <Chip status={lead.status} />
                     </div>
-                    <div className="flex items-center gap-1.5 mt-1 text-[11px] text-muted-foreground">
-                      {lead.phone && <span>{lead.phone}</span>}
-                      {lead.phone && lead.source && (
-                        <span className="opacity-30">·</span>
-                      )}
-                      <span>{lead.source}</span>
+                    <div className="min-w-0">
+                      <p className="text-xs font-medium text-foreground truncate">
+                        {lead.name || lead.phone || lead.email || "Sem nome"}
+                      </p>
+                      <p className="text-[10px] text-muted-foreground mt-0.5 truncate max-w-65">
+                        {lead.source} · {timeAgo(lead.createdAt)}
+                      </p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <span className="text-[11px] text-muted-foreground">
-                      {timeAgo(lead.createdAt)}
-                    </span>
-                    <ChevronRight className="w-3.5 h-3.5 text-muted-foreground/30 group-hover:text-[var(--chip-brand-text)] transition-colors" />
+                  <div className="flex items-center gap-2 shrink-0 ml-2">
+                    <Chip status={lead.status} />
+                    <ChevronRight className="w-3.5 h-3.5 text-muted-foreground/30 group-hover:text-muted-foreground transition-colors" />
                   </div>
                 </div>
               ))}
             </div>
           ) : (
-            <div className="px-5 py-16 text-center">
-              <div className="w-12 h-12 rounded-xl bg-muted flex items-center justify-center mx-auto mb-3">
-                <Users className="w-6 h-6 text-muted-foreground opacity-40" />
+            <div className="px-5 py-12 text-center">
+              <div className="w-10 h-10 rounded-xl bg-muted flex items-center justify-center mx-auto mb-2">
+                <Users className="w-5 h-5 text-muted-foreground opacity-40" />
               </div>
-              <p className="text-sm font-medium text-foreground">Nenhum lead ainda</p>
-              <p className="text-xs text-muted-foreground mt-1 max-w-[260px] mx-auto">
-                Leads aparecerão aqui quando chegarem via webhook da Meta
-              </p>
+              <p className="text-xs font-medium text-foreground">Nenhum lead ainda</p>
+              <p className="text-[11px] text-muted-foreground mt-1">Seus leads aparecerão aqui quando chegarem</p>
             </div>
           )}
         </div>
 
-        {/* Coluna direita — 2 cols */}
-        <div className="xl:col-span-2 flex flex-col gap-3.5">
+        {/* Sidebar — 2 cols */}
+        <div className="xl:col-span-2 space-y-3.5">
           {/* Canais */}
-          <div className="glass-card p-5">
-            <h2 className="font-space-grotesk text-sm font-semibold text-foreground">
-              Canais
-            </h2>
-            <p className="text-[11px] text-muted-foreground mt-0.5 mb-4">
-              Distribuição de conversas
-            </p>
+          <div className="glass-card overflow-hidden">
+            <div className="px-5 pt-5 pb-3">
+              <h2 className="font-space-grotesk text-sm font-semibold text-foreground">Distribuição por Canal</h2>
+              <p className="text-[11px] text-muted-foreground mt-0.5">
+                {data.channelDistribution.reduce((s: number, ch: DashboardData["channelDistribution"][number]) => s + ch.count, 0)} conversas
+              </p>
+            </div>
 
             {data.channelDistribution.length > 0 ? (
-              <div className="space-y-3.5">
-                {data.channelDistribution.map((ch) => {
-                  const cfg = CHANNEL_CONFIG[ch.channel];
-                  const Icon = cfg?.icon || MessageSquare;
-                  const color = cfg?.color || "#B9F495";
+              <div className="px-5 pb-5 space-y-3">
+                {data.channelDistribution.map((ch: DashboardData["channelDistribution"][number]) => {
+                  const cfg = CHANNEL_CONFIG[ch.channel] || CHANNEL_CONFIG.WHATSAPP;
+                  const ChannelIcon = cfg.icon;
                   return (
-                    <div key={ch.channel}>
-                      <div className="flex items-center justify-between mb-1.5">
-                        <div className="flex items-center gap-2">
-                          <Icon className="w-3.5 h-3.5 text-muted-foreground" />
-                          <span className="text-xs text-muted-foreground">
-                            {cfg?.label || ch.channel}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-[11px] text-muted-foreground">{ch.count}</span>
-                          <span className="font-space-grotesk text-sm font-semibold text-foreground">
-                            {fmtDec(ch.percentage)}%
-                          </span>
-                        </div>
+                    <div key={ch.channel} className="flex items-center gap-3">
+                      <div
+                        className="w-8 h-8 rounded-lg flex items-center justify-center"
+                        style={{ background: `${cfg.color}15` }}
+                      >
+                        <ChannelIcon className="w-4 h-4" style={{ color: cfg.color }} />
                       </div>
-                      <div className="h-1.5 rounded-full bg-muted overflow-hidden">
-                        <div
-                          className="h-full rounded-full transition-all duration-700 ease-out"
-                          style={{ width: `${Math.max(ch.percentage, 2)}%`, background: color }}
-                        />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-xs font-medium text-foreground">{cfg.label}</span>
+                          <span className="text-[11px] text-muted-foreground">{ch.count} · {fmtDec(ch.percentage)}%</span>
+                        </div>
+                        <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+                          <div className="h-full rounded-full transition-all duration-500" style={{ width: `${ch.percentage}%`, background: cfg.color }} />
+                        </div>
                       </div>
                     </div>
                   );
                 })}
               </div>
             ) : (
-              <p className="text-xs text-muted-foreground text-center py-8">
-                Nenhuma conversa registrada
-              </p>
+              <div className="px-5 pb-5 py-8 text-center">
+                <p className="text-xs text-muted-foreground">Nenhum canal conectado</p>
+              </div>
             )}
           </div>
 
           {/* Campanhas */}
-          <div className="glass-card overflow-hidden flex-1">
+          <div className="glass-card overflow-hidden">
             <div className="flex items-center justify-between px-5 pt-5 pb-3">
-              <h2 className="font-space-grotesk text-sm font-semibold text-foreground">
-                Campanhas
-              </h2>
-              <button className="flex items-center gap-1 text-[11px] font-semibold text-[var(--chip-brand-text)] hover:underline cursor-pointer transition-colors">
-                Ver todas <ArrowUpRight className="w-3 h-3" />
-              </button>
+              <div>
+                <h2 className="font-space-grotesk text-sm font-semibold text-foreground">Performance de Campanhas</h2>
+                <p className="text-[11px] text-muted-foreground mt-0.5">Taxa de conversão</p>
+              </div>
             </div>
 
             {data.campaigns.length > 0 ? (
               <div className="divide-y divide-border">
-                {data.campaigns.map((c) => (
-                  <div
-                    key={c.id}
-                    className="flex items-center justify-between px-5 py-3 hover:bg-muted/30 transition-all duration-200 cursor-pointer group"
-                  >
+                {data.campaigns.map((c: DashboardData["campaigns"][number]) => (
+                  <div key={c.id} className="flex items-center justify-between px-5 py-3 hover:bg-muted/30 transition-all duration-200 cursor-pointer group">
                     <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                      <div className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center shrink-0 group-hover:bg-[var(--chip-brand-bg)] transition-colors">
-                        <Megaphone className="w-3.5 h-3.5 text-muted-foreground group-hover:text-[var(--chip-brand-text)] transition-colors" />
+                      <div className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center shrink-0 group-hover:bg-(--chip-brand-bg) transition-colors">
+                        <Megaphone className="w-3.5 h-3.5 text-muted-foreground group-hover:text-(--chip-brand-text) transition-colors" />
                       </div>
                       <div className="min-w-0">
-                        <p className="text-xs font-medium text-foreground truncate">
-                          {c.name}
-                        </p>
-                        <p className="text-[10px] text-muted-foreground mt-0.5">
-                          {c.totalLeads} leads · {c.convertedLeads} convertidos
-                        </p>
+                        <p className="text-xs font-medium text-foreground truncate">{c.name}</p>
+                        <p className="text-[10px] text-muted-foreground mt-0.5">{c.totalLeads} leads · {c.convertedLeads} convertidos</p>
                       </div>
                     </div>
-                    <span className="font-space-grotesk text-sm font-semibold text-[var(--chip-brand-text)] shrink-0 ml-3">
-                      {fmtDec(c.conversionRate)}%
-                    </span>
+                    <span className="font-space-grotesk text-sm font-semibold text-(--chip-brand-text) shrink-0 ml-3">{fmtDec(c.conversionRate)}%</span>
                   </div>
                 ))}
               </div>
@@ -353,9 +334,7 @@ export function DashboardContent({ data }: DashboardContentProps) {
                   <Megaphone className="w-5 h-5 text-muted-foreground opacity-40" />
                 </div>
                 <p className="text-xs font-medium text-foreground">Nenhuma campanha</p>
-                <p className="text-[11px] text-muted-foreground mt-1">
-                  Crie sua primeira campanha para começar
-                </p>
+                <p className="text-[11px] text-muted-foreground mt-1">Crie sua primeira campanha para começar</p>
               </div>
             )}
           </div>
@@ -365,38 +344,32 @@ export function DashboardContent({ data }: DashboardContentProps) {
       {/* ── Bottom Stats ── */}
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3.5 stagger-children">
         <div className="glass-card p-4 flex items-center gap-3 cursor-pointer hover:bg-muted/20 transition-all duration-200">
-          <div className="w-9 h-9 rounded-xl bg-[var(--chip-brand-bg)] border border-[var(--chip-brand-border)] flex items-center justify-center">
-            <Bot className="w-4 h-4 text-[var(--chip-brand-text)]" />
+          <div className="w-9 h-9 rounded-xl bg-(--chip-brand-bg) border border-(--chip-brand-border) flex items-center justify-center">
+            <Bot className="w-4 h-4 text-(--chip-brand-text)" />
           </div>
           <div>
-            <p className="font-space-grotesk text-lg font-bold text-foreground leading-none">
-              {fmtDec(data.aiResponseRate)}%
-            </p>
-            <p className="text-[11px] text-muted-foreground mt-0.5">Respostas via IA</p>
+            <p className="font-space-grotesk text-lg font-bold text-foreground leading-none">{fmtDec(data.aiResponseRate)}%</p>
+            <p className="text-[11px] text-muted-foreground">Taxa de resposta IA</p>
           </div>
         </div>
 
         <div className="glass-card p-4 flex items-center gap-3 cursor-pointer hover:bg-muted/20 transition-all duration-200">
-          <div className="w-9 h-9 rounded-xl bg-[rgba(99,102,241,0.12)] border border-[rgba(99,102,241,0.25)] flex items-center justify-center">
-            <MessageSquare className="w-4 h-4 text-[#a5b4fc]" />
+          <div className="w-9 h-9 rounded-xl bg-(--chip-brand-bg) border border-(--chip-brand-border) flex items-center justify-center">
+            <Clock className="w-4 h-4 text-(--chip-brand-text)" />
           </div>
           <div>
-            <p className="font-space-grotesk text-lg font-bold text-foreground leading-none">
-              {fmt(data.messagesToday)}
-            </p>
-            <p className="text-[11px] text-muted-foreground mt-0.5">Mensagens Hoje</p>
+            <p className="font-space-grotesk text-lg font-bold text-foreground leading-none">{fmtDec(data.avgResponseTime)}s</p>
+            <p className="text-[11px] text-muted-foreground">Tempo médio de resposta</p>
           </div>
         </div>
 
         <div className="glass-card p-4 flex items-center gap-3 cursor-pointer hover:bg-muted/20 transition-all duration-200">
-          <div className="w-9 h-9 rounded-xl bg-[rgba(245,158,11,0.12)] border border-[rgba(245,158,11,0.25)] flex items-center justify-center">
-            <Activity className="w-4 h-4 text-[#fbbf24]" />
+          <div className="w-9 h-9 rounded-xl bg-(--chip-brand-bg) border border-(--chip-brand-border) flex items-center justify-center">
+            <Activity className="w-4 h-4 text-(--chip-brand-text)" />
           </div>
           <div>
-            <p className="font-space-grotesk text-lg font-bold text-foreground leading-none">
-              {fmt(data.activeChats)}
-            </p>
-            <p className="text-[11px] text-muted-foreground mt-0.5">Chats Ativos</p>
+            <p className="font-space-grotesk text-lg font-bold text-foreground leading-none">{fmt(data.messagesToday)}</p>
+            <p className="text-[11px] text-muted-foreground">Mensagens hoje</p>
           </div>
         </div>
       </div>

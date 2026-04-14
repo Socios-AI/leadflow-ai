@@ -1,664 +1,300 @@
-// src/app/[locale]/(dashboard)/channels/page.tsx
+// src/app/dashboard/channels/page.tsx
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
-import { useTranslations } from "next-intl";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Button } from "@/components/ui/button";
-import { Switch } from "@/components/ui/switch";
+import React, { useState, useEffect } from "react";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  Loader2,
-  CheckCircle,
-  XCircle,
-  RefreshCw,
   Phone,
   Mail,
   Smartphone,
-  Wifi,
-  WifiOff,
-  Send,
-  AlertCircle,
+  CheckCircle,
+  XCircle,
+  Loader2,
+  ExternalLink,
+  Eye,
+  EyeOff,
+  Save,
+  Zap,
+  Globe,
+  Shield,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
 
-type Tab = "whatsapp" | "email" | "sms";
-type WAStatus = "idle" | "creating" | "waiting_scan" | "connected" | "error";
-
-export default function ChannelsPage() {
-  const t = useTranslations("channels");
-  const tc = useTranslations("common");
-  const [activeTab, setActiveTab] = useState<Tab>("whatsapp");
-
-  return (
-    <div className="space-y-6 animate-fade-in max-w-3xl">
-      <div>
-        <h1 className="font-display font-semibold text-[22px] tracking-tight">
-          {t("title")}
-        </h1>
-        <p className="font-body text-[13px] text-[var(--fg-secondary)] mt-0.5">
-          {t("subtitle")}
-        </p>
-      </div>
-
-      {/* Tab bar */}
-      <div className="flex border-b border-[var(--border-color)]">
-        {(["whatsapp", "email", "sms"] as Tab[]).map((tab) => {
-          const icons = { whatsapp: Phone, email: Mail, sms: Smartphone };
-          const Icon = icons[tab];
-          return (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={cn(
-                "flex items-center gap-2 px-4 py-2.5 text-[13px] font-medium font-body border-b-2 -mb-px transition-colors",
-                activeTab === tab
-                  ? "border-[var(--brand)] text-[var(--brand)]"
-                  : "border-transparent text-[var(--fg-muted)] hover:text-[var(--fg-secondary)]"
-              )}
-            >
-              <Icon className="w-4 h-4" />
-              {t(tab)}
-            </button>
-          );
-        })}
-      </div>
-
-      {/* Content */}
-      {activeTab === "whatsapp" && <WhatsAppSetup />}
-      {activeTab === "email" && <EmailSetup />}
-      {activeTab === "sms" && <SMSSetup />}
-    </div>
-  );
+function cn(...c: (string | false | undefined | null)[]) {
+  return c.filter(Boolean).join(" ");
 }
 
-// ═══════════════════════════════════════════════════
-// WHATSAPP SETUP
-// ═══════════════════════════════════════════════════
+interface ChannelConfig {
+  whatsapp: {
+    enabled: boolean;
+    instanceName: string;
+    evolutionApiUrl: string;
+    evolutionApiKey: string;
+    connected: boolean;
+  };
+  email: {
+    enabled: boolean;
+    resendApiKey: string;
+    fromEmail: string;
+    fromName: string;
+    connected: boolean;
+  };
+  sms: {
+    enabled: boolean;
+    twilioSid: string;
+    twilioToken: string;
+    twilioPhone: string;
+    connected: boolean;
+  };
+}
 
-function WhatsAppSetup() {
-  const t = useTranslations("channels");
-  const [status, setStatus] = useState<WAStatus>("idle");
-  const [qrCode, setQrCode] = useState<string | null>(null);
-  const [pairingCode, setPairingCode] = useState<string | null>(null);
-  const [instanceName, setInstanceName] = useState("");
-  const [connected, setConnected] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [checking, setChecking] = useState(true);
+const DEFAULT_CONFIG: ChannelConfig = {
+  whatsapp: { enabled: false, instanceName: "", evolutionApiUrl: "", evolutionApiKey: "", connected: false },
+  email: { enabled: false, resendApiKey: "", fromEmail: "", fromName: "", connected: false },
+  sms: { enabled: false, twilioSid: "", twilioToken: "", twilioPhone: "", connected: false },
+};
 
-  // Check current status on mount
+export default function ChannelsPage() {
+  const [config, setConfig] = useState<ChannelConfig>(DEFAULT_CONFIG);
+  const [saving, setSaving] = useState<string | null>(null);
+  const [testing, setTesting] = useState<string | null>(null);
+  const [showKeys, setShowKeys] = useState<Record<string, boolean>>({});
+  const [testResult, setTestResult] = useState<Record<string, { ok: boolean; msg: string }>>({});
+
   useEffect(() => {
-    checkStatus();
+    fetch("/api/channels")
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => data && setConfig(data))
+      .catch(() => {});
   }, []);
 
-  const checkStatus = async () => {
-    setChecking(true);
+  async function saveChannel(channel: string) {
+    setSaving(channel);
     try {
-      const res = await fetch(`${window.location.origin}/api/channels/whatsapp`, {
-        method: "POST",
+      await fetch("/api/channels", {
+        method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "check-status" }),
+        body: JSON.stringify({ channel, config: (config as any)[channel] }),
       });
-      const data = await res.json();
-      setConnected(data.connected);
-      setInstanceName(data.instanceName || "");
-      if (data.connected) setStatus("connected");
-    } catch {
-      // Not configured yet
-    } finally {
-      setChecking(false);
-    }
-  };
-
-  const createInstance = async () => {
-    setStatus("creating");
-    setError(null);
-    try {
-      const res = await fetch(`${window.location.origin}/api/channels/whatsapp`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "create-instance" }),
-      });
-      const data = await res.json();
-
-      if (!res.ok) {
-        setError(data.error || "Failed to create instance");
-        setStatus("error");
-        return;
-      }
-
-      setInstanceName(data.instanceName);
-      setQrCode(data.qrCode);
-      setPairingCode(data.pairingCode);
-      setStatus("waiting_scan");
-
-      // Start polling for connection
-      pollConnection();
-    } catch (err: any) {
-      setError(err.message);
-      setStatus("error");
-    }
-  };
-
-  const pollConnection = useCallback(() => {
-    const interval = setInterval(async () => {
-      try {
-        const res = await fetch(`${window.location.origin}/api/channels/whatsapp`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "check-status" }),
-        });
-        const data = await res.json();
-        if (data.connected) {
-          setConnected(true);
-          setStatus("connected");
-          setQrCode(null);
-          clearInterval(interval);
-        }
-      } catch {}
-    }, 3000);
-
-    // Stop polling after 2 minutes
-    setTimeout(() => clearInterval(interval), 120000);
-  }, []);
-
-  const refreshQR = async () => {
-    try {
-      const res = await fetch(`${window.location.origin}/api/channels/whatsapp`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "get-qr" }),
-      });
-      const data = await res.json();
-      setQrCode(data.qrCode);
-      setPairingCode(data.pairingCode);
     } catch {}
-  };
+    setSaving(null);
+  }
 
-  const disconnect = async () => {
-    await fetch(`${window.location.origin}/api/channels/whatsapp`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "disconnect" }),
-    });
-    setConnected(false);
-    setStatus("idle");
-    setQrCode(null);
-    setInstanceName("");
-  };
+  async function testConnection(channel: string) {
+    setTesting(channel);
+    setTestResult((prev) => ({ ...prev, [channel]: { ok: false, msg: "" } }));
+    try {
+      const res = await fetch("/api/channels/test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ channel, config: (config as any)[channel] }),
+      });
+      const data = await res.json();
+      setTestResult((prev) => ({ ...prev, [channel]: { ok: res.ok, msg: data.message || (res.ok ? "Conexão OK!" : "Falha na conexão") } }));
+    } catch {
+      setTestResult((prev) => ({ ...prev, [channel]: { ok: false, msg: "Erro ao testar — verifique as credenciais" } }));
+    }
+    setTesting(null);
+  }
 
-  if (checking) {
+  function toggleKey(key: string) {
+    setShowKeys((prev) => ({ ...prev, [key]: !prev[key] }));
+  }
+
+  function SecretField({ id, label, value, onChange, placeholder }: { id: string; label: string; value: string; onChange: (v: string) => void; placeholder: string }) {
+    const visible = showKeys[id];
     return (
-      <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-card)] p-8 text-center">
-        <Loader2 className="w-6 h-6 animate-spin mx-auto text-[var(--fg-muted)]" />
-        <p className="font-body text-[13px] text-[var(--fg-muted)] mt-3">Checking connection...</p>
+      <div>
+        <label className="block text-[11px] font-medium text-zinc-400 mb-1.5 tracking-wide uppercase">{label}</label>
+        <div className="relative">
+          <input
+            type={visible ? "text" : "password"}
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            placeholder={placeholder}
+            className="w-full h-10 px-4 pr-10 rounded-xl bg-white/[0.04] border border-white/[0.06] text-[13px] text-white placeholder:text-zinc-600 focus:outline-none focus:border-[#B9F495]/30 transition-colors font-body"
+          />
+          <button onClick={() => toggleKey(id)} type="button" className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300 transition-colors cursor-pointer">
+            {visible ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+          </button>
+        </div>
       </div>
     );
   }
 
+  function TextField({ label, value, onChange, placeholder }: { label: string; value: string; onChange: (v: string) => void; placeholder: string }) {
+    return (
+      <div>
+        <label className="block text-[11px] font-medium text-zinc-400 mb-1.5 tracking-wide uppercase">{label}</label>
+        <input
+          type="text"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={placeholder}
+          className="w-full h-10 px-4 rounded-xl bg-white/[0.04] border border-white/[0.06] text-[13px] text-white placeholder:text-zinc-600 focus:outline-none focus:border-[#B9F495]/30 transition-colors font-body"
+        />
+      </div>
+    );
+  }
+
+  const channels = [
+    {
+      key: "whatsapp",
+      label: "WhatsApp",
+      description: "Conecte via Evolution API para enviar e receber mensagens",
+      icon: Phone,
+      color: "text-emerald-400",
+      bgColor: "bg-emerald-400/10",
+      borderColor: "border-emerald-400/20",
+      fields: (
+        <div className="space-y-3 mt-4 animate-up">
+          <TextField label="Nome da Instância" value={config.whatsapp.instanceName} onChange={(v) => setConfig((p) => ({ ...p, whatsapp: { ...p.whatsapp, instanceName: v } }))} placeholder="minha-instancia" />
+          <TextField label="Evolution API URL" value={config.whatsapp.evolutionApiUrl} onChange={(v) => setConfig((p) => ({ ...p, whatsapp: { ...p.whatsapp, evolutionApiUrl: v } }))} placeholder="https://api.evolution.com" />
+          <SecretField id="wpp-key" label="Evolution API Key" value={config.whatsapp.evolutionApiKey} onChange={(v) => setConfig((p) => ({ ...p, whatsapp: { ...p.whatsapp, evolutionApiKey: v } }))} placeholder="sua-api-key" />
+        </div>
+      ),
+    },
+    {
+      key: "email",
+      label: "Email",
+      description: "Configure o envio de emails via Resend",
+      icon: Mail,
+      color: "text-blue-400",
+      bgColor: "bg-blue-400/10",
+      borderColor: "border-blue-400/20",
+      fields: (
+        <div className="space-y-3 mt-4 animate-up">
+          <SecretField id="email-key" label="Resend API Key" value={config.email.resendApiKey} onChange={(v) => setConfig((p) => ({ ...p, email: { ...p.email, resendApiKey: v } }))} placeholder="re_xxxxxxxxxxxx" />
+          <TextField label="Email de Envio" value={config.email.fromEmail} onChange={(v) => setConfig((p) => ({ ...p, email: { ...p.email, fromEmail: v } }))} placeholder="contato@empresa.com" />
+          <TextField label="Nome do Remetente" value={config.email.fromName} onChange={(v) => setConfig((p) => ({ ...p, email: { ...p.email, fromName: v } }))} placeholder="Sua Empresa" />
+        </div>
+      ),
+    },
+    {
+      key: "sms",
+      label: "SMS",
+      description: "Configure o envio de SMS via Twilio",
+      icon: Smartphone,
+      color: "text-amber-400",
+      bgColor: "bg-amber-400/10",
+      borderColor: "border-amber-400/20",
+      fields: (
+        <div className="space-y-3 mt-4 animate-up">
+          <SecretField id="twilio-sid" label="Twilio Account SID" value={config.sms.twilioSid} onChange={(v) => setConfig((p) => ({ ...p, sms: { ...p.sms, twilioSid: v } }))} placeholder="ACxxxxxxxxxxxxxxxx" />
+          <SecretField id="twilio-token" label="Twilio Auth Token" value={config.sms.twilioToken} onChange={(v) => setConfig((p) => ({ ...p, sms: { ...p.sms, twilioToken: v } }))} placeholder="seu-token" />
+          <TextField label="Número Twilio" value={config.sms.twilioPhone} onChange={(v) => setConfig((p) => ({ ...p, sms: { ...p.sms, twilioPhone: v } }))} placeholder="+15551234567" />
+        </div>
+      ),
+    },
+  ];
+
   return (
-    <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-card)] overflow-hidden animate-fade-up">
-      <div className="px-5 py-4 border-b border-[var(--border-color)] flex items-center justify-between">
-        <div>
-          <h2 className="font-display font-medium text-[15px]">{t("whatsappConfig.title")}</h2>
-          <p className="font-body text-[12px] text-[var(--fg-muted)] mt-0.5">
-            Connect your WhatsApp to start engaging leads automatically
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          {connected ? (
-            <span className="flex items-center gap-1.5 text-[12px] font-medium text-[var(--emerald)] font-body">
-              <Wifi className="w-3.5 h-3.5" /> Connected
-            </span>
-          ) : (
-            <span className="flex items-center gap-1.5 text-[12px] font-medium text-[var(--fg-muted)] font-body">
-              <WifiOff className="w-3.5 h-3.5" /> Disconnected
-            </span>
-          )}
-        </div>
+    <div className="space-y-6">
+      {/* Header */}
+      <div>
+        <h1 className="text-xl font-bold text-white tracking-tight font-display">Canais</h1>
+        <p className="text-sm text-zinc-500 mt-1 font-body">Configure seus canais de comunicação com leads</p>
       </div>
 
-      <div className="p-5">
-        {/* Connected state */}
-        {status === "connected" && (
-          <div className="space-y-4">
-            <div className="flex items-center gap-3 p-4 rounded-lg bg-[var(--emerald)]/8 border border-[var(--emerald)]/15">
-              <CheckCircle className="w-5 h-5 text-[var(--emerald)] shrink-0" />
-              <div>
-                <p className="font-body text-[13px] font-medium text-[var(--emerald)]">
-                  WhatsApp connected successfully
-                </p>
-                <p className="font-body text-[11px] text-[var(--fg-muted)] mt-0.5">
-                  Instance: {instanceName} — AI will automatically respond to leads
-                </p>
-              </div>
-            </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={disconnect}
-              className="text-[var(--red)] border-[var(--red)]/20 hover:bg-[var(--red)]/5"
-            >
-              Disconnect
-            </Button>
-          </div>
-        )}
+      {/* Channel cards */}
+      <div className="space-y-4 stagger">
+        {channels.map((ch) => {
+          const Icon = ch.icon;
+          const enabled = (config as any)[ch.key]?.enabled;
+          const connected = (config as any)[ch.key]?.connected;
+          const result = testResult[ch.key];
 
-        {/* Idle — not connected yet */}
-        {status === "idle" && (
-          <div className="text-center py-6">
-            <Phone className="w-10 h-10 mx-auto text-[var(--fg-muted)] opacity-40 mb-3" />
-            <p className="font-body text-[13px] text-[var(--fg-secondary)] mb-4">
-              Connect your WhatsApp to let AI engage your leads
-            </p>
-            <Button
-              onClick={createInstance}
-              className="bg-[var(--brand)] text-black hover:bg-[var(--brand-dim)] font-body font-medium"
-            >
-              Connect WhatsApp
-            </Button>
-          </div>
-        )}
+          return (
+            <div key={ch.key} className="rounded-2xl border border-white/[0.06] bg-[#0a0a0a] p-5 transition-all hover:border-white/[0.1]">
+              {/* Header row */}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center", ch.bgColor)}>
+                    <Icon className={cn("w-5 h-5", ch.color)} />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-[15px] font-semibold text-white font-display">{ch.label}</h3>
+                      {connected && (
+                        <span className="chip chip-success">
+                          <CheckCircle className="w-3 h-3" />
+                          Conectado
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[12px] text-zinc-500 mt-0.5 font-body">{ch.description}</p>
+                  </div>
+                </div>
 
-        {/* Creating */}
-        {status === "creating" && (
-          <div className="text-center py-8">
-            <Loader2 className="w-8 h-8 animate-spin mx-auto text-[var(--brand)]" />
-            <p className="font-body text-[13px] text-[var(--fg-secondary)] mt-3">
-              Creating WhatsApp instance...
-            </p>
-          </div>
-        )}
-
-        {/* QR Code — waiting for scan */}
-        {status === "waiting_scan" && (
-          <div className="space-y-4">
-            <div className="flex items-start gap-2 p-3 rounded-lg bg-[var(--brand-glow)] border border-[var(--brand)]/15">
-              <AlertCircle className="w-4 h-4 text-[var(--brand)] mt-0.5 shrink-0" />
-              <p className="font-body text-[12px] text-[var(--fg-secondary)]">
-                Open WhatsApp on your phone → Settings → Linked Devices → Link a Device → Scan the QR code below
-              </p>
-            </div>
-
-            <div className="flex flex-col items-center gap-4 py-4">
-              {qrCode ? (
-                <div className="p-3 bg-white rounded-xl">
-                  <img
-                    src={qrCode.startsWith("data:") ? qrCode : `data:image/png;base64,${qrCode}`}
-                    alt="QR Code"
-                    className="w-[240px] h-[240px]"
+                {/* Toggle */}
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={enabled}
+                    onChange={(e) => {
+                      setConfig((p) => ({
+                        ...p,
+                        [ch.key]: { ...(p as any)[ch.key], enabled: e.target.checked },
+                      }));
+                    }}
+                    className="sr-only peer"
                   />
-                </div>
-              ) : (
-                <div className="w-[240px] h-[240px] rounded-xl bg-[var(--bg-muted)] grid place-items-center">
-                  <Loader2 className="w-6 h-6 animate-spin text-[var(--fg-muted)]" />
-                </div>
+                  <div className="w-11 h-6 bg-white/[0.08] rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-zinc-400 after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#B9F495] peer-checked:after:bg-black" />
+                </label>
+              </div>
+
+              {/* Config fields (shown when enabled) */}
+              {enabled && (
+                <>
+                  {ch.fields}
+
+                  {/* Test result */}
+                  {result && (
+                    <div className={cn(
+                      "flex items-center gap-2 mt-3 px-3 py-2 rounded-xl text-[12px] font-medium animate-fade-in",
+                      result.ok ? "bg-emerald-400/10 text-emerald-400 border border-emerald-400/20" : "bg-red-400/10 text-red-400 border border-red-400/20"
+                    )}>
+                      {result.ok ? <CheckCircle className="w-3.5 h-3.5" /> : <XCircle className="w-3.5 h-3.5" />}
+                      {result.msg}
+                    </div>
+                  )}
+
+                  {/* Action buttons */}
+                  <div className="flex gap-2 mt-4">
+                    <button
+                      onClick={() => testConnection(ch.key)}
+                      disabled={testing === ch.key}
+                      className="flex items-center gap-2 px-4 py-2 rounded-xl text-[12px] font-medium text-zinc-400 bg-white/[0.04] border border-white/[0.06] hover:bg-white/[0.06] transition-colors cursor-pointer disabled:opacity-50"
+                    >
+                      {testing === ch.key ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5" />}
+                      Testar Conexão
+                    </button>
+                    <button
+                      onClick={() => saveChannel(ch.key)}
+                      disabled={saving === ch.key}
+                      className="flex items-center gap-2 px-4 py-2 rounded-xl text-[12px] font-semibold btn-brand cursor-pointer disabled:opacity-50"
+                    >
+                      {saving === ch.key ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                      Salvar
+                    </button>
+                  </div>
+                </>
               )}
-
-              {pairingCode && (
-                <div className="text-center">
-                  <p className="font-body text-[11px] text-[var(--fg-muted)]">Or use pairing code:</p>
-                  <p className="font-display font-semibold text-lg tracking-widest mt-1">{pairingCode}</p>
-                </div>
-              )}
-
-              <button
-                onClick={refreshQR}
-                className="flex items-center gap-1.5 text-[12px] font-medium text-[var(--brand)] hover:underline font-body"
-              >
-                <RefreshCw className="w-3.5 h-3.5" /> Refresh QR
-              </button>
             </div>
-          </div>
-        )}
-
-        {/* Error */}
-        {status === "error" && (
-          <div className="space-y-3">
-            <div className="flex items-start gap-2 p-3 rounded-lg bg-[var(--red)]/8 border border-[var(--red)]/15">
-              <XCircle className="w-4 h-4 text-[var(--red)] mt-0.5 shrink-0" />
-              <p className="font-body text-[12px] text-[var(--red)]">{error}</p>
-            </div>
-            <Button variant="outline" size="sm" onClick={() => { setStatus("idle"); setError(null); }}>
-              Try again
-            </Button>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ═══════════════════════════════════════════════════
-// EMAIL SETUP
-// ═══════════════════════════════════════════════════
-
-function EmailSetup() {
-  const t = useTranslations("channels");
-  const [provider, setProvider] = useState<"platform" | "custom">("platform");
-  const [resendApiKey, setResendApiKey] = useState("");
-  const [domain, setDomain] = useState("");
-  const [fromName, setFromName] = useState("");
-  const [fromEmail, setFromEmail] = useState("noreply");
-  const [enabled, setEnabled] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [testing, setTesting] = useState(false);
-  const [testResult, setTestResult] = useState<{ success: boolean; error?: string } | null>(null);
-  const [saved, setSaved] = useState(false);
-
-  // Load existing config
-  useEffect(() => {
-    fetch(`${window.location.origin}/api/channels`)
-      .then((r) => r.json())
-      .then((channels) => {
-        const em = channels?.find?.((c: any) => c.type === "EMAIL");
-        if (em) {
-          const cfg = em.config as Record<string, string>;
-          setProvider((cfg.provider as "platform" | "custom") || "platform");
-          setDomain(cfg.domain || "");
-          setFromName(cfg.fromName || "");
-          setFromEmail(cfg.fromEmail || "noreply");
-          setEnabled(em.isEnabled);
-        }
-      })
-      .catch(() => {});
-  }, []);
-
-  const handleTest = async () => {
-    setTesting(true);
-    setTestResult(null);
-    try {
-      const res = await fetch(`${window.location.origin}/api/channels/email`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "test",
-          provider,
-          resendApiKey,
-          domain,
-          fromName,
-          fromEmail,
-        }),
-      });
-      const data = await res.json();
-      setTestResult(data);
-    } catch (err: any) {
-      setTestResult({ success: false, error: err.message });
-    } finally {
-      setTesting(false);
-    }
-  };
-
-  const handleSave = async () => {
-    setSaving(true);
-    try {
-      await fetch(`${window.location.origin}/api/channels/email`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "save",
-          provider,
-          resendApiKey,
-          domain,
-          fromName,
-          fromEmail,
-          enabled,
-        }),
-      });
-      setSaved(true);
-      setTimeout(() => setSaved(false), 3000);
-    } catch {}
-    setSaving(false);
-  };
-
-  return (
-    <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-card)] overflow-hidden animate-fade-up">
-      <div className="px-5 py-4 border-b border-[var(--border-color)] flex items-center justify-between">
-        <div>
-          <h2 className="font-display font-medium text-[15px]">{t("emailConfig.title")}</h2>
-          <p className="font-body text-[12px] text-[var(--fg-muted)] mt-0.5">
-            AI will send and reply to emails conversationally
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="font-body text-[12px] text-[var(--fg-muted)]">Enabled</span>
-          <Switch checked={enabled} onCheckedChange={setEnabled} />
-        </div>
+          );
+        })}
       </div>
 
-      <div className="p-5 space-y-4">
-        {/* Domain choice */}
-        <div className="space-y-1.5">
-          <Label className="font-body text-[13px]">{t("emailConfig.domainChoice")}</Label>
-          <Select value={provider} onValueChange={(v: "platform" | "custom") => setProvider(v)}>
-            <SelectTrigger className="h-9 font-body text-[13px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="platform">{t("emailConfig.usePlatformDomain")}</SelectItem>
-              <SelectItem value="custom">{t("emailConfig.useOwnDomain")}</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-
-        {/* Custom domain fields */}
-        {provider === "custom" && (
-          <>
-            <div className="space-y-1.5">
-              <Label className="font-body text-[13px]">{t("emailConfig.resendApiKey")}</Label>
-              <Input
-                type="password"
-                value={resendApiKey}
-                onChange={(e) => setResendApiKey(e.target.value)}
-                placeholder="re_..."
-                className="h-9 font-body text-[13px]"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="font-body text-[13px]">{t("emailConfig.domain")}</Label>
-              <Input
-                value={domain}
-                onChange={(e) => setDomain(e.target.value)}
-                placeholder="yourdomain.com"
-                className="h-9 font-body text-[13px]"
-              />
-            </div>
-          </>
-        )}
-
-        {/* From name/email */}
-        <div className="grid grid-cols-2 gap-3">
-          <div className="space-y-1.5">
-            <Label className="font-body text-[13px]">{t("emailConfig.fromName")}</Label>
-            <Input
-              value={fromName}
-              onChange={(e) => setFromName(e.target.value)}
-              placeholder="Nexus AI"
-              className="h-9 font-body text-[13px]"
-            />
+      {/* Info banner */}
+      <div className="rounded-2xl border border-[rgba(185,244,149,0.12)] bg-[rgba(185,244,149,0.03)] p-5">
+        <div className="flex items-start gap-3">
+          <Shield className="w-5 h-5 text-[#B9F495] shrink-0 mt-0.5" />
+          <div>
+            <h3 className="text-[13px] font-semibold text-white font-display">Segurança das Credenciais</h3>
+            <p className="text-[12px] text-zinc-400 mt-1 leading-relaxed font-body">
+              Todas as chaves de API e tokens são criptografados com AES-256 antes de serem armazenados.
+              Nunca compartilhamos suas credenciais com terceiros. A comunicação com os provedores é feita
+              diretamente do seu servidor via HTTPS.
+            </p>
           </div>
-          <div className="space-y-1.5">
-            <Label className="font-body text-[13px]">{t("emailConfig.fromEmail")}</Label>
-            <Input
-              value={fromEmail}
-              onChange={(e) => setFromEmail(e.target.value)}
-              placeholder="noreply"
-              className="h-9 font-body text-[13px]"
-            />
-          </div>
-        </div>
-
-        {/* Test result */}
-        {testResult && (
-          <div className={cn(
-            "flex items-start gap-2 p-2.5 rounded-lg text-[12px] font-body border",
-            testResult.success
-              ? "bg-[var(--emerald)]/8 border-[var(--emerald)]/15 text-[var(--emerald)]"
-              : "bg-[var(--red)]/8 border-[var(--red)]/15 text-[var(--red)]"
-          )}>
-            {testResult.success ? <CheckCircle className="w-4 h-4 shrink-0" /> : <XCircle className="w-4 h-4 shrink-0" />}
-            {testResult.success ? "Test email sent successfully" : testResult.error}
-          </div>
-        )}
-
-        {saved && (
-          <div className="flex items-center gap-2 p-2.5 rounded-lg bg-[var(--emerald)]/8 border border-[var(--emerald)]/15 text-[var(--emerald)] text-[12px] font-body">
-            <CheckCircle className="w-4 h-4" /> Saved
-          </div>
-        )}
-
-        {/* Actions */}
-        <div className="flex justify-end gap-2 pt-2">
-          <Button variant="outline" size="sm" onClick={handleTest} disabled={testing}>
-            {testing ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : <Send className="w-3.5 h-3.5 mr-1.5" />}
-            Test
-          </Button>
-          <Button size="sm" onClick={handleSave} disabled={saving} className="bg-[var(--brand)] text-black hover:bg-[var(--brand-dim)]">
-            {saving ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : null}
-            Save
-          </Button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ═══════════════════════════════════════════════════
-// SMS SETUP
-// ═══════════════════════════════════════════════════
-
-function SMSSetup() {
-  const t = useTranslations("channels");
-  const [sid, setSid] = useState("");
-  const [token, setToken] = useState("");
-  const [phone, setPhone] = useState("");
-  const [enabled, setEnabled] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [testing, setTesting] = useState(false);
-  const [testResult, setTestResult] = useState<{ success: boolean; error?: string } | null>(null);
-  const [saved, setSaved] = useState(false);
-
-  useEffect(() => {
-    fetch(`${window.location.origin}/api/channels`)
-      .then((r) => r.json())
-      .then((channels) => {
-        const sm = channels?.find?.((c: any) => c.type === "SMS");
-        if (sm) {
-          const cfg = sm.config as Record<string, string>;
-          setSid(cfg.twilioAccountSid || "");
-          setPhone(cfg.twilioPhoneNumber || "");
-          setEnabled(sm.isEnabled);
-        }
-      })
-      .catch(() => {});
-  }, []);
-
-  const handleTest = async () => {
-    setTesting(true);
-    setTestResult(null);
-    try {
-      const res = await fetch(`${window.location.origin}/api/channels/sms`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "test",
-          twilioAccountSid: sid,
-          twilioAuthToken: token,
-          twilioPhoneNumber: phone,
-        }),
-      });
-      const data = await res.json();
-      setTestResult(data);
-    } catch (err: any) {
-      setTestResult({ success: false, error: err.message });
-    } finally {
-      setTesting(false);
-    }
-  };
-
-  const handleSave = async () => {
-    setSaving(true);
-    try {
-      await fetch(`${window.location.origin}/api/channels/sms`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "save",
-          twilioAccountSid: sid,
-          twilioAuthToken: token,
-          twilioPhoneNumber: phone,
-          enabled,
-        }),
-      });
-      setSaved(true);
-      setTimeout(() => setSaved(false), 3000);
-    } catch {}
-    setSaving(false);
-  };
-
-  return (
-    <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-card)] overflow-hidden animate-fade-up">
-      <div className="px-5 py-4 border-b border-[var(--border-color)] flex items-center justify-between">
-        <div>
-          <h2 className="font-display font-medium text-[15px]">{t("smsConfig.title")}</h2>
-          <p className="font-body text-[12px] text-[var(--fg-muted)] mt-0.5">
-            {t("smsConfig.description")}
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="font-body text-[12px] text-[var(--fg-muted)]">Enabled</span>
-          <Switch checked={enabled} onCheckedChange={setEnabled} />
-        </div>
-      </div>
-
-      <div className="p-5 space-y-4">
-        <div className="space-y-1.5">
-          <Label className="font-body text-[13px]">{t("smsConfig.twilioSid")}</Label>
-          <Input value={sid} onChange={(e) => setSid(e.target.value)} placeholder="AC..." className="h-9 font-body text-[13px]" />
-        </div>
-        <div className="space-y-1.5">
-          <Label className="font-body text-[13px]">{t("smsConfig.twilioToken")}</Label>
-          <Input type="password" value={token} onChange={(e) => setToken(e.target.value)} placeholder="..." className="h-9 font-body text-[13px]" />
-        </div>
-        <div className="space-y-1.5">
-          <Label className="font-body text-[13px]">{t("smsConfig.twilioPhone")}</Label>
-          <Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+1234567890" className="h-9 font-body text-[13px]" />
-        </div>
-
-        {testResult && (
-          <div className={cn(
-            "flex items-start gap-2 p-2.5 rounded-lg text-[12px] font-body border",
-            testResult.success
-              ? "bg-[var(--emerald)]/8 border-[var(--emerald)]/15 text-[var(--emerald)]"
-              : "bg-[var(--red)]/8 border-[var(--red)]/15 text-[var(--red)]"
-          )}>
-            {testResult.success ? <CheckCircle className="w-4 h-4 shrink-0" /> : <XCircle className="w-4 h-4 shrink-0" />}
-            {testResult.success ? "Test SMS sent" : testResult.error}
-          </div>
-        )}
-
-        {saved && (
-          <div className="flex items-center gap-2 p-2.5 rounded-lg bg-[var(--emerald)]/8 border border-[var(--emerald)]/15 text-[var(--emerald)] text-[12px] font-body">
-            <CheckCircle className="w-4 h-4" /> Saved
-          </div>
-        )}
-
-        <div className="flex justify-end gap-2 pt-2">
-          <Button variant="outline" size="sm" onClick={handleTest} disabled={testing}>
-            {testing ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : <Send className="w-3.5 h-3.5 mr-1.5" />}
-            Test
-          </Button>
-          <Button size="sm" onClick={handleSave} disabled={saving} className="bg-[var(--brand)] text-black hover:bg-[var(--brand-dim)]">
-            {saving ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : null}
-            Save
-          </Button>
         </div>
       </div>
     </div>
