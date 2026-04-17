@@ -1,7 +1,7 @@
 // src/app/api/webhooks/leads/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/db/prisma";
-import { processNewLead } from "@/lib/ai/engine";
+import { queues } from "@/lib/queues";
 
 /**
  * Webhook endpoint to receive leads from external sources.
@@ -78,15 +78,18 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // ── Trigger AI processing (async, don't await) ──
-    const persona = (aiConfig.persona as any) || {};
-    processNewLead({
-      leadId: lead.id,
-      accountId,
-      systemPrompt: aiConfig.systemPrompt,
-      persona,
-      temperature: aiConfig.temperature,
-    }).catch(err => console.error("[Webhook] processNewLead error:", err));
+    // ── Enqueue lead processing (BullMQ worker handles it) ──
+    const channel: "WHATSAPP" | "EMAIL" | "SMS" = lead.phone
+      ? "WHATSAPP"
+      : lead.email
+        ? "EMAIL"
+        : "WHATSAPP";
+
+    await queues.leadProcessing.add(
+      "new-lead",
+      { leadId: lead.id, accountId, channel },
+      { priority: 1 }
+    );
 
     return NextResponse.json({ success: true, leadId: lead.id });
   } catch (e: any) {

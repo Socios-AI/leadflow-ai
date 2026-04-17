@@ -61,6 +61,26 @@
   "dashboard": {
     "title": "Dashboard",
     "subtitle": "Overview of your AI-powered digital marketing",
+    "goalHero": {
+      "eyebrow": "Your AI's active goal",
+      "eyebrowEmpty": "Goal not set yet",
+      "emptyTitle": "Set up your funnel to get started",
+      "emptyDesc": "Pick the AI's goal in the sales funnel and track here the percentage of leads that reach it.",
+      "emptyCta": "Configure funnel",
+      "editFunnel": "Adjust in the funnel",
+      "progressLine": "{achieved} of {total} {metric}",
+      "metricLabel": {
+        "closeSale": "sales closed",
+        "scheduleMeeting": "meetings scheduled",
+        "qualifyTransfer": "leads qualified",
+        "collectSend": "leads with proposal sent"
+      },
+      "performance": {
+        "good": "Doing great",
+        "warn": "Room to grow",
+        "idle": "No result yet"
+      }
+    },
     "stats": {
       "totalLeads": "Total Leads",
       "activeConversations": "Active Conversations",
@@ -209,9 +229,105 @@
       "day": "d"
     }
   },
+  "onboarding": {
+    "brand": "Marketing Digital AI",
+    "skip": "Skip for now",
+    "back": "Back",
+    "next": "Continue",
+    "finish": "Finish",
+    "saving": "Saving...",
+    "welcome": {
+      "title": "Welcome, {name}!",
+      "subtitle": "In just a few minutes your AI will be ready to work your leads. Let's set up the essentials together.",
+      "cta": "Start setup",
+      "duration": "Takes about 2 minutes",
+      "langQuestionPt": "Em qual idioma vamos conversar?",
+      "langQuestionEn": "Which language should we use?",
+      "langQuestionEs": "¿En qué idioma hablamos?",
+      "features": {
+        "origin": {
+          "title": "Lead origin",
+          "desc": "Tell us how your leads reach you."
+        },
+        "goal": {
+          "title": "AI goal",
+          "desc": "Sell, schedule, qualify or collect."
+        },
+        "persona": {
+          "title": "AI persona",
+          "desc": "Pick a profile that speaks like your business."
+        }
+      }
+    },
+    "template": {
+      "title": "Where do your leads come from?",
+      "subtitle": "Choose the scenario that best describes how you capture them. You can change it later in the Funnel."
+    },
+    "goal": {
+      "title": "What's the AI's goal?",
+      "subtitle": "What should the AI do once the lead is qualified?"
+    },
+    "channel": {
+      "title": "Which channel will the AI use?",
+      "subtitle": "Pick the primary channel the AI uses to talk to leads.",
+      "primary": "Primary channel",
+      "secondary": "Secondary channel",
+      "none": "None"
+    },
+    "persona": {
+      "title": "Bring your AI to life",
+      "subtitle": "Pick a ready-made persona and tweak the name if you want. You can edit everything later in AI Assistant.",
+      "presets": "Ready-made profiles",
+      "customize": "Customize",
+      "aiName": "AI name",
+      "aiRole": "AI role",
+      "aiRolePlaceholder": "e.g. Sales consultant",
+      "businessName": "Your business name",
+      "businessNamePlaceholder": "How you want the AI to introduce itself"
+    },
+    "personaPresets": {
+      "sofia": {
+        "role": "Sales consultant",
+        "pitch": "Warm and professional — perfect for closing deals naturally."
+      },
+      "marcos": {
+        "role": "Specialist consultant",
+        "pitch": "Consultative tone, gets the lead's pain and offers technical solutions."
+      },
+      "julia": {
+        "role": "Empathetic agent",
+        "pitch": "Welcoming — perfect for sensitive niches like health and wellness."
+      },
+      "gabriel": {
+        "role": "Scheduling agent",
+        "pitch": "Energetic and direct, fully focused on booking the meeting."
+      },
+      "ana": {
+        "role": "Quick-response agent",
+        "pitch": "Short and objective replies — ideal for high volume."
+      }
+    },
+    "done": {
+      "title": "All set",
+      "subtitle": "Your AI is ready to work. Let's register your campaigns so it understands what you're selling.",
+      "cta": "Add campaigns",
+      "nextActions": {
+        "campaigns": {
+          "title": "Register your campaigns",
+          "desc": "Upload your ad creatives. The AI studies them to understand what was promised to the lead."
+        },
+        "channels": {
+          "title": "Connect your channels",
+          "desc": "Plug in WhatsApp, Email or SMS so the AI can start talking."
+        }
+      }
+    }
+  },
   "pipeline": {
     "title": "Sales Funnel",
     "subtitle": "Configure the path the AI will follow with each lead",
+    "eyebrow": "Attendance funnel",
+    "stepperTitle": "Steps",
     "saved": "Saved!",
     "saveConfig": "Save Funnel",
     "selectTemplateFirst": "Select where your lead comes from",
@@ -219,6 +335,16 @@
     "savedSuccess": "Funnel saved successfully",
     "saveError": "Error saving",
     "connectionError": "Connection error",
+    "previewTiming": "Timing",
+    "nav": {
+      "template": "Lead origin",
+      "goal": "Goal",
+      "timing": "Timing",
+      "channel": "Channel",
+      "transfer": "Transfer",
+      "calendar": "Scheduling",
+      "webhook": "Intake"
+    },
     "step1": {
       "title": "Where does your lead come from?",
       "desc": "Select the scenario that best fits your business"
@@ -232,8 +358,8 @@
       "desc": "Wait time after the lead arrives before the AI sends the first message"
     },
     "tpl": {
-      "proactive": "AI contacts first",
-      "reactive": "Lead initiates",
+      "proactive": "AI reaches out first",
+      "reactive": "Lead reaches out first",
       "formProactive": {
         "title": "Form / Landing Page",
         "desc": "Lead fills a form and waits. The AI sends the first message automatically."
@@ -336,7 +462,8 @@
       "title": "Meeting scheduling",
       "desc": "The AI will check availability and schedule meetings automatically",
       "email": "Google Calendar email",
-      "hint": "The AI will check this calendar to find available slots and create events."
+      "hint": "The AI will check this calendar to find available slots and create events.",
+      "connectHere": "Connect in Integrations"
     },
     "webhook": {
       "title": "Configure lead intake",
@@ -346,12 +473,13 @@
       "howTo": "How to configure",
       "format": "expected",
       "docs": "See full documentation",
+      "openGuide": "See step-by-step connection guide",
       "typeform": "In Typeform: Go to Connect → Webhooks → paste the URL above. Name, email and phone fields are detected automatically.",
       "googleForms": "In Google Forms: Use Google Apps Script or Zapier/Make to send data via POST to the URL above when a response is submitted.",
       "formLP": "In your landing page form: Configure the form action to send a JSON POST with name, email and phone fields to the URL above.",
       "lpFollowup": "Configure your landing page to send signup data via POST to the URL above. The AI will follow up via email and/or WhatsApp.",
       "metaTitle": "Meta Lead Ads (Facebook/Instagram)",
-      "metaDesc": "To receive leads from Meta's native forms, you need an approved app with 'leads_retrieval' permission. Use Make/Zapier as an intermediary to send data to this URL via webhook."
+      "metaDesc": "Native integration coming soon. In the meantime, set up your Meta form to send leads via Zapier, Make or another webhook pointing to the URL above."
     }
   },
   "channels": {

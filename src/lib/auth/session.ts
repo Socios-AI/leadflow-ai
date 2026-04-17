@@ -177,3 +177,16 @@ export async function getSession(): Promise<Session | null> {
     return null;
   }
 }
+
+/**
+ * Destroy the current session by clearing Supabase auth cookies.
+ */
+export async function destroySession(): Promise<void> {
+  const cookieStore = await cookies();
+  const all = cookieStore.getAll();
+  for (const { name } of all) {
+    if (name.startsWith("sb-") || name === "sb-access-token" || name === "sb-refresh-token") {
+      cookieStore.delete(name);
+    }
+  }
+}

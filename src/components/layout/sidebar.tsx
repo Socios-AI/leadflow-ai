@@ -11,7 +11,7 @@ import {
   ChevronLeft, ChevronRight, ChevronDown, LogOut,
   Sun, Moon, Laptop, Users,
   Target, Phone, Mail, Smartphone,
-  Globe, Filter, Headphones, Webhook, Shield,
+  Globe, Filter, Headphones, Shield,
 } from 'lucide-react'
 import { useTheme } from 'next-themes'
 
@@ -87,7 +87,6 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
 
   const configNav: NavItem[] = [
     { href: '/ai-config', icon: Brain, label: t('aiAssistant'), id: 'sidebar-assistente' },
-    { href: '/webhooks', icon: Webhook, label: 'Webhooks & API', id: 'sidebar-webhooks' },
     { href: '/settings', icon: Settings, label: t('account'), id: 'sidebar-conta' },
   ]
 

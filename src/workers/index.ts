@@ -1,31 +1,36 @@
 // src/workers/index.ts
 //
-// Run with: npx tsx src/workers/index.ts
-// Or in production: node dist/workers/index.js
+// Run with: npm run workers:dev (watch) or npm run workers (prod).
 //
-// All BullMQ workers for the lead engagement pipeline.
+// All BullMQ workers for the lead engagement pipeline. Each worker is a single
+// Worker instance tied to a queue. AIEngine is the only LLM entry point.
 
 import { Worker } from "bullmq";
-import { getQueueConnection } from "@/lib/redis";
+import { getQueueConnection, getRedis } from "@/lib/redis";
 import prisma from "@/lib/db/prisma";
-import { AIEngine } from "@/lib/ai/engine";
+import { AIEngine } from "@/lib/ai-engine/engine";
 import { getChannelProvider } from "@/lib/channels/factory";
 import { WhatsAppProvider } from "@/lib/channels/whatsapp";
 import { queues } from "@/lib/queues";
+import { flushDebounceBuffer, debounceMessage } from "@/lib/debounce";
 
 const connection = getQueueConnection();
+type Channel = "WHATSAPP" | "EMAIL" | "SMS";
 
 console.log("Starting workers...");
 
 // ═══════════════════════════════════════════════════════
-// WORKER 1: LEAD PROCESSING
-// When a new lead arrives, generate first contact and send.
+// WORKER 1: LEAD PROCESSING (first contact for new leads)
 // ═══════════════════════════════════════════════════════
 
 const leadWorker = new Worker(
   "lead-processing",
   async (job) => {
-    const { leadId, accountId, channel } = job.data;
+    const { leadId, accountId, channel } = job.data as {
+      leadId: string;
+      accountId: string;
+      channel: Channel;
+    };
     console.log(`[lead-processing] New lead ${leadId} on ${channel}`);
 
     const lead = await prisma.lead.findUnique({
@@ -46,17 +51,21 @@ const leadWorker = new Worker(
       ? `Campaign: ${lead.campaign.name}\n${lead.campaign.description || ""}\n${lead.campaign.transcription || ""}`
       : undefined;
 
-    // Generate first contact message via AI
     const message = await AIEngine.generateFirstContact({
       accountId,
       leadName: lead.name || undefined,
       leadSource: lead.source,
       campaignInfo,
-      channel: channel as "WHATSAPP" | "EMAIL" | "SMS",
+      channel,
+      leadMetadata: (lead.metadata as Record<string, unknown>) || undefined,
     });
 
-    // Create or get conversation
-    const contactId = channel === "EMAIL" ? lead.email! : lead.phone!;
+    const contactId =
+      channel === "EMAIL" ? lead.email || "" : lead.phone || "";
+    if (!contactId) {
+      console.warn(`[lead-processing] Lead ${leadId} has no ${channel} contact`);
+      return;
+    }
 
     const conversation = await prisma.conversation.upsert({
       where: {
@@ -77,7 +86,6 @@ const leadWorker = new Worker(
       },
     });
 
-    // Save outbound message
     const dbMessage = await prisma.message.create({
       data: {
         accountId,
@@ -90,9 +98,7 @@ const leadWorker = new Worker(
       },
     });
 
-    // Send via channel provider
-    const provider = await getChannelProvider(accountId, channel as any);
-
+    const provider = await getChannelProvider(accountId, channel);
     if (!provider) {
       console.error(
         `[lead-processing] No ${channel} provider for account ${accountId}`
@@ -104,10 +110,9 @@ const leadWorker = new Worker(
       return;
     }
 
-    const sendOpts = channel === "EMAIL" ? { subject: "Hello!" } : {};
+    const sendOpts = channel === "EMAIL" ? { subject: "Olá!" } : undefined;
     const result = await provider.send(contactId, message, sendOpts);
 
-    // Update message status
     await prisma.message.update({
       where: { id: dbMessage.id },
       data: {
@@ -116,7 +121,6 @@ const leadWorker = new Worker(
       },
     });
 
-    // Update lead status
     await prisma.lead.update({
       where: { id: leadId },
       data: {
@@ -125,7 +129,6 @@ const leadWorker = new Worker(
       },
     });
 
-    // Log event
     await prisma.eventLog.create({
       data: {
         accountId,
@@ -139,7 +142,7 @@ const leadWorker = new Worker(
       },
     });
 
-    // Schedule follow-up (24h)
+    // Schedule a 24h follow-up guard
     await queues.followUp.add(
       "follow-up",
       { leadId, accountId, channel, conversationId: conversation.id },
@@ -154,14 +157,18 @@ const leadWorker = new Worker(
 );
 
 // ═══════════════════════════════════════════════════════
-// WORKER 2: MESSAGE SENDING
-// Sends messages via channel providers.
+// WORKER 2: MESSAGE SENDING (queued outbound messages)
 // ═══════════════════════════════════════════════════════
 
 const messageSendingWorker = new Worker(
   "message-sending",
   async (job) => {
-    const { accountId, messageId, channel, to } = job.data;
+    const { accountId, messageId, channel, to } = job.data as {
+      accountId: string;
+      messageId: string;
+      channel: Channel;
+      to: string;
+    };
     console.log(`[message-sending] Sending message ${messageId}`);
 
     const msg = await prisma.message.findUnique({
@@ -197,48 +204,87 @@ const messageSendingWorker = new Worker(
 );
 
 // ═══════════════════════════════════════════════════════
-// WORKER 3: AI RESPONSE
-// When a lead sends a message, generate AI response.
+// WORKER 3: AI RESPONSE (debounced — reads Redis buffer)
+//
+// Two entry points:
+//  - "debounced-respond" (from debounce.ts) → flush buffer, combine, respond
+//  - "respond"           (legacy direct)    → use provided messageId only
 // ═══════════════════════════════════════════════════════
 
 const aiWorker = new Worker(
   "ai-response",
   async (job) => {
-    const { accountId, leadId, conversationId, channel } = job.data;
-    console.log(`[ai-response] Processing response for lead ${leadId}`);
+    const { accountId, leadId, conversationId, channel, messageId } =
+      job.data as {
+        accountId: string;
+        leadId: string;
+        conversationId: string;
+        channel: Channel;
+        messageId?: string;
+      };
 
-    // Get conversation history (last 20 messages)
-    const messages = await prisma.message.findMany({
-      where: { conversationId },
+    console.log(
+      `[ai-response] ${job.name} for lead ${leadId} (conv ${conversationId})`
+    );
+
+    const conversation = await prisma.conversation.findUnique({
+      where: { id: conversationId },
+      include: { lead: { include: { campaign: true } } },
+    });
+    if (!conversation) return;
+    if (!conversation.isAIEnabled) {
+      console.log(`[ai-response] AI disabled for ${conversationId}, skipping`);
+      return;
+    }
+
+    // ── Resolve which inbound messages to collapse ──
+    let pendingIds: string[] = [];
+    if (job.name === "debounced-respond") {
+      pendingIds = await flushDebounceBuffer(conversationId);
+      if (pendingIds.length === 0) {
+        console.log(
+          `[ai-response] Debounce buffer empty for ${conversationId}, skipping`
+        );
+        return;
+      }
+    } else if (messageId) {
+      pendingIds = [messageId];
+    }
+
+    // ── Load the combined inbound text ──
+    let combinedInbound = "";
+    if (pendingIds.length > 0) {
+      const pendingMsgs = await prisma.message.findMany({
+        where: { id: { in: pendingIds }, direction: "INBOUND" },
+        orderBy: { createdAt: "asc" },
+        select: { content: true },
+      });
+      combinedInbound = pendingMsgs.map((m) => m.content).join("\n");
+    }
+
+    // ── Build history (excluding the pending inbound messages) ──
+    const historyRows = await prisma.message.findMany({
+      where: {
+        conversationId,
+        ...(pendingIds.length > 0 ? { id: { notIn: pendingIds } } : {}),
+      },
       orderBy: { createdAt: "asc" },
-      take: 20,
+      take: 30,
       select: { direction: true, content: true },
     });
 
-    const lead = await prisma.lead.findUnique({
-      where: { id: leadId },
-      include: {
-        campaign: { select: { transcription: true, name: true } },
-      },
-    });
-
-    if (!lead) return;
-
-    // Build conversation history for AI
-    const history = messages.slice(0, -1).map((m) => ({
+    const history = historyRows.map((m) => ({
       role: (m.direction === "INBOUND" ? "user" : "assistant") as
         | "user"
         | "assistant",
       content: m.content,
     }));
 
-    const lastMessage = messages[messages.length - 1];
-
+    const lead = conversation.lead;
     const campaignInfo = lead.campaign
       ? `Campaign: ${lead.campaign.name}\n${lead.campaign.transcription || ""}`
       : undefined;
 
-    // Generate AI response
     const aiResult = await AIEngine.generateResponse({
       accountId,
       leadName: lead.name || undefined,
@@ -247,11 +293,12 @@ const aiWorker = new Worker(
       leadSource: lead.source,
       campaignInfo,
       conversationHistory: history,
-      currentMessage: lastMessage?.content || "",
-      channel: (channel || "WHATSAPP") as "WHATSAPP" | "EMAIL" | "SMS",
+      currentMessage: combinedInbound || "(sem conteúdo)",
+      channel: channel || "WHATSAPP",
+      leadMetadata: (lead.metadata as Record<string, unknown>) || undefined,
     });
 
-    // Save AI response
+    // ── Save OUTBOUND message (pending) ──
     const dbMessage = await prisma.message.create({
       data: {
         accountId,
@@ -268,11 +315,14 @@ const aiWorker = new Worker(
       },
     });
 
-    // Send via channel
-    const contactId = channel === "EMAIL" ? lead.email! : lead.phone!;
-    const provider = await getChannelProvider(accountId, channel);
+    // ── Send via channel ──
+    const contactId =
+      channel === "EMAIL"
+        ? lead.email || ""
+        : conversation.channelIdentifier || lead.phone || "";
 
-    if (provider) {
+    const provider = await getChannelProvider(accountId, channel);
+    if (provider && contactId) {
       const result = await provider.send(contactId, aiResult.message);
       await prisma.message.update({
         where: { id: dbMessage.id },
@@ -281,18 +331,24 @@ const aiWorker = new Worker(
           externalId: result.externalId || null,
         },
       });
+    } else {
+      await prisma.message.update({
+        where: { id: dbMessage.id },
+        data: { status: "FAILED" },
+      });
     }
 
-    // Update conversation
+    // ── Update conversation ──
     await prisma.conversation.update({
       where: { id: conversationId },
       data: {
         lastMessageAt: new Date(),
         sentiment: aiResult.sentiment,
+        ...(aiResult.isEscalation ? { isAIEnabled: false } : {}),
       },
     });
 
-    // Handle conversion
+    // ── Handle conversion/escalation side effects ──
     if (aiResult.isConversion) {
       await prisma.lead.update({
         where: { id: leadId },
@@ -302,26 +358,37 @@ const aiWorker = new Worker(
         data: {
           accountId,
           event: "lead.converted",
-          data: { leadId, message: aiResult.notificationMessage },
+          data: { leadId, conversationId, notify: aiResult.notificationMessage },
         },
       });
     }
-
-    // Handle escalation
     if (aiResult.isEscalation) {
       await prisma.lead.update({
         where: { id: leadId },
         data: { status: "QUALIFIED" },
       });
-      await prisma.conversation.update({
-        where: { id: conversationId },
-        data: { isAIEnabled: false },
-      });
       await prisma.eventLog.create({
         data: {
           accountId,
           event: "lead.escalated",
-          data: { leadId, message: aiResult.notificationMessage },
+          data: { leadId, conversationId, notify: aiResult.notificationMessage },
+        },
+      });
+    }
+
+    if (aiResult.scheduled) {
+      await prisma.eventLog.create({
+        data: {
+          accountId,
+          event: "lead.meeting_scheduled",
+          data: {
+            leadId,
+            conversationId,
+            eventId: aiResult.scheduled.eventId,
+            startISO: aiResult.scheduled.startISO,
+            endISO: aiResult.scheduled.endISO,
+            htmlLink: aiResult.scheduled.htmlLink,
+          },
         },
       });
     }
@@ -332,8 +399,9 @@ const aiWorker = new Worker(
 );
 
 // ═══════════════════════════════════════════════════════
-// WORKER 4: TRANSCRIPTION
-// Transcribe audio messages from WhatsApp.
+// WORKER 4: TRANSCRIPTION (WhatsApp audio → text)
+// After transcription we feed the result into the SAME debounce buffer
+// so the AI worker picks it up together with any concurrent text messages.
 // ═══════════════════════════════════════════════════════
 
 const transcriptionWorker = new Worker(
@@ -343,108 +411,110 @@ const transcriptionWorker = new Worker(
       accountId,
       leadId,
       conversationId,
-      messageId,
+      externalMessageId,
       instanceName,
-      type,
-    } = job.data;
-    console.log(`[transcription] Processing ${type} for lead ${leadId}`);
+    } = job.data as {
+      accountId: string;
+      leadId: string;
+      conversationId: string;
+      externalMessageId: string;
+      instanceName: string;
+    };
 
-    if (type === "audio") {
-      const channelConfig = await prisma.channel.findFirst({
-        where: { accountId, type: "WHATSAPP", isEnabled: true },
-      });
+    console.log(`[transcription] Processing audio for lead ${leadId}`);
 
-      if (!channelConfig) {
-        console.error("[transcription] No WhatsApp config found");
-        return;
-      }
-
-      const cfg = channelConfig.config as Record<string, string>;
-      const wa = new WhatsAppProvider({
-        instanceName: cfg.instanceName || instanceName,
-        evolutionApiUrl: cfg.evolutionApiUrl,
-        evolutionApiKey: cfg.evolutionApiKey,
-      });
-
-      // Download audio
-      const audioBuffer = await wa.downloadMedia(messageId, instanceName);
-
-      // Transcribe
-      const text = await AIEngine.transcribeAudio(audioBuffer);
-
-      // Save as inbound message
-      const message = await prisma.message.create({
-        data: {
-          accountId,
-          conversationId,
-          direction: "INBOUND",
-          content: text,
-          contentType: "AUDIO",
-          externalId: messageId,
-          metadata: { originalType: "audio", transcription: text },
-        },
-      });
-
-      // Update conversation
-      await prisma.conversation.update({
-        where: { id: conversationId },
-        data: { lastMessageAt: new Date() },
-      });
-
-      // Queue AI response
-      await queues.aiResponse.add("respond", {
-        accountId,
-        leadId,
-        conversationId,
-        messageId: message.id,
-        channel: "WHATSAPP",
-      });
-
-      console.log(`[transcription] Audio transcribed for lead ${leadId}`);
+    const channelConfig = await prisma.channel.findFirst({
+      where: { accountId, type: "WHATSAPP", isEnabled: true },
+    });
+    if (!channelConfig) {
+      console.error("[transcription] No WhatsApp config found");
+      return;
     }
+
+    const cfg = channelConfig.config as Record<string, string>;
+    const wa = new WhatsAppProvider({
+      instanceName: cfg.instanceName || instanceName,
+      evolutionApiUrl: cfg.evolutionApiUrl || process.env.EVOLUTION_API_URL || "",
+      evolutionApiKey: cfg.evolutionApiKey || process.env.EVOLUTION_API_KEY || "",
+    });
+
+    const { buffer, mimetype } = await wa.downloadMedia(externalMessageId);
+    const text = await AIEngine.transcribeAudio({ buffer, mimetype });
+
+    if (!text) {
+      console.warn(`[transcription] Empty transcription for ${leadId}`);
+      return;
+    }
+
+    const message = await prisma.message.create({
+      data: {
+        accountId,
+        conversationId,
+        direction: "INBOUND",
+        content: text,
+        contentType: "AUDIO",
+        externalId: externalMessageId,
+        metadata: { originalType: "audio", transcription: text },
+      },
+    });
+
+    await prisma.conversation.update({
+      where: { id: conversationId },
+      data: { lastMessageAt: new Date() },
+    });
+
+    // Feed into the debounce buffer so it's combined with any pending text
+    await debounceMessage({
+      conversationId,
+      messageId: message.id,
+      accountId,
+      leadId,
+      channel: "WHATSAPP",
+    });
+
+    console.log(`[transcription] Audio transcribed for lead ${leadId}`);
   },
   { connection, concurrency: 2 }
 );
 
 // ═══════════════════════════════════════════════════════
-// WORKER 5: FOLLOW-UP
-// Send follow-up if lead hasn't responded.
+// WORKER 5: FOLLOW-UP (24h nudge if lead never replied)
 // ═══════════════════════════════════════════════════════
 
 const followUpWorker = new Worker(
   "follow-up",
   async (job) => {
-    const { leadId, accountId, channel, conversationId } = job.data;
+    const { leadId, accountId, channel, conversationId } = job.data as {
+      leadId: string;
+      accountId: string;
+      channel: Channel;
+      conversationId: string;
+    };
     console.log(`[follow-up] Checking lead ${leadId}`);
 
-    // Check if lead has responded
     const inboundCount = await prisma.message.count({
       where: { conversationId, direction: "INBOUND" },
     });
-
     if (inboundCount > 0) {
-      console.log(`[follow-up] Lead ${leadId} already responded, skipping`);
+      console.log(`[follow-up] Lead ${leadId} already replied, skipping`);
       return;
     }
 
-    const lead = await prisma.lead.findUnique({
-      where: { id: leadId },
-    });
-
+    const lead = await prisma.lead.findUnique({ where: { id: leadId } });
     if (!lead || lead.status !== "CONTACTED") return;
 
-    // Generate follow-up message
     const followUpMsg = await AIEngine.generateFirstContact({
       accountId,
       leadName: lead.name || undefined,
       leadSource: lead.source,
-      channel: channel as "WHATSAPP" | "EMAIL" | "SMS",
+      channel,
     });
 
-    // Save and send
-    const contactId = channel === "EMAIL" ? lead.email! : lead.phone!;
-    const provider = await getChannelProvider(accountId, channel);
+    const contactId =
+      channel === "EMAIL" ? lead.email || "" : lead.phone || "";
+    if (!contactId) return;
 
+    const provider = await getChannelProvider(accountId, channel);
     if (!provider) return;
 
     const dbMessage = await prisma.message.create({
@@ -461,7 +531,6 @@ const followUpWorker = new Worker(
     });
 
     const result = await provider.send(contactId, followUpMsg);
-
     await prisma.message.update({
       where: { id: dbMessage.id },
       data: {
@@ -470,7 +539,6 @@ const followUpWorker = new Worker(
       },
     });
 
-    // Mark as unresponsive if still no reply
     await prisma.lead.update({
       where: { id: leadId },
       data: { status: "UNRESPONSIVE" },
@@ -494,6 +562,11 @@ async function shutdown() {
     transcriptionWorker.close(),
     followUpWorker.close(),
   ]);
+  try {
+    await getRedis().quit();
+  } catch {
+    // ignore
+  }
   await prisma.$disconnect();
   process.exit(0);
 }

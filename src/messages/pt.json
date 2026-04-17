@@ -61,6 +61,26 @@
   "dashboard": {
     "title": "Painel",
     "subtitle": "Visão geral do seu marketing digital com IA",
+    "goalHero": {
+      "eyebrow": "Objetivo ativo da sua IA",
+      "eyebrowEmpty": "Objetivo ainda não definido",
+      "emptyTitle": "Configure seu funil para começar",
+      "emptyDesc": "Escolha o objetivo da IA no funil de vendas e acompanhe por aqui o percentual de leads que chegam até ele.",
+      "emptyCta": "Configurar funil",
+      "editFunnel": "Ajustar no funil",
+      "progressLine": "{achieved} de {total} {metric}",
+      "metricLabel": {
+        "closeSale": "vendas fechadas",
+        "scheduleMeeting": "reuniões agendadas",
+        "qualifyTransfer": "leads qualificados",
+        "collectSend": "leads com proposta enviada"
+      },
+      "performance": {
+        "good": "Indo muito bem",
+        "warn": "Dá para melhorar",
+        "idle": "Ainda sem resultado"
+      }
+    },
     "stats": {
       "totalLeads": "Total de Leads",
       "activeConversations": "Atendimentos Ativos",
@@ -209,9 +229,105 @@
       "day": "d"
     }
   },
+  "onboarding": {
+    "brand": "Marketing Digital AI",
+    "skip": "Pular por agora",
+    "back": "Voltar",
+    "next": "Continuar",
+    "finish": "Concluir",
+    "saving": "Salvando...",
+    "welcome": {
+      "title": "Seja bem-vindo, {name}!",
+      "subtitle": "Em alguns minutos sua IA vai estar pronta para atender leads. Vamos configurar o essencial juntos.",
+      "cta": "Começar configuração",
+      "duration": "Leva cerca de 2 minutos",
+      "langQuestionPt": "Em qual idioma vamos conversar?",
+      "langQuestionEn": "Which language should we use?",
+      "langQuestionEs": "¿En qué idioma hablamos?",
+      "features": {
+        "origin": {
+          "title": "Origem dos leads",
+          "desc": "Ajuste como seus leads chegam até você."
+        },
+        "goal": {
+          "title": "Objetivo da IA",
+          "desc": "Vender, agendar, qualificar ou coletar."
+        },
+        "persona": {
+          "title": "Personalidade da IA",
+          "desc": "Escolha um perfil que fale como seu negócio."
+        }
+      }
+    },
+    "template": {
+      "title": "De onde vêm os seus leads?",
+      "subtitle": "Escolha o cenário que melhor descreve o seu caminho de captação. Dá para mudar depois no Funil."
+    },
+    "goal": {
+      "title": "Qual é o objetivo da IA?",
+      "subtitle": "O que a IA deve fazer quando qualificar o lead?"
+    },
+    "channel": {
+      "title": "Em qual canal a IA vai atuar?",
+      "subtitle": "Escolha o canal principal que a IA usa para conversar com o lead.",
+      "primary": "Canal principal",
+      "secondary": "Canal secundário",
+      "none": "Nenhum"
+    },
+    "persona": {
+      "title": "Dê vida à sua IA",
+      "subtitle": "Escolha uma personalidade pronta e ajuste o nome se quiser. Depois você pode editar tudo no Assistente de IA.",
+      "presets": "Perfis prontos",
+      "customize": "Personalizar",
+      "aiName": "Nome da IA",
+      "aiRole": "Papel da IA",
+      "aiRolePlaceholder": "Ex.: Consultora de vendas",
+      "businessName": "Nome do seu negócio",
+      "businessNamePlaceholder": "Como você quer que a IA se apresente"
+    },
+    "personaPresets": {
+      "sofia": {
+        "role": "Consultora de vendas",
+        "pitch": "Simpática e profissional, ideal para fechar vendas com naturalidade."
+      },
+      "marcos": {
+        "role": "Consultor especialista",
+        "pitch": "Tom consultivo, entende a dor do lead e oferece soluções técnicas."
+      },
+      "julia": {
+        "role": "Atendente empática",
+        "pitch": "Acolhedora, perfeita para nichos sensíveis como saúde e estética."
+      },
+      "gabriel": {
+        "role": "Agente de agendamento",
+        "pitch": "Enérgico e direto, foco total em marcar a reunião."
+      },
+      "ana": {
+        "role": "Atendente ágil",
+        "pitch": "Respostas curtas e objetivas, ideal para alto volume."
+      }
+    },
+    "done": {
+      "title": "Tudo pronto",
+      "subtitle": "Sua IA já pode começar a atender. Agora vamos cadastrar suas campanhas para a IA entender o que você vende.",
+      "cta": "Cadastrar campanhas",
+      "nextActions": {
+        "campaigns": {
+          "title": "Cadastre suas campanhas",
+          "desc": "Suba as peças de anúncio. A IA analisa e entende o que foi prometido ao lead."
+        },
+        "channels": {
+          "title": "Conecte seus canais",
+          "desc": "Ligue WhatsApp, Email ou SMS para a IA começar a conversar."
+        }
+      }
+    }
+  },
   "pipeline": {
     "title": "Funil de Vendas",
     "subtitle": "Configure o caminho que a IA vai seguir com cada lead",
+    "eyebrow": "Funil de atendimento",
+    "stepperTitle": "Etapas",
     "saved": "Salvo!",
     "saveConfig": "Salvar Funil",
     "selectTemplateFirst": "Selecione de onde vem seu lead",
@@ -219,6 +335,16 @@
     "savedSuccess": "Funil salvo com sucesso",
     "saveError": "Erro ao salvar",
     "connectionError": "Erro de conexão",
+    "previewTiming": "Tempo",
+    "nav": {
+      "template": "Origem do lead",
+      "goal": "Objetivo",
+      "timing": "Quando contatar",
+      "channel": "Canal",
+      "transfer": "Transferência",
+      "calendar": "Agendamento",
+      "webhook": "Recebimento"
+    },
     "step1": {
       "title": "De onde vem seu lead?",
       "desc": "Selecione o cenário que mais combina com o seu negócio"
@@ -232,8 +358,8 @@
       "desc": "Tempo de espera após o lead chegar para a IA enviar a primeira mensagem"
     },
     "tpl": {
-      "proactive": "IA liga primeiro",
-      "reactive": "Lead chama",
+      "proactive": "IA chama primeiro",
+      "reactive": "Lead chama primeiro",
       "formProactive": {
         "title": "Formulário / Landing Page",
         "desc": "Lead preenche um formulário e aguarda contato. A IA envia a primeira mensagem automaticamente."
@@ -336,7 +462,8 @@
       "title": "Agendamento de reunião",
       "desc": "A IA vai verificar disponibilidade e agendar reuniões automaticamente",
       "email": "Email do Google Calendar",
-      "hint": "A IA vai consultar este calendário para encontrar horários disponíveis e criar eventos."
+      "hint": "A IA vai consultar este calendário para encontrar horários disponíveis e criar eventos.",
+      "connectHere": "Conectar em Integrações"
     },
     "webhook": {
       "title": "Configurar recebimento de leads",
@@ -346,12 +473,13 @@
       "howTo": "Como configurar",
       "format": "esperado",
       "docs": "Ver documentação completa",
+      "openGuide": "Ver guia de conexão passo a passo",
       "typeform": "No Typeform: Vá em Connect → Webhooks → cole a URL acima. Os campos nome, email e telefone serão detectados automaticamente.",
       "googleForms": "No Google Forms: Use o Google Apps Script ou Zapier/Make para enviar os dados via POST para a URL acima quando uma resposta for enviada.",
       "formLP": "No formulário da sua landing page: Configure o form action para enviar um POST JSON com os campos name, email e phone para a URL acima.",
       "lpFollowup": "Configure sua landing page para enviar os dados de cadastro via POST para a URL acima. A IA fará follow-up por email e/ou WhatsApp.",
       "metaTitle": "Meta Lead Ads (Facebook/Instagram)",
-      "metaDesc": "Para receber leads do formulário nativo da Meta, você precisa de um app aprovado com permissão 'leads_retrieval'. Use o Make/Zapier como intermediário para enviar os dados para esta URL via webhook."
+      "metaDesc": "Integração nativa em breve. Enquanto isso, configure seu formulário da Meta para enviar os leads via Zapier, Make ou outro webhook apontando para a URL acima."
     }
   },
   "channels": {

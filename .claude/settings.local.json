@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(xargs wc *)",
+      "Bash(node -e \"['pt','en','es'].forEach\\(l=>{const j=require\\('./src/messages/'+l+'.json'\\);console.log\\(l+':',j.pipeline?.webhook?.metaTitle,'|',j.pipeline?.webhook?.metaDesc?.slice\\(0,60\\)+'...'\\)}\\)\")",
+      "Bash(npx tsc *)"
+    ]
+  }
+}

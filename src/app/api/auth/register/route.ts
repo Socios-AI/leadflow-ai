@@ -99,8 +99,6 @@ export async function POST(req: NextRequest) {
         data: {
           email,
           name,
-          passwordHash: null, // Auth handled by Supabase
-          authProvider: "email",
           supabaseId: authData.user!.id,
         },
       });

@@ -24,6 +24,7 @@ model Account {
   stripeSubStatus   String?  @map("stripe_sub_status")
   stripePriceId     String?  @map("stripe_price_id")
   trialEndsAt       DateTime? @map("trial_ends_at")
+  onboardingCompletedAt DateTime? @map("onboarding_completed_at")
   createdAt         DateTime @default(now()) @map("created_at")
   updatedAt         DateTime @updatedAt @map("updated_at")
 
@@ -37,6 +38,8 @@ model Account {
   channels          Channel[]
   webhooks          Webhook[]
   eventLogs         EventLog[]
+  googleCalendar    GoogleCalendarIntegration?
+  metaIntegration   MetaIntegration?
 
   @@map("accounts")
 }
@@ -310,6 +313,49 @@ model Webhook {
 // ══════════════════════════════════════
 // EVENT LOG (audit trail)
 // ══════════════════════════════════════
+
+// ══════════════════════════════════════
+// GOOGLE CALENDAR (per-account OAuth)
+// ══════════════════════════════════════
+
+model MetaIntegration {
+  id              String   @id @default(cuid())
+  accountId       String   @unique @map("account_id")
+  metaUserId      String   @map("meta_user_id")
+  metaUserName    String?  @map("meta_user_name")
+  email           String?
+  accessToken     String   @db.Text @map("access_token")
+  tokenExpiresAt  DateTime @map("token_expires_at")
+  scope           String   @db.Text
+  pages           Json?
+  adAccounts      Json?    @map("ad_accounts")
+  businessName    String?  @map("business_name")
+  businessNiche   String?  @map("business_niche")
+  businessProduct String?  @db.Text @map("business_product")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@map("meta_integrations")
+}
+
+model GoogleCalendarIntegration {
+  id             String   @id @default(cuid())
+  accountId      String   @unique @map("account_id")
+  email          String
+  calendarId     String   @default("primary") @map("calendar_id")
+  accessToken    String   @db.Text @map("access_token")
+  refreshToken   String   @db.Text @map("refresh_token")
+  tokenExpiresAt DateTime @map("token_expires_at")
+  scope          String
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@map("google_calendar_integrations")
+}
 
 model EventLog {
   id        String   @id @default(cuid())

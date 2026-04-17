@@ -113,9 +113,7 @@ export async function GET(req: NextRequest) {
         data: {
           email,
           name,
-          passwordHash: null,
           avatarUrl,
-          authProvider: provider,
           supabaseId: supabaseUser.id,
         },
       });
