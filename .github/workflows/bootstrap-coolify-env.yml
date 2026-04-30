@@ -12,7 +12,7 @@ jobs:
       WEB_UUID: ${{ secrets.COOLIFY_WEB_UUID }}
       WORKERS_UUID: ${{ secrets.COOLIFY_WORKERS_UUID }}
     steps:
-      - name: Push secrets to Coolify (web + workers)
+      - name: Upsert secrets to Coolify (web + workers)
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
@@ -34,49 +34,83 @@ jobs:
           META_WEBHOOK_VERIFY_TOKEN: ${{ secrets.META_WEBHOOK_VERIFY_TOKEN }}
           SUPER_ADMIN_EMAILS: ${{ secrets.SUPER_ADMIN_EMAILS }}
           NEXT_PUBLIC_APP_NAME: ${{ secrets.NEXT_PUBLIC_APP_NAME }}
+          TWILIO_ACCOUNT_SID: ${{ secrets.TWILIO_ACCOUNT_SID }}
+          TWILIO_AUTH_TOKEN: ${{ secrets.TWILIO_AUTH_TOKEN }}
+          TWILIO_PHONE_NUMBER: ${{ secrets.TWILIO_PHONE_NUMBER }}
+          WEBHOOK_SECRET: ${{ secrets.WEBHOOK_SECRET }}
         run: |
-          set -euo pipefail
-          push_env () {
-            local app_uuid="$1" key="$2" value="$3"
-            if [ -z "$value" ]; then
-              echo "  skip $key (empty)"
-              return 0
-            fi
-            local payload
-            payload=$(python3 -c 'import json,sys; print(json.dumps({"key":sys.argv[1],"value":sys.argv[2],"is_preview":False,"is_literal":False}))' "$key" "$value")
-            local resp
-            resp=$(curl -sS -w "\n%{http_code}" \
-              -X POST \
-              -H "Authorization: Bearer $COOLIFY_TOKEN" \
-              -H "Content-Type: application/json" \
-              -d "$payload" \
-              "$COOLIFY_URL/api/v1/applications/$app_uuid/envs")
-            local status
-            status=$(echo "$resp" | tail -n 1)
-            if [ "$status" = "201" ] || [ "$status" = "200" ]; then
-              echo "  set  $key"
-            elif [ "$status" = "422" ]; then
-              local upd_payload
-              upd_payload=$(python3 -c 'import json,sys; print(json.dumps({"key":sys.argv[1],"value":sys.argv[2],"is_preview":False,"is_literal":False}))' "$key" "$value")
-              curl -sS -X PATCH \
-                -H "Authorization: Bearer $COOLIFY_TOKEN" \
-                -H "Content-Type: application/json" \
-                -d "$upd_payload" \
-                "$COOLIFY_URL/api/v1/applications/$app_uuid/envs" >/dev/null
-              echo "  upd  $key"
-            else
-              echo "  FAIL $key (HTTP $status)"
-              echo "$resp" | head -n -1
-              return 1
-            fi
-          }
+          python3 - <<'PY'
+          import json, os, sys, urllib.request, urllib.error
 
-          KEYS="DATABASE_URL NEXT_PUBLIC_SUPABASE_URL NEXT_PUBLIC_SUPABASE_ANON_KEY SUPABASE_SERVICE_ROLE_KEY JWT_SECRET ENCRYPTION_KEY OPENAI_API_KEY ANTHROPIC_API_KEY STRIPE_SECRET_KEY STRIPE_WEBHOOK_SECRET STRIPE_PRICE_STARTER STRIPE_PRICE_PRO STRIPE_PRICE_ENTERPRISE RESEND_API_KEY RESEND_FROM_EMAIL EVOLUTION_API_URL EVOLUTION_API_KEY META_WEBHOOK_VERIFY_TOKEN SUPER_ADMIN_EMAILS NEXT_PUBLIC_APP_NAME"
+          BASE = os.environ["COOLIFY_URL"].rstrip("/") + "/api/v1"
+          TOKEN = os.environ["COOLIFY_TOKEN"]
+          HEADERS = {"Authorization": f"Bearer {TOKEN}", "Content-Type": "application/json"}
 
-          for app in "web=$WEB_UUID" "workers=$WORKERS_UUID"; do
-            name="${app%%=*}"; uuid="${app#*=}"
-            echo "=== $name ($uuid) ==="
-            for k in $KEYS; do
-              push_env "$uuid" "$k" "${!k}"
-            done
-          done
+          KEYS = [
+              "DATABASE_URL",
+              "NEXT_PUBLIC_SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_ANON_KEY", "SUPABASE_SERVICE_ROLE_KEY",
+              "JWT_SECRET", "ENCRYPTION_KEY", "WEBHOOK_SECRET",
+              "OPENAI_API_KEY", "ANTHROPIC_API_KEY",
+              "STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET",
+              "STRIPE_PRICE_STARTER", "STRIPE_PRICE_PRO", "STRIPE_PRICE_ENTERPRISE",
+              "RESEND_API_KEY", "RESEND_FROM_EMAIL",
+              "EVOLUTION_API_URL", "EVOLUTION_API_KEY",
+              "META_WEBHOOK_VERIFY_TOKEN", "SUPER_ADMIN_EMAILS", "NEXT_PUBLIC_APP_NAME",
+              "TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_PHONE_NUMBER",
+          ]
+
+          def request(method, path, body=None):
+              data = json.dumps(body).encode() if body is not None else None
+              req = urllib.request.Request(BASE + path, data=data, headers=HEADERS, method=method)
+              try:
+                  with urllib.request.urlopen(req) as r:
+                      return r.status, json.loads(r.read() or b"null")
+              except urllib.error.HTTPError as e:
+                  return e.code, json.loads(e.read() or b"null")
+
+          def list_envs(app_uuid):
+              code, body = request("GET", f"/applications/{app_uuid}/envs")
+              if code != 200:
+                  raise SystemExit(f"list_envs failed for {app_uuid}: HTTP {code} {body}")
+              return body
+
+          def upsert(app_uuid, key, value, existing_by_key):
+              if value is None or value == "":
+                  print(f"  skip  {key:32s} (empty in GH secrets)")
+                  return
+              payload = {"key": key, "value": value, "is_preview": False, "is_literal": False}
+              if key in existing_by_key:
+                  uuid = existing_by_key[key]
+                  code, body = request("PATCH", f"/applications/{app_uuid}/envs/{uuid}", payload)
+                  if code in (200, 201, 204):
+                      print(f"  upd   {key}")
+                  else:
+                      print(f"  FAIL  {key} update HTTP {code} {body}")
+                      raise SystemExit(1)
+              else:
+                  code, body = request("POST", f"/applications/{app_uuid}/envs", payload)
+                  if code in (200, 201):
+                      print(f"  new   {key}")
+                  else:
+                      print(f"  FAIL  {key} create HTTP {code} {body}")
+                      raise SystemExit(1)
+
+          for label, app_uuid in (("web", os.environ["WEB_UUID"]), ("workers", os.environ["WORKERS_UUID"])):
+              print(f"=== {label} ({app_uuid}) ===")
+              envs = list_envs(app_uuid)
+              existing = {e["key"]: e["uuid"] for e in envs}
+              # Detect duplicates already in Coolify and remove the extras
+              counts = {}
+              for e in envs:
+                  counts.setdefault(e["key"], []).append(e["uuid"])
+              for k, uuids in counts.items():
+                  for extra in uuids[1:]:
+                      code, _ = request("DELETE", f"/applications/{app_uuid}/envs/{extra}")
+                      print(f"  dedup {k} (deleted {extra}, HTTP {code})")
+              # After dedup, refresh the existing map
+              if any(len(v) > 1 for v in counts.values()):
+                  envs = list_envs(app_uuid)
+                  existing = {e["key"]: e["uuid"] for e in envs}
+              for k in KEYS:
+                  upsert(app_uuid, k, os.environ.get(k, ""), existing)
+          PY
