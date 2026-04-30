@@ -5,9 +5,10 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/*
 
 FROM base AS deps
+ENV NODE_ENV=development
 COPY package.json package-lock.json ./
 COPY prisma ./prisma
-RUN npm ci
+RUN npm ci --include=dev
 
 FROM base AS builder
 ENV NEXT_TELEMETRY_DISABLED=1
