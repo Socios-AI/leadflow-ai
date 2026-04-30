@@ -1,0 +1,82 @@
+name: Bootstrap Coolify Env
+
+on:
+  workflow_dispatch:
+
+jobs:
+  bootstrap:
+    runs-on: ubuntu-latest
+    env:
+      COOLIFY_URL: https://coolify.jgabriel.sociosai.com
+      COOLIFY_TOKEN: ${{ secrets.COOLIFY_TOKEN }}
+      WEB_UUID: ${{ secrets.COOLIFY_WEB_UUID }}
+      WORKERS_UUID: ${{ secrets.COOLIFY_WORKERS_UUID }}
+    steps:
+      - name: Push secrets to Coolify (web + workers)
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          ENCRYPTION_KEY: ${{ secrets.ENCRYPTION_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+          STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
+          STRIPE_PRICE_STARTER: ${{ secrets.STRIPE_PRICE_STARTER }}
+          STRIPE_PRICE_PRO: ${{ secrets.STRIPE_PRICE_PRO }}
+          STRIPE_PRICE_ENTERPRISE: ${{ secrets.STRIPE_PRICE_ENTERPRISE }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          RESEND_FROM_EMAIL: ${{ secrets.RESEND_FROM_EMAIL }}
+          EVOLUTION_API_URL: ${{ secrets.EVOLUTION_API_URL }}
+          EVOLUTION_API_KEY: ${{ secrets.EVOLUTION_API_KEY }}
+          META_WEBHOOK_VERIFY_TOKEN: ${{ secrets.META_WEBHOOK_VERIFY_TOKEN }}
+          SUPER_ADMIN_EMAILS: ${{ secrets.SUPER_ADMIN_EMAILS }}
+          NEXT_PUBLIC_APP_NAME: ${{ secrets.NEXT_PUBLIC_APP_NAME }}
+        run: |
+          set -euo pipefail
+          push_env () {
+            local app_uuid="$1" key="$2" value="$3"
+            if [ -z "$value" ]; then
+              echo "  skip $key (empty)"
+              return 0
+            fi
+            local payload
+            payload=$(python3 -c 'import json,sys; print(json.dumps({"key":sys.argv[1],"value":sys.argv[2],"is_preview":False,"is_literal":False}))' "$key" "$value")
+            local resp
+            resp=$(curl -sS -w "\n%{http_code}" \
+              -X POST \
+              -H "Authorization: Bearer $COOLIFY_TOKEN" \
+              -H "Content-Type: application/json" \
+              -d "$payload" \
+              "$COOLIFY_URL/api/v1/applications/$app_uuid/envs")
+            local status
+            status=$(echo "$resp" | tail -n 1)
+            if [ "$status" = "201" ] || [ "$status" = "200" ]; then
+              echo "  set  $key"
+            elif [ "$status" = "422" ]; then
+              local upd_payload
+              upd_payload=$(python3 -c 'import json,sys; print(json.dumps({"key":sys.argv[1],"value":sys.argv[2],"is_preview":False,"is_literal":False}))' "$key" "$value")
+              curl -sS -X PATCH \
+                -H "Authorization: Bearer $COOLIFY_TOKEN" \
+                -H "Content-Type: application/json" \
+                -d "$upd_payload" \
+                "$COOLIFY_URL/api/v1/applications/$app_uuid/envs" >/dev/null
+              echo "  upd  $key"
+            else
+              echo "  FAIL $key (HTTP $status)"
+              echo "$resp" | head -n -1
+              return 1
+            fi
+          }
+
+          KEYS="DATABASE_URL NEXT_PUBLIC_SUPABASE_URL NEXT_PUBLIC_SUPABASE_ANON_KEY SUPABASE_SERVICE_ROLE_KEY JWT_SECRET ENCRYPTION_KEY OPENAI_API_KEY ANTHROPIC_API_KEY STRIPE_SECRET_KEY STRIPE_WEBHOOK_SECRET STRIPE_PRICE_STARTER STRIPE_PRICE_PRO STRIPE_PRICE_ENTERPRISE RESEND_API_KEY RESEND_FROM_EMAIL EVOLUTION_API_URL EVOLUTION_API_KEY META_WEBHOOK_VERIFY_TOKEN SUPER_ADMIN_EMAILS NEXT_PUBLIC_APP_NAME"
+
+          for app in "web=$WEB_UUID" "workers=$WORKERS_UUID"; do
+            name="${app%%=*}"; uuid="${app#*=}"
+            echo "=== $name ($uuid) ==="
+            for k in $KEYS; do
+              push_env "$uuid" "$k" "${!k}"
+            done
+          done

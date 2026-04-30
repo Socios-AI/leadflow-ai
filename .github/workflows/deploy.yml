@@ -1,0 +1,60 @@
+name: Deploy to Coolify
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        app:
+          - name: web
+            uuid_secret: COOLIFY_WEB_UUID
+          - name: workers
+            uuid_secret: COOLIFY_WORKERS_UUID
+    steps:
+      - name: Trigger Coolify deploy (${{ matrix.app.name }})
+        env:
+          COOLIFY_URL: https://coolify.jgabriel.sociosai.com
+          COOLIFY_TOKEN: ${{ secrets.COOLIFY_TOKEN }}
+          APP_UUID: ${{ secrets[matrix.app.uuid_secret] }}
+        run: |
+          set -euo pipefail
+          echo "Triggering deploy for ${{ matrix.app.name }} ($APP_UUID)..."
+          response=$(curl -sS -w "\n%{http_code}" \
+            -X POST \
+            -H "Authorization: Bearer $COOLIFY_TOKEN" \
+            "$COOLIFY_URL/api/v1/deploy?uuid=$APP_UUID&force=false")
+          body=$(echo "$response" | head -n -1)
+          status=$(echo "$response" | tail -n 1)
+          echo "HTTP $status"
+          echo "$body"
+          if [ "$status" != "200" ]; then
+            echo "::error::Coolify deploy trigger failed (HTTP $status)"
+            exit 1
+          fi
+          deployment_uuid=$(echo "$body" | python3 -c "import sys,json; print(json.load(sys.stdin)['deployments'][0]['deployment_uuid'])")
+          echo "DEPLOYMENT_UUID=$deployment_uuid" >> "$GITHUB_ENV"
+      - name: Wait for deployment to finish
+        env:
+          COOLIFY_URL: https://coolify.jgabriel.sociosai.com
+          COOLIFY_TOKEN: ${{ secrets.COOLIFY_TOKEN }}
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 120); do
+            status=$(curl -sS -H "Authorization: Bearer $COOLIFY_TOKEN" \
+              "$COOLIFY_URL/api/v1/deployments/$DEPLOYMENT_UUID" \
+              | python3 -c "import sys,json; print(json.load(sys.stdin).get('status','unknown'))")
+            echo "[$i] status=$status"
+            case "$status" in
+              finished) echo "Deploy finished."; exit 0 ;;
+              failed|cancelled) echo "::error::Deploy $status"; exit 1 ;;
+            esac
+            sleep 10
+          done
+          echo "::error::Deploy timed out after 20 min"
+          exit 1
