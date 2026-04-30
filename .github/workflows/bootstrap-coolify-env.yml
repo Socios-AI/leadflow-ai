@@ -79,21 +79,13 @@ jobs:
                   print(f"  skip  {key:32s} (empty in GH secrets)")
                   return
               payload = {"key": key, "value": value, "is_preview": False, "is_literal": False}
-              if key in existing_by_key:
-                  uuid = existing_by_key[key]
-                  code, body = request("PATCH", f"/applications/{app_uuid}/envs/{uuid}", payload)
-                  if code in (200, 201, 204):
-                      print(f"  upd   {key}")
-                  else:
-                      print(f"  FAIL  {key} update HTTP {code} {body}")
-                      raise SystemExit(1)
+              # Coolify exposes upsert via PATCH on the collection endpoint
+              code, body = request("PATCH", f"/applications/{app_uuid}/envs", payload)
+              if code in (200, 201, 204):
+                  print(f"  {'upd ' if key in existing_by_key else 'new '}  {key}")
               else:
-                  code, body = request("POST", f"/applications/{app_uuid}/envs", payload)
-                  if code in (200, 201):
-                      print(f"  new   {key}")
-                  else:
-                      print(f"  FAIL  {key} create HTTP {code} {body}")
-                      raise SystemExit(1)
+                  print(f"  FAIL  {key} HTTP {code} {body}")
+                  raise SystemExit(1)
 
           for label, app_uuid in (("web", os.environ["WEB_UUID"]), ("workers", os.environ["WORKERS_UUID"])):
               print(f"=== {label} ({app_uuid}) ===")
