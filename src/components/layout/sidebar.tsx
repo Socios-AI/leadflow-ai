@@ -242,23 +242,64 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
   )
 }
 
-function SidebarNavLink({ item, isCollapsed, isActive, indent, admin }: { item: NavItem; isCollapsed: boolean; isActive: boolean; indent?: boolean; admin?: boolean }) {
+function SidebarNavLink({
+  item,
+  isCollapsed,
+  isActive,
+  indent,
+  admin,
+}: {
+  item: NavItem
+  isCollapsed: boolean
+  isActive: boolean
+  indent?: boolean
+  admin?: boolean
+}) {
   const Icon = item.icon
   return (
-    <Link href={item.href} id={item.id}
+    <Link
+      href={item.href}
+      id={item.id}
+      prefetch
       className={cn(
-        "flex items-center gap-2.5 px-3 py-[7px] rounded-lg transition-all text-[13px] font-medium group relative font-dm-sans",
-        isCollapsed && "justify-center px-2",
-        indent && !isCollapsed && "py-[6px] text-[12px]",
+        // Layout
+        'group relative flex items-center gap-2.5 rounded-lg text-[13px] font-medium font-dm-sans',
+        'transition-[background-color,color] duration-150 ease-out',
+        // Density
+        isCollapsed ? 'justify-center px-2 py-2' : 'px-3 py-[7px]',
+        indent && !isCollapsed && 'py-[6px] text-[12px]',
+        // States — Linear/Vercel-style: subtle bg + brand left rail when active
         isActive
-          ? admin ? "bg-red-500/10 text-red-400 font-semibold border border-red-500/20" : "bg-white text-black font-semibold shadow-sm"
-          : admin ? "text-red-400/60 hover:text-red-400 hover:bg-red-500/5" : "text-[#909091] hover:text-foreground hover:bg-muted/30"
+          ? admin
+            ? 'bg-red-500/10 text-red-400 font-semibold'
+            : 'bg-primary/[0.08] text-foreground font-semibold'
+          : admin
+            ? 'text-red-400/70 hover:text-red-400 hover:bg-red-500/[0.06]'
+            : 'text-muted-foreground hover:text-foreground hover:bg-muted/40'
       )}
-      title={isCollapsed ? item.label : undefined}>
-      <Icon className={cn("w-[18px] h-[18px] shrink-0 transition-colors",
-        isActive ? admin ? "text-red-400" : "text-black" : "opacity-60 group-hover:opacity-100",
-        indent && !isCollapsed && "w-[15px] h-[15px]"
-      )} />
+      title={isCollapsed ? item.label : undefined}
+    >
+      {/* Active indicator rail — only on expanded view */}
+      {isActive && !isCollapsed && (
+        <span
+          className={cn(
+            'absolute left-0 top-1.5 bottom-1.5 w-0.5 rounded-full',
+            admin ? 'bg-red-400' : 'bg-primary'
+          )}
+        />
+      )}
+
+      <Icon
+        className={cn(
+          'shrink-0 transition-colors',
+          indent && !isCollapsed ? 'w-[15px] h-[15px]' : 'w-[17px] h-[17px]',
+          isActive
+            ? admin
+              ? 'text-red-400'
+              : 'text-primary'
+            : 'opacity-60 group-hover:opacity-100'
+        )}
+      />
       {!isCollapsed && <span className="flex-1 truncate">{item.label}</span>}
     </Link>
   )
