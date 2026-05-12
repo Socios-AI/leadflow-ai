@@ -367,7 +367,8 @@
     "analyzeError": "Erro ao analisar. Tente novamente.",
     "connectionError": "Erro de conexão. Verifique sua internet.",
     "micError": "Não foi possível acessar o microfone.",
-    "fileTooLargeAudio": "O arquivo tem {size} MB. O limite para análise de áudio/vídeo é 25 MB. Tente um trecho menor ou comprima o arquivo.",
+    "fileTooLargeUpload": "O arquivo tem {size} MB. O limite de upload é 1 GB. Comprima o arquivo ou envie um trecho.",
+    "audioTooLong": "O áudio extraído ficou em {size} MB, acima do limite do Whisper (25 MB). Isso normalmente acontece com mídias de mais de 100 minutos — corte em pedaços e envie separadamente.",
     "fileTooLargeImage": "A imagem tem {size} MB. Reduza para até 20 MB.",
     "audioCodecError": "Não foi possível ler o áudio desse arquivo. Verifique se o formato é suportado (MP4, MOV, MP3, WAV, M4A, WEBM, OGG).",
     "noContentToAnalyze": "Adicione um arquivo ou um texto antes de analisar."

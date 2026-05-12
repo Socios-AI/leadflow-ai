@@ -1,10 +1,14 @@
 // src/app/api/campaigns/analyze/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth/session";
+import { extractAudioForWhisper } from "@/lib/media/extract-audio";
 
 // Whisper hard limits — see https://platform.openai.com/docs/api-reference/audio
 const WHISPER_MAX_BYTES = 25 * 1024 * 1024;
 const VISION_MAX_BYTES = 20 * 1024 * 1024;
+// Max raw upload we'll accept for audio/video. Anything larger is almost
+// certainly an upload mistake — even a 30-minute 1080p H.264 is < 1GB.
+const MAX_UPLOAD_BYTES = 1024 * 1024 * 1024; // 1GB
 
 // Container formats Whisper extracts audio from. Codec inside still matters,
 // but checking the container catches the most common upload mistakes.
@@ -27,8 +31,9 @@ export const maxDuration = 120;
  * - Text → GPT-4o analysis
  *
  * Returns structured error codes so the UI can show a human-friendly message:
- *   { error: "FILE_TOO_LARGE_AUDIO", sizeMB }
- *   { error: "FILE_TOO_LARGE_IMAGE", sizeMB }
+ *   { error: "FILE_TOO_LARGE_UPLOAD", sizeMB, limitMB }
+ *   { error: "AUDIO_TOO_LONG", sizeMB, limitMB }
+ *   { error: "FILE_TOO_LARGE_IMAGE", sizeMB, limitMB }
  *   { error: "AUDIO_CODEC_UNSUPPORTED", detail }
  *   { error: "NO_CONTENT" }
  *   { error: "WHISPER_FAILED", detail }
@@ -60,32 +65,78 @@ export async function POST(req: NextRequest) {
     // 1. AUDIO / VIDEO → Whisper
     // ═══════════════════════════════════════
     if ((type === "audio" || type === "video") && file) {
-      // Whisper rejects > 25MB outright. Surface a clear message instead
-      // of letting the OpenAI 4xx propagate as a generic "Erro ao analisar".
-      if (file.size > WHISPER_MAX_BYTES) {
+      // Hard ceiling so we don't OOM the server. 1GB is generous —
+      // a 30-minute 1080p H.264 video is typically < 700MB.
+      if (file.size > MAX_UPLOAD_BYTES) {
         return NextResponse.json(
           {
-            error: "FILE_TOO_LARGE_AUDIO",
+            error: "FILE_TOO_LARGE_UPLOAD",
             sizeMB: Math.round((file.size / 1024 / 1024) * 10) / 10,
+            limitMB: Math.round(MAX_UPLOAD_BYTES / 1024 / 1024),
+          },
+          { status: 413 }
+        );
+      }
+
+      const mime = (file.type || "").toLowerCase();
+      const rawBuffer = Buffer.from(await file.arrayBuffer());
+
+      // Decide whether to re-encode through ffmpeg:
+      //  - Video → always extract audio (saves 95%+)
+      //  - Audio already small enough and in a Whisper-friendly container → pass through
+      //  - Audio too big OR unknown codec → re-encode through ffmpeg
+      const needsExtraction =
+        type === "video" ||
+        rawBuffer.length > WHISPER_MAX_BYTES ||
+        (mime && !WHISPER_ACCEPTED.includes(mime));
+
+      let whisperBuffer: Buffer;
+      let whisperMime: string;
+      let whisperFilename: string;
+
+      if (needsExtraction) {
+        try {
+          const extracted = await extractAudioForWhisper(rawBuffer, mime || "video/mp4");
+          whisperBuffer = extracted.buffer;
+          whisperMime = extracted.mimeType;
+          whisperFilename = extracted.filename;
+        } catch (err) {
+          const detail = err instanceof Error ? err.message : String(err);
+          console.error("ffmpeg extraction error:", detail);
+          return NextResponse.json(
+            { error: "AUDIO_CODEC_UNSUPPORTED", detail },
+            { status: 415 }
+          );
+        }
+      } else {
+        whisperBuffer = rawBuffer;
+        whisperMime = mime || "audio/mpeg";
+        whisperFilename = file.name || "audio.mp3";
+      }
+
+      // Even after extraction, an extremely long recording could still
+      // exceed 25MB. 25MB of 32kbps audio = ~100 minutes of speech.
+      if (whisperBuffer.length > WHISPER_MAX_BYTES) {
+        return NextResponse.json(
+          {
+            error: "AUDIO_TOO_LONG",
+            sizeMB: Math.round((whisperBuffer.length / 1024 / 1024) * 10) / 10,
             limitMB: 25,
           },
           { status: 413 }
         );
       }
 
-      // Best-effort container check. The frontend may send a generic
-      // `application/octet-stream` (browser quirk) so we also accept blank
-      // MIME and rely on Whisper to reject if the codec is truly unreadable.
-      const mime = (file.type || "").toLowerCase();
-      if (mime && !WHISPER_ACCEPTED.includes(mime)) {
-        return NextResponse.json(
-          { error: "AUDIO_CODEC_UNSUPPORTED", detail: mime },
-          { status: 415 }
-        );
-      }
-
       const whisperForm = new FormData();
-      whisperForm.append("file", file);
+      // Copy into a fresh Uint8Array so the BlobPart typing matches across
+      // Node's Buffer (ArrayBufferLike) and DOM Blob (ArrayBuffer).
+      const blobBytes = new Uint8Array(whisperBuffer.byteLength);
+      blobBytes.set(whisperBuffer);
+      whisperForm.append(
+        "file",
+        new Blob([blobBytes], { type: whisperMime }),
+        whisperFilename
+      );
       whisperForm.append("model", "whisper-1");
       whisperForm.append("response_format", "text");
 

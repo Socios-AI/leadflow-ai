@@ -75,10 +75,12 @@ export default function NewCampaignPage() {
 
   async function analyzeWithAI() {
     // Client-side guard so the user doesn't wait on a doomed upload.
+    // Video/audio go through server-side ffmpeg extraction so the only
+    // hard ceiling is the raw upload size (1GB).
     if (file && (uploadType === "audio" || uploadType === "video")) {
-      if (file.size > 25 * 1024 * 1024) {
+      if (file.size > 1024 * 1024 * 1024) {
         setAiAnalysis(
-          t("fileTooLargeAudio", {
+          t("fileTooLargeUpload", {
             size: (file.size / 1024 / 1024).toFixed(1),
           })
         );
@@ -119,8 +121,10 @@ export default function NewCampaignPage() {
 
   function translateAnalyzeError(data: { error?: string; sizeMB?: number; detail?: string }): string {
     switch (data.error) {
-      case "FILE_TOO_LARGE_AUDIO":
-        return t("fileTooLargeAudio", { size: data.sizeMB ?? "?" });
+      case "FILE_TOO_LARGE_UPLOAD":
+        return t("fileTooLargeUpload", { size: data.sizeMB ?? "?" });
+      case "AUDIO_TOO_LONG":
+        return t("audioTooLong", { size: data.sizeMB ?? "?" });
       case "FILE_TOO_LARGE_IMAGE":
         return t("fileTooLargeImage", { size: data.sizeMB ?? "?" });
       case "AUDIO_CODEC_UNSUPPORTED":
