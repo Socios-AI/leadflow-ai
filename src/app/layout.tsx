@@ -24,7 +24,13 @@ const spaceGrotesk = Space_Grotesk({
 export const metadata: Metadata = {
   title: 'Marketing Digital AI',
   description: 'Atendimento e vendas automatizadas por IA para marketing digital',
-  icons: { icon: '/favicon.ico' },
+  icons: {
+    icon: [
+      { url: '/logo.png', type: 'image/png' },
+    ],
+    shortcut: '/logo.png',
+    apple: '/logo.png',
+  },
 }
 
 export default function RootLayout({

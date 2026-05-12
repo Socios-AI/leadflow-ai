@@ -27,6 +27,10 @@ export interface Session {
   userId: string;
   accountId: string;
   email: string;
+  /** Display name of the user (falls back to email local-part when null) */
+  userName: string;
+  /** Account/workspace name (used for greetings, headers, etc.) */
+  accountName: string;
   role: string;
   /** Platform-level role (independent of tenant role). */
   platformRole: PlatformRole;
@@ -45,6 +49,7 @@ interface DbMembershipRow {
   role: string;
   account: {
     id: string;
+    name: string | null;
     onboarding_completed_at: string | null;
   } | null;
 }
@@ -139,6 +144,8 @@ export async function getSession(): Promise<Session | null> {
         userId: dbUser.id,
         accountId: account.id,
         email: dbUser.email,
+        userName: dbUser.name || dbUser.email.split("@")[0],
+        accountName: account.name || dbUser.email.split("@")[0],
         role: "OWNER",
         platformRole: dbUser.platform_role || "USER",
         onboardingCompleted: !!account.onboarding_completed_at,
@@ -149,7 +156,7 @@ export async function getSession(): Promise<Session | null> {
     const { data: membership } = await admin
       .from("account_members")
       .select(
-        "account_id, role, account:accounts ( id, onboarding_completed_at )"
+        "account_id, role, account:accounts ( id, name, onboarding_completed_at )"
       )
       .eq("user_id", dbUser.id)
       .order("created_at", { ascending: true })
@@ -168,6 +175,8 @@ export async function getSession(): Promise<Session | null> {
         userId: dbUser.id,
         accountId: account.id,
         email: dbUser.email,
+        userName: dbUser.name || dbUser.email.split("@")[0],
+        accountName: account.name || dbUser.email.split("@")[0],
         role: "OWNER",
         platformRole: dbUser.platform_role || "USER",
         onboardingCompleted: !!account.onboarding_completed_at,
@@ -178,6 +187,8 @@ export async function getSession(): Promise<Session | null> {
       userId: dbUser.id,
       accountId: membership.account.id,
       email: dbUser.email,
+      userName: dbUser.name || dbUser.email.split("@")[0],
+      accountName: membership.account.name || dbUser.email.split("@")[0],
       role: membership.role,
       platformRole: dbUser.platform_role || "USER",
       onboardingCompleted: !!membership.account.onboarding_completed_at,
@@ -205,7 +216,7 @@ interface ProvisionInput {
 }
 
 interface ProvisionedTenant {
-  account: { id: string; onboarding_completed_at: string | null };
+  account: { id: string; name: string; onboarding_completed_at: string | null };
   user: DbUserRow;
 }
 
@@ -266,7 +277,11 @@ async function provisionTenant(input: ProvisionInput): Promise<ProvisionedTenant
   }
 
   return {
-    account: { id: accountId, onboarding_completed_at: null },
+    account: {
+      id: accountId,
+      name: `${input.name}'s Workspace`,
+      onboarding_completed_at: null,
+    },
     user: { id: userId, email: input.email, name: input.name },
   };
 }

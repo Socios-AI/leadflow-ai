@@ -17,5 +17,7 @@ export default async function DashboardPage() {
   }
 
   const data = await loadDashboardOverview(session.accountId);
-  return <DashboardContent initialData={data} />;
+  return (
+    <DashboardContent initialData={data} userName={session.userName} />
+  );
 }

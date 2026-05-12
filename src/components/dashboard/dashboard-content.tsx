@@ -67,8 +67,10 @@ const EVENT_ICON: Record<string, React.ComponentType<{ className?: string }>> = 
 
 export function DashboardContent({
   initialData,
+  userName,
 }: {
   initialData: DashboardOverview;
+  userName?: string;
 }) {
   const t = useTranslations("dashboard");
   const tc = useTranslations("common");
@@ -120,6 +122,7 @@ export function DashboardContent({
       <Header
         title={t("title")}
         subtitle={t("subtitle")}
+        userName={userName}
         refreshing={refreshing}
         generatedAt={data.generatedAt}
       />
@@ -173,20 +176,25 @@ export function DashboardContent({
 function Header({
   title,
   subtitle,
+  userName,
   refreshing,
   generatedAt,
 }: {
   title: string;
   subtitle: string;
+  userName?: string;
   refreshing: boolean;
   generatedAt: string;
 }) {
   const greeting = useGreeting();
+  // Only show the first name to keep the greeting compact and casual.
+  const firstName = (userName || "").trim().split(/\s+/)[0] || "";
+  const greetingLine = firstName ? `${greeting}, ${firstName}` : greeting;
   return (
     <header className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
       <div>
         <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground/80 mb-1.5">
-          {greeting}
+          {greetingLine}
         </p>
         <h1 className="font-display text-[28px] sm:text-[32px] font-semibold tracking-tight text-foreground leading-none">
           {title}
