@@ -110,16 +110,27 @@ export default function NewCampaignPage() {
         const data = await res.json();
         setAiAnalysis(data.analysis);
       } else {
-        const data = await res.json().catch(() => ({} as { error?: string; sizeMB?: number }));
-        setAiAnalysis(translateAnalyzeError(data));
+        // Try to parse JSON; if the response is non-JSON (e.g. a proxy 413
+        // returning an HTML page), surface the raw status so the user has
+        // something actionable instead of "Erro ao analisar".
+        const raw = await res.text();
+        let data: { error?: string; sizeMB?: number; detail?: string } = {};
+        try { data = JSON.parse(raw); } catch { /* not json */ }
+        console.error("[analyze] failed", { status: res.status, body: raw.slice(0, 500) });
+        setAiAnalysis(translateAnalyzeError(data, res.status, raw));
       }
-    } catch {
+    } catch (err) {
+      console.error("[analyze] network error", err);
       setAiAnalysis(t("connectionError"));
     }
     setAnalyzing(false);
   }
 
-  function translateAnalyzeError(data: { error?: string; sizeMB?: number; detail?: string }): string {
+  function translateAnalyzeError(
+    data: { error?: string; sizeMB?: number; detail?: string },
+    status: number,
+    raw: string
+  ): string {
     switch (data.error) {
       case "FILE_TOO_LARGE_UPLOAD":
         return t("fileTooLargeUpload", { size: data.sizeMB ?? "?" });
@@ -131,9 +142,15 @@ export default function NewCampaignPage() {
         return t("audioCodecError");
       case "NO_CONTENT":
         return t("noContentToAnalyze");
-      default:
-        return t("analyzeError");
     }
+    // Proxy or platform-level rejection (typical: Traefik 413 / 502 with
+    // an HTML body). Tell the user what was actually wrong.
+    if (status === 413) return t("proxyTooLarge");
+    if (status === 504) return t("proxyTimeout");
+    if (status === 502 || status === 503) return t("upstreamUnavailable");
+    // Last-resort: include the HTTP status so we can debug from a screenshot.
+    const detail = data.detail || raw.slice(0, 120) || String(status);
+    return `${t("analyzeError")} (${status}: ${detail})`;
   }
 
   async function saveCampaign() {

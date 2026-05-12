@@ -369,6 +369,9 @@
     "micError": "No se pudo acceder al micrófono.",
     "fileTooLargeUpload": "El archivo tiene {size} MB. El límite de upload es 1 GB. Comprime el archivo o envía un fragmento más corto.",
     "audioTooLong": "El audio extraído quedó en {size} MB, por encima del límite de Whisper (25 MB). Esto solo pasa con medios de más de 100 minutos — divídelo en partes y analízalas por separado.",
+    "proxyTooLarge": "El servidor rechazó la subida (demasiado grande). Prueba con un archivo más pequeño o comprímelo antes de enviar.",
+    "proxyTimeout": "El servidor tardó demasiado en responder. Intenta de nuevo en un momento o envía un archivo más pequeño.",
+    "upstreamUnavailable": "El servicio de análisis no está disponible ahora. Intenta de nuevo en unos minutos.",
     "fileTooLargeImage": "La imagen tiene {size} MB. Redúcela a 20 MB o menos.",
     "audioCodecError": "No se pudo leer el audio de este archivo. Verifica que el formato sea compatible (MP4, MOV, MP3, WAV, M4A, WEBM, OGG).",
     "noContentToAnalyze": "Añade un archivo o un texto antes de analizar."
