@@ -366,7 +366,11 @@
     "textPlaceholder": "Paste the ad copy, script, text here...",
     "analyzeError": "Analysis failed. Please try again.",
     "connectionError": "Connection error. Check your internet.",
-    "micError": "Could not access the microphone."
+    "micError": "Could not access the microphone.",
+    "fileTooLargeAudio": "The file is {size} MB. The audio/video analysis limit is 25 MB. Use a shorter clip or compress the file.",
+    "fileTooLargeImage": "The image is {size} MB. Reduce it to 20 MB or less.",
+    "audioCodecError": "Could not read the audio from this file. Make sure the format is supported (MP4, MOV, MP3, WAV, M4A, WEBM, OGG).",
+    "noContentToAnalyze": "Add a file or some text before analyzing."
   },
   "leads": {
     "title": "Leads",

@@ -74,16 +74,62 @@ export default function NewCampaignPage() {
   function toggleCountry(code: string) { setCountries(prev => prev.includes(code) ? prev.filter(c => c !== code) : [...prev, code]); }
 
   async function analyzeWithAI() {
+    // Client-side guard so the user doesn't wait on a doomed upload.
+    if (file && (uploadType === "audio" || uploadType === "video")) {
+      if (file.size > 25 * 1024 * 1024) {
+        setAiAnalysis(
+          t("fileTooLargeAudio", {
+            size: (file.size / 1024 / 1024).toFixed(1),
+          })
+        );
+        return;
+      }
+    }
+    if (file && uploadType === "image" && file.size > 20 * 1024 * 1024) {
+      setAiAnalysis(
+        t("fileTooLargeImage", {
+          size: (file.size / 1024 / 1024).toFixed(1),
+        })
+      );
+      return;
+    }
+    if (!file && !textContent.trim()) {
+      setAiAnalysis(t("noContentToAnalyze"));
+      return;
+    }
+
     setAnalyzing(true); setAiAnalysis(null);
     try {
       const fd = new FormData();
       if (file) fd.append("file", file); if (textContent) fd.append("text", textContent);
       if (caption) fd.append("caption", caption); fd.append("type", uploadType || "text"); fd.append("campaignName", name);
       const res = await fetch("/api/campaigns/analyze", { method: "POST", body: fd });
-      if (res.ok) { const data = await res.json(); setAiAnalysis(data.analysis); }
-      else setAiAnalysis(t("analyzeError"));
-    } catch { setAiAnalysis(t("connectionError")); }
+      if (res.ok) {
+        const data = await res.json();
+        setAiAnalysis(data.analysis);
+      } else {
+        const data = await res.json().catch(() => ({} as { error?: string; sizeMB?: number }));
+        setAiAnalysis(translateAnalyzeError(data));
+      }
+    } catch {
+      setAiAnalysis(t("connectionError"));
+    }
     setAnalyzing(false);
+  }
+
+  function translateAnalyzeError(data: { error?: string; sizeMB?: number; detail?: string }): string {
+    switch (data.error) {
+      case "FILE_TOO_LARGE_AUDIO":
+        return t("fileTooLargeAudio", { size: data.sizeMB ?? "?" });
+      case "FILE_TOO_LARGE_IMAGE":
+        return t("fileTooLargeImage", { size: data.sizeMB ?? "?" });
+      case "AUDIO_CODEC_UNSUPPORTED":
+        return t("audioCodecError");
+      case "NO_CONTENT":
+        return t("noContentToAnalyze");
+      default:
+        return t("analyzeError");
+    }
   }
 
   async function saveCampaign() {

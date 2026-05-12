@@ -366,7 +366,11 @@
     "textPlaceholder": "Pega aquí el texto del anuncio, script, copy...",
     "analyzeError": "Error al analizar. Intenta de nuevo.",
     "connectionError": "Error de conexión. Verifica tu internet.",
-    "micError": "No se pudo acceder al micrófono."
+    "micError": "No se pudo acceder al micrófono.",
+    "fileTooLargeAudio": "El archivo tiene {size} MB. El límite para análisis de audio/video es 25 MB. Usa un fragmento más corto o comprime el archivo.",
+    "fileTooLargeImage": "La imagen tiene {size} MB. Redúcela a 20 MB o menos.",
+    "audioCodecError": "No se pudo leer el audio de este archivo. Verifica que el formato sea compatible (MP4, MOV, MP3, WAV, M4A, WEBM, OGG).",
+    "noContentToAnalyze": "Añade un archivo o un texto antes de analizar."
   },
   "leads": {
     "title": "Leads",

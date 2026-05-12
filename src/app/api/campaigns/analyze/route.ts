@@ -2,6 +2,22 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth/session";
 
+// Whisper hard limits — see https://platform.openai.com/docs/api-reference/audio
+const WHISPER_MAX_BYTES = 25 * 1024 * 1024;
+const VISION_MAX_BYTES = 20 * 1024 * 1024;
+
+// Container formats Whisper extracts audio from. Codec inside still matters,
+// but checking the container catches the most common upload mistakes.
+const WHISPER_ACCEPTED = [
+  "audio/mpeg", "audio/mp3", "audio/wav", "audio/wave", "audio/x-wav",
+  "audio/webm", "audio/ogg", "audio/flac", "audio/x-m4a", "audio/m4a",
+  "audio/mp4", "audio/aac",
+  "video/mp4", "video/mpeg", "video/webm", "video/quicktime",
+];
+
+export const runtime = "nodejs";
+export const maxDuration = 120;
+
 /**
  * POST /api/campaigns/analyze
  *
@@ -9,6 +25,15 @@ import { getSession } from "@/lib/auth/session";
  * - Audio/Video → Whisper transcription → GPT-4o analysis
  * - Image → GPT-4o Vision
  * - Text → GPT-4o analysis
+ *
+ * Returns structured error codes so the UI can show a human-friendly message:
+ *   { error: "FILE_TOO_LARGE_AUDIO", sizeMB }
+ *   { error: "FILE_TOO_LARGE_IMAGE", sizeMB }
+ *   { error: "AUDIO_CODEC_UNSUPPORTED", detail }
+ *   { error: "NO_CONTENT" }
+ *   { error: "WHISPER_FAILED", detail }
+ *   { error: "VISION_FAILED", detail }
+ *   { error: "ANALYSIS_FAILED", detail }
  */
 export async function POST(req: NextRequest) {
   const session = await getSession();
@@ -35,6 +60,30 @@ export async function POST(req: NextRequest) {
     // 1. AUDIO / VIDEO → Whisper
     // ═══════════════════════════════════════
     if ((type === "audio" || type === "video") && file) {
+      // Whisper rejects > 25MB outright. Surface a clear message instead
+      // of letting the OpenAI 4xx propagate as a generic "Erro ao analisar".
+      if (file.size > WHISPER_MAX_BYTES) {
+        return NextResponse.json(
+          {
+            error: "FILE_TOO_LARGE_AUDIO",
+            sizeMB: Math.round((file.size / 1024 / 1024) * 10) / 10,
+            limitMB: 25,
+          },
+          { status: 413 }
+        );
+      }
+
+      // Best-effort container check. The frontend may send a generic
+      // `application/octet-stream` (browser quirk) so we also accept blank
+      // MIME and rely on Whisper to reject if the codec is truly unreadable.
+      const mime = (file.type || "").toLowerCase();
+      if (mime && !WHISPER_ACCEPTED.includes(mime)) {
+        return NextResponse.json(
+          { error: "AUDIO_CODEC_UNSUPPORTED", detail: mime },
+          { status: 415 }
+        );
+      }
+
       const whisperForm = new FormData();
       whisperForm.append("file", file);
       whisperForm.append("model", "whisper-1");
@@ -49,7 +98,17 @@ export async function POST(req: NextRequest) {
       if (!whisperRes.ok) {
         const err = await whisperRes.text();
         console.error("Whisper error:", err);
-        return NextResponse.json({ error: "Erro na transcrição de áudio", detail: err }, { status: 500 });
+        const lower = err.toLowerCase();
+        if (lower.includes("decode") || lower.includes("format") || lower.includes("invalid")) {
+          return NextResponse.json(
+            { error: "AUDIO_CODEC_UNSUPPORTED", detail: err },
+            { status: 415 }
+          );
+        }
+        return NextResponse.json(
+          { error: "WHISPER_FAILED", detail: err },
+          { status: 502 }
+        );
       }
 
       contentToAnalyze = await whisperRes.text();
@@ -60,6 +119,17 @@ export async function POST(req: NextRequest) {
     // 2. IMAGE → GPT-4o Vision
     // ═══════════════════════════════════════
     else if (type === "image" && file) {
+      if (file.size > VISION_MAX_BYTES) {
+        return NextResponse.json(
+          {
+            error: "FILE_TOO_LARGE_IMAGE",
+            sizeMB: Math.round((file.size / 1024 / 1024) * 10) / 10,
+            limitMB: 20,
+          },
+          { status: 413 }
+        );
+      }
+
       const buffer = Buffer.from(await file.arrayBuffer());
       const base64 = buffer.toString("base64");
       const mimeType = file.type || "image/jpeg";
@@ -113,7 +183,7 @@ Responda em português do Brasil. Seja específico — quanto mais detalhado, me
       if (!visionRes.ok) {
         const err = await visionRes.text();
         console.error("Vision error:", err);
-        return NextResponse.json({ error: "Erro na análise da imagem", detail: err }, { status: 500 });
+        return NextResponse.json({ error: "VISION_FAILED", detail: err }, { status: 502 });
       }
 
       const visionData = await visionRes.json();
@@ -132,7 +202,7 @@ Responda em português do Brasil. Seja específico — quanto mais detalhado, me
 
     // No content
     else {
-      return NextResponse.json({ error: "Nenhum conteúdo enviado para análise" }, { status: 400 });
+      return NextResponse.json({ error: "NO_CONTENT" }, { status: 400 });
     }
 
     // ═══════════════════════════════════════
@@ -203,7 +273,7 @@ Analise com profundidade. Essa análise vai ser usada para treinar uma IA de ven
     if (!analysisRes.ok) {
       const err = await analysisRes.text();
       console.error("GPT error:", err);
-      return NextResponse.json({ error: "Erro na análise", detail: err }, { status: 500 });
+      return NextResponse.json({ error: "ANALYSIS_FAILED", detail: err }, { status: 502 });
     }
 
     const analysisData = await analysisRes.json();
@@ -213,6 +283,6 @@ Analise com profundidade. Essa análise vai ser usada para treinar uma IA de ven
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : "Unknown error";
     console.error("Campaign analysis error:", msg);
-    return NextResponse.json({ error: "Erro interno", message: msg }, { status: 500 });
+    return NextResponse.json({ error: "ANALYSIS_FAILED", detail: msg }, { status: 500 });
   }
 }
