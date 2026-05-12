@@ -110,3 +110,58 @@ export function buildInviteMessage(input: InviteMessageInput): string {
   const locale = input.locale || "pt";
   return TEMPLATES[locale](input);
 }
+
+export interface TeamInviteInput {
+  appUrl: string;
+  workspaceName: string;
+  inviterName: string;
+  memberName: string;
+  email: string;
+  password: string;
+  role: string;
+  locale?: "pt" | "en" | "es";
+}
+
+const TEAM_TEMPLATES: Record<"pt" | "en" | "es", (i: TeamInviteInput) => string> = {
+  pt: (i) => `Olá ${i.memberName}! 👋
+
+${i.inviterName} acabou de te adicionar como ${roleLabel(i.role, "pt")} no workspace ${i.workspaceName}.
+
+Acesse: ${i.appUrl}/login
+E-mail: ${i.email}
+Senha temporária: ${i.password}
+
+Recomendamos trocar a senha logo no primeiro acesso.`,
+  en: (i) => `Hi ${i.memberName}! 👋
+
+${i.inviterName} just added you as ${roleLabel(i.role, "en")} to the ${i.workspaceName} workspace.
+
+Sign in: ${i.appUrl}/login
+Email: ${i.email}
+Temporary password: ${i.password}
+
+We recommend changing your password on first login.`,
+  es: (i) => `¡Hola ${i.memberName}! 👋
+
+${i.inviterName} te acaba de agregar como ${roleLabel(i.role, "es")} al workspace ${i.workspaceName}.
+
+Acceso: ${i.appUrl}/login
+Correo: ${i.email}
+Contraseña temporal: ${i.password}
+
+Te recomendamos cambiar la contraseña en el primer acceso.`,
+};
+
+function roleLabel(role: string, locale: "pt" | "en" | "es"): string {
+  const map: Record<string, Record<string, string>> = {
+    OWNER: { pt: "proprietário", en: "owner", es: "propietario" },
+    ADMIN: { pt: "administrador", en: "admin", es: "administrador" },
+    MEMBER: { pt: "membro", en: "member", es: "miembro" },
+  };
+  return map[role]?.[locale] || role.toLowerCase();
+}
+
+export function buildTeamInviteMessage(input: TeamInviteInput): string {
+  const locale = input.locale || "pt";
+  return TEAM_TEMPLATES[locale](input);
+}

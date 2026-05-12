@@ -1,68 +1,220 @@
 // src/app/api/settings/members/route.ts
-import { NextRequest, NextResponse } from "next/server";
-import prisma from "@/lib/db/prisma";
-import { getSession } from "@/lib/auth/session";
-import { createClient } from "@supabase/supabase-js";
+//
+// Team members for the current workspace. Pure Supabase REST.
+//
+// GET    → list members (with their email/name and role)
+// POST   → invite a new member: provisions auth user with generated
+//          password (if not yet existing) and adds AccountMember.
+//          Returns ready-to-copy invite message.
+// DELETE → remove a member (cannot remove OWNER).
 
-const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
+import { NextRequest, NextResponse } from "next/server";
+import { getSession } from "@/lib/auth/session";
+import { getSupabaseAdmin } from "@/lib/db/supabase-server";
+import {
+  generatePassword,
+  buildTeamInviteMessage,
+} from "@/lib/admin/platform";
+import { logger } from "@/lib/logger";
+
+const log = logger.child({ module: "settings/members" });
+
+const PLAN_LIMITS: Record<string, number> = {
+  FREE: 3,
+  STARTER: 5,
+  PRO: 15,
+  ENTERPRISE: 50,
+};
+const VALID_ROLES = ["MEMBER", "ADMIN"] as const;
+type RoleInput = (typeof VALID_ROLES)[number];
 
 export async function GET() {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   try {
-    const members = await prisma.accountMember.findMany({
-      where: { accountId: session.accountId },
-      include: { user: { select: { email: true, name: true } } },
-      orderBy: { createdAt: "asc" },
+    const sb = getSupabaseAdmin();
+    const { data: rows, error } = await sb
+      .from("account_members")
+      .select("id, user_id, role, created_at, user:users ( email, name )")
+      .eq("account_id", session.accountId)
+      .order("created_at", { ascending: true });
+    if (error) throw error;
+
+    return NextResponse.json({
+      members: (rows || []).map((m) => {
+        // Supabase's join shape can come either as a single object or an
+        // array depending on relationship cardinality — normalize.
+        const userField = m.user as unknown;
+        const u = Array.isArray(userField)
+          ? ((userField[0] as { email?: string; name?: string | null } | undefined) || null)
+          : ((userField as { email?: string; name?: string | null } | null) || null);
+        return {
+          id: m.id,
+          userId: m.user_id,
+          email: u?.email || "",
+          name: u?.name || null,
+          role: m.role,
+          createdAt: m.created_at,
+          isYou: m.user_id === session.userId,
+        };
+      }),
     });
-    return NextResponse.json(members.map(m => ({
-      id: m.id, userId: m.userId, email: m.user.email, name: m.user.name,
-      role: m.role, createdAt: m.createdAt.toISOString(),
-    })));
-  } catch (e: any) { return NextResponse.json({ error: e.message }, { status: 500 }); }
+  } catch (err: unknown) {
+    log.error("GET members failed", { err });
+    const msg = err instanceof Error ? err.message : "internal_error";
+    return NextResponse.json({ error: "internal_error", message: msg }, { status: 500 });
+  }
 }
 
 export async function POST(req: NextRequest) {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   try {
-    const { email, role } = await req.json();
-    if (!email) return NextResponse.json({ error: "Email required" }, { status: 400 });
+    const body = (await req.json().catch(() => ({}))) as {
+      email?: string;
+      name?: string;
+      role?: RoleInput;
+      locale?: "pt" | "en" | "es";
+    };
+    const email = (body.email || "").trim().toLowerCase();
+    const memberName = (body.name || "").trim() || email.split("@")[0] || "";
+    const role: RoleInput = (VALID_ROLES as readonly string[]).includes(
+      body.role || ""
+    )
+      ? (body.role as RoleInput)
+      : "MEMBER";
+    const locale = body.locale || "pt";
 
-    // Check member limit
-    const account = await prisma.account.findUnique({ where: { id: session.accountId }, include: { _count: { select: { members: true } } } });
-    if (!account) return NextResponse.json({ error: "Account not found" }, { status: 404 });
-    const limit = account.plan === "ENTERPRISE" ? 50 : account.plan === "PRO" ? 15 : account.plan === "STARTER" ? 5 : 3;
-    if (account._count.members >= limit) return NextResponse.json({ error: "Member limit reached" }, { status: 400 });
-
-    // Check if user already exists
-    let user = await prisma.user.findFirst({ where: { email } });
-
-    if (!user) {
-      // Create Supabase auth user with temp password
-      const tempPassword = `Temp${Date.now()}!`;
-      const { data: authUser, error } = await supabase.auth.admin.createUser({
-        email, password: tempPassword, email_confirm: true,
-      });
-      if (error) return NextResponse.json({ error: error.message }, { status: 400 });
-
-      // Create app user
-      user = await prisma.user.create({
-        data: { id: `usr_${Date.now()}`, email, supabaseId: authUser.user.id },
-      });
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return NextResponse.json({ error: "invalid_email" }, { status: 400 });
     }
 
-    // Check if already a member
-    const existing = await prisma.accountMember.findFirst({ where: { accountId: session.accountId, userId: user.id } });
-    if (existing) return NextResponse.json({ error: "User already a member" }, { status: 400 });
+    const sb = getSupabaseAdmin();
 
-    // Add as member
-    const member = await prisma.accountMember.create({
-      data: { id: `mem_${Date.now()}`, accountId: session.accountId, userId: user.id, role: role || "MEMBER" },
+    // 1. Enforce plan-based member limit
+    const [accountRes, countRes] = await Promise.all([
+      sb
+        .from("accounts")
+        .select("name, plan, max_users")
+        .eq("id", session.accountId)
+        .maybeSingle(),
+      sb
+        .from("account_members")
+        .select("id", { count: "exact", head: true })
+        .eq("account_id", session.accountId),
+    ]);
+
+    if (!accountRes.data) {
+      return NextResponse.json({ error: "account_not_found" }, { status: 404 });
+    }
+    const plan = accountRes.data.plan;
+    const baseLimit = PLAN_LIMITS[plan] ?? PLAN_LIMITS.FREE;
+    const limit = Math.max(accountRes.data.max_users || 0, baseLimit);
+    if ((countRes.count || 0) >= limit) {
+      return NextResponse.json({ error: "member_limit_reached" }, { status: 400 });
+    }
+
+    // 2. Find or create local user
+    const { data: existingUser } = await sb
+      .from("users")
+      .select("id, email, name, supabase_id")
+      .eq("email", email)
+      .maybeSingle();
+
+    let userId: string;
+    let password: string | null = null;
+
+    if (existingUser) {
+      userId = existingUser.id;
+      // Already a member?
+      const { data: dup } = await sb
+        .from("account_members")
+        .select("id")
+        .eq("account_id", session.accountId)
+        .eq("user_id", userId)
+        .maybeSingle();
+      if (dup) {
+        return NextResponse.json({ error: "already_member" }, { status: 400 });
+      }
+    } else {
+      password = generatePassword();
+      const { data: authData, error: authErr } = await sb.auth.admin.createUser({
+        email,
+        password,
+        email_confirm: true,
+        user_metadata: { name: memberName },
+      });
+      if (authErr || !authData.user) {
+        return NextResponse.json(
+          { error: authErr?.message || "auth_create_failed" },
+          { status: 400 }
+        );
+      }
+      userId = cuid();
+      const { error: insErr } = await sb.from("users").insert({
+        id: userId,
+        supabase_id: authData.user.id,
+        email,
+        name: memberName,
+        platform_role: "USER",
+      });
+      if (insErr) throw insErr;
+    }
+
+    // 3. Add membership
+    const memberId = cuid();
+    const { error: memErr } = await sb.from("account_members").insert({
+      id: memberId,
+      account_id: session.accountId,
+      user_id: userId,
+      role,
     });
+    if (memErr) throw memErr;
 
-    return NextResponse.json({ id: member.id, userId: user.id, email: user.email, name: user.name, role: member.role, createdAt: member.createdAt.toISOString() });
-  } catch (e: any) { return NextResponse.json({ error: e.message }, { status: 500 }); }
+    // 4. Build invite message (only for brand-new users)
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://app";
+    const message =
+      password &&
+      buildTeamInviteMessage({
+        appUrl,
+        workspaceName: accountRes.data.name,
+        inviterName: session.email.split("@")[0],
+        memberName,
+        email,
+        password,
+        role,
+        locale,
+      });
+
+    return NextResponse.json(
+      {
+        ok: true,
+        member: {
+          id: memberId,
+          userId,
+          email,
+          name: memberName,
+          role,
+          createdAt: new Date().toISOString(),
+          isYou: false,
+        },
+        existed: !!existingUser,
+        credentials: password
+          ? {
+              email,
+              password,
+              loginUrl: `${appUrl}/login`,
+            }
+          : null,
+        message: message || null,
+      },
+      { status: 201 }
+    );
+  } catch (err: unknown) {
+    log.error("POST member failed", { err });
+    const msg = err instanceof Error ? err.message : "internal_error";
+    return NextResponse.json({ error: "internal_error", message: msg }, { status: 500 });
+  }
 }
 
 export async function DELETE(req: NextRequest) {
@@ -70,13 +222,32 @@ export async function DELETE(req: NextRequest) {
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   try {
     const id = new URL(req.url).searchParams.get("id");
-    if (!id) return NextResponse.json({ error: "ID required" }, { status: 400 });
+    if (!id) return NextResponse.json({ error: "missing_id" }, { status: 400 });
 
-    const member = await prisma.accountMember.findFirst({ where: { id, accountId: session.accountId } });
-    if (!member) return NextResponse.json({ error: "Member not found" }, { status: 404 });
-    if (member.role === "OWNER") return NextResponse.json({ error: "Cannot remove owner" }, { status: 400 });
+    const sb = getSupabaseAdmin();
+    const { data: member } = await sb
+      .from("account_members")
+      .select("id, role, user_id")
+      .eq("id", id)
+      .eq("account_id", session.accountId)
+      .maybeSingle();
+    if (!member) return NextResponse.json({ error: "not_found" }, { status: 404 });
+    if (member.role === "OWNER") {
+      return NextResponse.json({ error: "cannot_remove_owner" }, { status: 400 });
+    }
+    if (member.user_id === session.userId) {
+      return NextResponse.json({ error: "cannot_remove_self" }, { status: 400 });
+    }
+    const { error } = await sb.from("account_members").delete().eq("id", id);
+    if (error) throw error;
+    return NextResponse.json({ ok: true });
+  } catch (err: unknown) {
+    log.error("DELETE member failed", { err });
+    const msg = err instanceof Error ? err.message : "internal_error";
+    return NextResponse.json({ error: "internal_error", message: msg }, { status: 500 });
+  }
+}
 
-    await prisma.accountMember.delete({ where: { id } });
-    return NextResponse.json({ success: true });
-  } catch (e: any) { return NextResponse.json({ error: e.message }, { status: 500 }); }
+function cuid(): string {
+  return "c" + Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
 }
