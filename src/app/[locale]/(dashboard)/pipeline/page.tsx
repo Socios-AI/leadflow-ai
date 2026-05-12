@@ -22,7 +22,7 @@ import {
   Save,
   ShoppingCart,
   Smartphone,
-  Sparkles,
+  Zap as PipelineEyebrow,
   Target,
   UserCheck,
   Users,
@@ -323,7 +323,7 @@ export default function PipelinePage() {
       <header className="flex items-start justify-between gap-4 flex-wrap mb-8">
         <div>
           <div className="flex items-center gap-2 mb-2">
-            <Sparkles className="w-4 h-4 text-primary" />
+            <PipelineEyebrow className="w-4 h-4 text-primary" />
             <span className="text-[11px] font-semibold uppercase tracking-wide text-primary">
               {t("eyebrow")}
             </span>

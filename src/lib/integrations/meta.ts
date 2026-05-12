@@ -15,6 +15,7 @@
 //   NEXT_PUBLIC_APP_URL
 
 import prisma from "@/lib/db/prisma";
+import { encryptSecret, decryptSecret } from "@/lib/crypto/secret-box";
 
 const GRAPH = "https://graph.facebook.com/v21.0";
 const OAUTH_AUTH = "https://www.facebook.com/v21.0/dialog/oauth";
@@ -207,6 +208,13 @@ export async function persistIntegration(
   const { longLivedToken, user, pages, adAccounts } = opts;
   const expiresAt = new Date(Date.now() + longLivedToken.expires_in * 1000);
 
+  // Encrypt the user-level token and each page-scoped access token
+  const encryptedAccessToken = encryptSecret(longLivedToken.access_token);
+  const encryptedPages = pages.map((p) => ({
+    ...p,
+    accessToken: encryptSecret(p.accessToken),
+  }));
+
   await prisma.metaIntegration.upsert({
     where: { accountId },
     create: {
@@ -214,25 +222,25 @@ export async function persistIntegration(
       metaUserId: user.id,
       metaUserName: user.name,
       email: user.email,
-      accessToken: longLivedToken.access_token,
+      accessToken: encryptedAccessToken,
       tokenExpiresAt: expiresAt,
       scope: REQUIRED_SCOPES.join(","),
-      pages: pages as unknown as object,
+      pages: encryptedPages as unknown as object,
       adAccounts: adAccounts as unknown as object,
     },
     update: {
       metaUserId: user.id,
       metaUserName: user.name,
       email: user.email,
-      accessToken: longLivedToken.access_token,
+      accessToken: encryptedAccessToken,
       tokenExpiresAt: expiresAt,
       scope: REQUIRED_SCOPES.join(","),
-      pages: pages as unknown as object,
+      pages: encryptedPages as unknown as object,
       adAccounts: adAccounts as unknown as object,
     },
   });
 
-  // Fire-and-forget subscribe each page to leadgen webhooks
+  // Fire-and-forget subscribe each page to leadgen webhooks (uses plaintext from this scope)
   for (const page of pages) {
     subscribePageToLeadgen(page.id, page.accessToken).catch(() => {});
   }
@@ -258,11 +266,20 @@ export async function getIntegrationStatus(
     where: { accountId },
   });
   if (!integ) return { connected: false };
+
+  // Strip access tokens from the response — UI never needs them. This also
+  // dodges any concern about exposing encrypted blobs to the client.
+  const storedPages = (integ.pages as unknown as MetaPage[] | null) || [];
+  const sanitizedPages: MetaPage[] = storedPages.map((p) => ({
+    ...p,
+    accessToken: "",
+  }));
+
   return {
     connected: true,
     userName: integ.metaUserName || undefined,
     email: integ.email || undefined,
-    pages: (integ.pages as unknown as MetaPage[]) || [],
+    pages: sanitizedPages,
     adAccounts: (integ.adAccounts as unknown as MetaAdAccount[]) || [],
     businessName: integ.businessName,
     businessNiche: integ.businessNiche,
@@ -297,8 +314,9 @@ export async function disconnect(accountId: string): Promise<void> {
   });
   if (integ?.accessToken) {
     try {
+      const tokenPlain = decryptSecret(integ.accessToken);
       await fetch(
-        `${GRAPH}/me/permissions?access_token=${encodeURIComponent(integ.accessToken)}`,
+        `${GRAPH}/me/permissions?access_token=${encodeURIComponent(tokenPlain)}`,
         { method: "DELETE" }
       );
     } catch {
@@ -343,7 +361,12 @@ export async function findAccountForPage(
     const pages = (integ.pages as unknown as MetaPage[] | null) || [];
     const page = pages.find((p) => p.id === pageId);
     if (page && page.accessToken) {
-      return { accountId: integ.accountId, pageAccessToken: page.accessToken, page };
+      const tokenPlain = decryptSecret(page.accessToken);
+      return {
+        accountId: integ.accountId,
+        pageAccessToken: tokenPlain,
+        page: { ...page, accessToken: tokenPlain },
+      };
     }
   }
   return null;

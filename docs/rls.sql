@@ -136,3 +136,43 @@ CREATE POLICY meta_isolation ON "meta_integrations"
 -- belong to multiple accounts (future), and the join lives in
 -- account_members. Add a policy later if you introduce a per-user key.
 -- ══════════════════════════════════════════════════════════════════
+
+-- ══════════════════════════════════════════════════════════════════
+-- Activation guide (run AFTER applying the policies above)
+-- ══════════════════════════════════════════════════════════════════
+-- 1) Create a non-bypass role for user-facing connections. The default
+--    `postgres` and Supabase `service_role` both have BYPASSRLS, which
+--    means RLS only protects against direct DB compromise unless we
+--    route the app through a role that respects the policies.
+--
+--    CREATE ROLE app_user NOLOGIN NOBYPASSRLS;
+--    GRANT USAGE ON SCHEMA public TO app_user;
+--    GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO app_user;
+--    ALTER DEFAULT PRIVILEGES IN SCHEMA public
+--      GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO app_user;
+--
+-- 2) On each request, the app sets the GUC inside a tx before any query:
+--
+--    BEGIN;
+--    SET LOCAL ROLE app_user;
+--    SET LOCAL app.account_id = '<the tenant id>';
+--    -- ... queries ...
+--    COMMIT;
+--
+-- 3) Background workers and the admin console keep using service_role
+--    (which has BYPASSRLS) — they are trusted code paths that need to
+--    cross tenant boundaries on purpose.
+--
+-- ══════════════════════════════════════════════════════════════════
+-- Smoke test (run as superuser AFTER applying)
+-- ══════════════════════════════════════════════════════════════════
+-- DO $$
+-- BEGIN
+--   SET LOCAL ROLE app_user;
+--   SET LOCAL app.account_id = 'acc_some_real_id';
+--   PERFORM 1 FROM leads LIMIT 1;     -- should only see tenant rows
+--   SET LOCAL app.account_id = 'acc_does_not_exist';
+--   IF (SELECT count(*) FROM leads) <> 0 THEN
+--     RAISE EXCEPTION 'RLS failed — non-tenant rows visible';
+--   END IF;
+-- END $$;

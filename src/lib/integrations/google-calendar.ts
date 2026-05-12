@@ -11,6 +11,7 @@
 //   GOOGLE_REDIRECT_URI     (e.g. https://app.example.com/api/integrations/google/callback)
 
 import prisma from "@/lib/db/prisma";
+import { encryptSecret, decryptSecret } from "@/lib/crypto/secret-box";
 
 const OAUTH_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
 const OAUTH_TOKEN_URL = "https://oauth2.googleapis.com/token";
@@ -95,21 +96,24 @@ export async function persistIntegration(
   const email = await fetchUserEmail(tokens.access_token);
   const expiresAt = new Date(Date.now() + tokens.expires_in * 1000);
 
+  const encAccess = encryptSecret(tokens.access_token);
+  const encRefresh = encryptSecret(tokens.refresh_token);
+
   await prisma.googleCalendarIntegration.upsert({
     where: { accountId },
     create: {
       accountId,
       email,
       calendarId: "primary",
-      accessToken: tokens.access_token,
-      refreshToken: tokens.refresh_token,
+      accessToken: encAccess,
+      refreshToken: encRefresh,
       tokenExpiresAt: expiresAt,
       scope: tokens.scope,
     },
     update: {
       email,
-      accessToken: tokens.access_token,
-      refreshToken: tokens.refresh_token,
+      accessToken: encAccess,
+      refreshToken: encRefresh,
       tokenExpiresAt: expiresAt,
       scope: tokens.scope,
     },
@@ -146,7 +150,7 @@ async function refreshAccessToken(
   await prisma.googleCalendarIntegration.update({
     where: { accountId },
     data: {
-      accessToken: data.access_token,
+      accessToken: encryptSecret(data.access_token),
       tokenExpiresAt: expiresAt,
     },
   });
@@ -162,9 +166,9 @@ async function getFreshAccessToken(accountId: string): Promise<string> {
   // Refresh if it expires in < 60s
   const buffer = 60_000;
   if (integ.tokenExpiresAt.getTime() - Date.now() > buffer) {
-    return integ.accessToken;
+    return decryptSecret(integ.accessToken);
   }
-  const refreshed = await refreshAccessToken(accountId, integ.refreshToken);
+  const refreshed = await refreshAccessToken(accountId, decryptSecret(integ.refreshToken));
   return refreshed.accessToken;
 }
 
@@ -423,8 +427,9 @@ export async function disconnect(accountId: string): Promise<void> {
   });
   if (integ?.refreshToken) {
     try {
+      const refreshPlain = decryptSecret(integ.refreshToken);
       await fetch(
-        `https://oauth2.googleapis.com/revoke?token=${encodeURIComponent(integ.refreshToken)}`,
+        `https://oauth2.googleapis.com/revoke?token=${encodeURIComponent(refreshPlain)}`,
         { method: "POST" }
       );
     } catch {

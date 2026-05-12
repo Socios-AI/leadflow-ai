@@ -26,7 +26,7 @@ import {
   Link2,
   Loader2,
   Plus,
-  Sparkles,
+  CheckCircle as DotIcon,
   TestTube,
   Trash2,
   Webhook,
@@ -331,9 +331,9 @@ function MetaCard({ status, onRefresh }: { status: MetaStatus; onRefresh: () => 
 
 function MetaEmptyState() {
   const features: { icon: React.ElementType; text: string }[] = [
-    { icon: Sparkles, text: "Recebimento automático de leads de campanhas Meta (Facebook/Instagram Lead Ads)." },
-    { icon: Sparkles, text: "Atendimento imediato pelo WhatsApp assim que o lead preenche o formulário." },
-    { icon: Sparkles, text: "Leitura das páginas e contas de anúncio conectadas para contextualizar a IA." },
+    { icon: DotIcon, text: "Recebimento automático de leads de campanhas Meta (Facebook/Instagram Lead Ads)." },
+    { icon: DotIcon, text: "Atendimento imediato pelo WhatsApp assim que o lead preenche o formulário." },
+    { icon: DotIcon, text: "Leitura das páginas e contas de anúncio conectadas para contextualizar a IA." },
   ];
   return (
     <div className="px-6 py-6 space-y-4">

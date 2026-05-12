@@ -21,7 +21,7 @@ import {
   Mail,
   Plus,
   Shield,
-  Sparkles,
+  Zap,
   Trash2,
   User as UserIcon,
   Users,
@@ -490,7 +490,7 @@ function WorkspaceTab({
         <div className="flex items-center justify-between p-4 rounded-xl bg-muted/40 border border-border">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary grid place-items-center">
-              <Sparkles className="w-4 h-4" />
+              <Zap className="w-4 h-4" />
             </div>
             <div>
               <p className="font-display text-[14px] font-semibold text-foreground">

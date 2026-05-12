@@ -2,6 +2,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/db/prisma";
 import { queues } from "@/lib/queues";
+import { rateLimit, getClientIp } from "@/lib/rate-limit";
+import { logger } from "@/lib/logger";
+
+const log = logger.child({ module: "webhook/leads-key" });
 
 /**
  * Webhook endpoint to receive leads from external sources.
@@ -23,6 +27,18 @@ import { queues } from "@/lib/queues";
  */
 export async function POST(req: NextRequest) {
   try {
+    const ip = getClientIp(req);
+
+    // Burst protection by IP — public endpoint, must throttle abusers
+    const rlIp = await rateLimit({ key: `leads-key:ip:${ip}`, max: 120, windowSec: 60 });
+    if (!rlIp.allowed) {
+      log.warn("rate limited by ip", { ip });
+      return NextResponse.json(
+        { error: "rate_limited" },
+        { status: 429, headers: { "retry-after": String(Math.ceil(rlIp.resetInMs / 1000)) } }
+      );
+    }
+
     const webhookKey = new URL(req.url).searchParams.get("key");
     if (!webhookKey) return NextResponse.json({ error: "Missing webhook key" }, { status: 400 });
 
@@ -33,6 +49,16 @@ export async function POST(req: NextRequest) {
 
     if (!aiConfig) return NextResponse.json({ error: "Invalid webhook key" }, { status: 401 });
     const accountId = aiConfig.accountId;
+
+    // Per-tenant cap — protects queue/DB from a misbehaving integration
+    const rlTenant = await rateLimit({ key: `leads-key:acc:${accountId}`, max: 600, windowSec: 60 });
+    if (!rlTenant.allowed) {
+      log.warn("rate limited by account", { accountId });
+      return NextResponse.json(
+        { error: "rate_limited" },
+        { status: 429, headers: { "retry-after": String(Math.ceil(rlTenant.resetInMs / 1000)) } }
+      );
+    }
 
     const body = await req.json();
 

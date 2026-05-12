@@ -18,7 +18,7 @@ import {
   Search,
   Shield,
   ShieldCheck,
-  Sparkles,
+  Zap,
   Trash2,
   UserCog,
   Users,
@@ -217,7 +217,7 @@ export function AdminConsole({ currentUser }: { currentUser: CurrentUser }) {
           />
         ) : (
           <StatCard
-            icon={Sparkles}
+            icon={Zap}
             label={t("stats.youCreated")}
             value={stats.totalTenants}
             accent="amber"
@@ -381,7 +381,7 @@ function TenantRow({
             </span>
           ) : (
             <span className="inline-flex items-center gap-1 text-[10px] text-amber-500 px-1.5 py-0.5 rounded-md bg-amber-500/10 border border-amber-500/20">
-              <Sparkles className="w-3 h-3" />
+              <Zap className="w-3 h-3" />
               {t("statusPending")}
             </span>
           )}

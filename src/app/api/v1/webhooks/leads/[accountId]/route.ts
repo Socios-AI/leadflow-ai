@@ -3,6 +3,10 @@ import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/db/prisma";
 import { normalizePhone } from "@/lib/utils/normalize-phone";
 import { queues } from "@/lib/queues";
+import { rateLimit, getClientIp } from "@/lib/rate-limit";
+import { logger } from "@/lib/logger";
+
+const log = logger.child({ module: "webhook/leads-v1" });
 
 /**
  * POST /api/v1/webhooks/leads/:accountId
@@ -41,6 +45,27 @@ export async function POST(
   const { accountId } = await params;
 
   try {
+    const ip = getClientIp(req);
+
+    // Burst protection by IP + per-tenant cap
+    const rlIp = await rateLimit({ key: `leads-v1:ip:${ip}`, max: 120, windowSec: 60 });
+    if (!rlIp.allowed) {
+      log.warn("rate limited by ip", { ip });
+      return NextResponse.json(
+        { error: "rate_limited" },
+        { status: 429, headers: { "retry-after": String(Math.ceil(rlIp.resetInMs / 1000)) } }
+      );
+    }
+
+    const rlTenant = await rateLimit({ key: `leads-v1:acc:${accountId}`, max: 600, windowSec: 60 });
+    if (!rlTenant.allowed) {
+      log.warn("rate limited by account", { accountId });
+      return NextResponse.json(
+        { error: "rate_limited" },
+        { status: 429, headers: { "retry-after": String(Math.ceil(rlTenant.resetInMs / 1000)) } }
+      );
+    }
+
     // 1. Verify account
     const account = await prisma.account.findUnique({
       where: { id: accountId },
