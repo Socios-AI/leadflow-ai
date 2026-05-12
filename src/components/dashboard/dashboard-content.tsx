@@ -77,22 +77,20 @@ export function DashboardContent({
   const ts = useTranslations("status");
 
   const [data, setData] = useState<DashboardOverview>(initialData);
-  const [refreshing, setRefreshing] = useState(false);
 
+  // Silent polling — the dashboard refreshes itself without surfacing a
+  // "last updated" indicator. A professional product just stays current.
   useEffect(() => {
     let cancelled = false;
     const tick = async () => {
       if (typeof document !== "undefined" && document.hidden) return;
       try {
-        setRefreshing(true);
         const res = await fetch("/api/dashboard/overview", { cache: "no-store" });
         if (!res.ok) return;
         const fresh = (await res.json()) as DashboardOverview;
         if (!cancelled) setData(fresh);
       } catch {
         /* silent */
-      } finally {
-        if (!cancelled) setRefreshing(false);
       }
     };
     const id = setInterval(tick, POLL_INTERVAL_MS);
@@ -123,8 +121,6 @@ export function DashboardContent({
         title={t("title")}
         subtitle={t("subtitle")}
         userName={userName}
-        refreshing={refreshing}
-        generatedAt={data.generatedAt}
       />
 
       {isEmpty ? (
@@ -177,33 +173,26 @@ function Header({
   title,
   subtitle,
   userName,
-  refreshing,
-  generatedAt,
 }: {
   title: string;
   subtitle: string;
   userName?: string;
-  refreshing: boolean;
-  generatedAt: string;
 }) {
   const greeting = useGreeting();
   // Only show the first name to keep the greeting compact and casual.
   const firstName = (userName || "").trim().split(/\s+/)[0] || "";
   const greetingLine = firstName ? `${greeting}, ${firstName}` : greeting;
   return (
-    <header className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
-      <div>
-        <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground/80 mb-1.5">
-          {greetingLine}
-        </p>
-        <h1 className="font-display text-[28px] sm:text-[32px] font-semibold tracking-tight text-foreground leading-none">
-          {title}
-        </h1>
-        <p className="text-[13.5px] text-muted-foreground mt-2 max-w-xl">
-          {subtitle}
-        </p>
-      </div>
-      <LiveDot refreshing={refreshing} generatedAt={generatedAt} />
+    <header className="flex flex-col gap-1.5">
+      <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground/80">
+        {greetingLine}
+      </p>
+      <h1 className="font-display text-[28px] sm:text-[32px] font-semibold tracking-tight text-foreground leading-none">
+        {title}
+      </h1>
+      <p className="text-[13.5px] text-muted-foreground mt-1 max-w-xl">
+        {subtitle}
+      </p>
     </header>
   );
 }
@@ -218,40 +207,6 @@ function useGreeting() {
     else setG("Boa noite");
   }, []);
   return g;
-}
-
-function LiveDot({
-  refreshing,
-  generatedAt,
-}: {
-  refreshing: boolean;
-  generatedAt: string;
-}) {
-  const [, setNow] = useState(Date.now());
-  useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), 30_000);
-    return () => clearInterval(id);
-  }, []);
-  return (
-    <div className="flex items-center gap-2 text-[11.5px] text-muted-foreground">
-      <span className="relative flex w-1.5 h-1.5">
-        <span
-          className={cn(
-            "absolute inset-0 rounded-full",
-            refreshing ? "bg-amber-500" : "bg-primary",
-            !refreshing && "pulse-ring text-primary"
-          )}
-        />
-        <span
-          className={cn(
-            "relative w-1.5 h-1.5 rounded-full",
-            refreshing ? "bg-amber-500" : "bg-primary"
-          )}
-        />
-      </span>
-      atualizado {formatRelative(generatedAt)} atrás
-    </div>
-  );
 }
 
 // ══════════════════════════════════════════════
