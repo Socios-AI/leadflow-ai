@@ -12,6 +12,7 @@ import {
 } from "@/lib/integrations/google-calendar";
 import { getIntegrationStatus as getMetaStatus } from "@/lib/integrations/meta";
 import { resolveLanguage, type ResolvedLanguage } from "@/lib/ai-engine/language";
+import { createSignedUrl } from "@/lib/storage/supabase-storage";
 
 type Channel = "WHATSAPP" | "EMAIL" | "SMS";
 
@@ -63,6 +64,14 @@ export interface AIResponseResult {
     endISO: string;
     htmlLink?: string;
   };
+  /** Media items the AI wants to send alongside the reply, in order. */
+  attachments?: {
+    id: string;
+    name: string;
+    kind: "IMAGE" | "VIDEO" | "AUDIO" | "DOCUMENT";
+    mimeType: string;
+    url: string;
+  }[];
 }
 
 interface ScheduleIntent {
@@ -104,11 +113,14 @@ export class AIEngine {
       campaignCountry: params.campaignCountry,
     });
 
+    const knowledgeBlock = await loadKnowledgeBlock(params.accountId);
+
     const systemPrompt = buildFirstContactSystemPrompt(
       cfg,
       params,
       businessContext,
-      language
+      language,
+      knowledgeBlock
     );
     const userTurn = buildFirstContactUserTurn(params);
 
@@ -157,12 +169,21 @@ export class AIEngine {
       campaignCountry: params.campaignCountry,
     });
 
+    // ── Knowledge base + media catalog ──
+    const [knowledgeBlock, mediaCatalog] = await Promise.all([
+      loadKnowledgeBlock(params.accountId),
+      loadMediaCatalog(params.accountId),
+    ]);
+    const mediaBlock = buildMediaBlock(mediaCatalog);
+
     const systemPrompt = buildResponseSystemPrompt(cfg, params, {
       escalation,
       conversion,
       schedulingContext,
       businessContext,
       language,
+      knowledgeBlock,
+      mediaBlock,
     });
 
     const messages: HistoryEntry[] = [
@@ -174,10 +195,34 @@ export class AIEngine {
       (await callLLM(cfg, systemPrompt, messages))?.trim() ||
       "Posso te ajudar em algo mais?";
 
+    // ── Parse optional SEND_MEDIA tags ──
+    const mediaResult = extractMediaTags(rawReply, mediaCatalog);
+
     // ── Parse optional SCHEDULE:{...} block and act on it ──
-    const parsed = extractScheduleBlock(rawReply);
+    const parsed = extractScheduleBlock(mediaResult.cleaned);
     let visibleMessage = parsed.cleaned;
     let scheduled: AIResponseResult["scheduled"];
+
+    // ── Resolve signed URLs for matched media ──
+    let attachments: AIResponseResult["attachments"] | undefined;
+    if (mediaResult.matched.length > 0) {
+      attachments = [];
+      for (const m of mediaResult.matched) {
+        try {
+          const url = await createSignedUrl("assistant-media", m.storagePath);
+          attachments.push({
+            id: m.id,
+            name: m.name,
+            kind: m.kind,
+            mimeType: m.mimeType,
+            url,
+          });
+        } catch (err) {
+          console.warn("[AIEngine] sign media url failed:", err);
+        }
+      }
+      if (attachments.length === 0) attachments = undefined;
+    }
 
     if (parsed.intent && schedulingContext?.connected) {
       try {
@@ -220,6 +265,7 @@ export class AIEngine {
             ? `Reunião agendada com ${params.leadName || params.leadPhone || "lead"} em ${scheduled.startISO}`
             : undefined,
       scheduled,
+      attachments,
     };
   }
 
@@ -266,16 +312,57 @@ async function loadConfig(accountId: string): Promise<LoadedConfig | null> {
   const row = await prisma.aIConfig.findUnique({ where: { accountId } });
   if (!row) return null;
 
-  const persona = (row.persona as Record<string, unknown>) || {};
-  const escalation = (row.escalationConfig as Record<string, unknown>) || {};
-  const conversion = (row.conversionConfig as Record<string, unknown>) || {};
+  // If the tenant flipped to a named assistant, override the inline
+  // fields with that assistant's config. The base aiConfig still owns
+  // pipeline / scheduling / business-hours metadata.
+  let overlay: {
+    provider?: string;
+    model?: string;
+    systemPrompt?: string;
+    temperature?: number;
+    maxTokens?: number;
+    persona?: Record<string, unknown> | null;
+    escalationConfig?: Record<string, unknown> | null;
+    conversionConfig?: Record<string, unknown> | null;
+    offHoursMessage?: string | null;
+  } | null = null;
+
+  if (row.activeAssistantId) {
+    const a = await prisma.aIAssistant.findFirst({
+      where: { id: row.activeAssistantId, accountId },
+    });
+    if (a) {
+      overlay = {
+        provider: a.provider,
+        model: a.model,
+        systemPrompt: a.systemPrompt,
+        temperature: a.temperature,
+        maxTokens: a.maxTokens,
+        persona: a.persona as Record<string, unknown> | null,
+        escalationConfig: a.escalationConfig as Record<string, unknown> | null,
+        conversionConfig: a.conversionConfig as Record<string, unknown> | null,
+        offHoursMessage: a.offHoursMessage,
+      };
+    }
+  }
+
+  const persona = (overlay?.persona ?? (row.persona as Record<string, unknown>)) || {};
+  const escalation = (overlay?.escalationConfig ?? (row.escalationConfig as Record<string, unknown>)) || {};
+  const conversion = (overlay?.conversionConfig ?? (row.conversionConfig as Record<string, unknown>)) || {};
+
+  const provider = (overlay?.provider ?? row.provider) === "anthropic" ? "anthropic" : "openai";
+  const model = overlay?.model ?? row.model;
+  const systemPrompt = overlay?.systemPrompt ?? row.systemPrompt;
+  const temperature = overlay?.temperature ?? row.temperature;
+  const maxTokens = overlay?.maxTokens ?? row.maxTokens;
+  const offHoursMessage = overlay?.offHoursMessage ?? row.offHoursMessage ?? "";
 
   return {
-    provider: (row.provider === "anthropic" ? "anthropic" : "openai"),
-    model: row.model,
-    systemPrompt: row.systemPrompt,
-    temperature: row.temperature,
-    maxTokens: row.maxTokens,
+    provider,
+    model,
+    systemPrompt,
+    temperature,
+    maxTokens,
     persona,
     escalationKeywords: parseKeywords(
       (escalation.keywords as string | string[] | undefined) ||
@@ -285,8 +372,115 @@ async function loadConfig(accountId: string): Promise<LoadedConfig | null> {
       (conversion.keywords as string | string[] | undefined) ||
         (persona.conversionTriggers as string | string[] | undefined)
     ),
-    offHoursMessage: row.offHoursMessage || "",
+    offHoursMessage,
   };
+}
+
+// ════════════════════════════════════════════════════
+// KNOWLEDGE BASE + MEDIA LIBRARY
+// ════════════════════════════════════════════════════
+
+interface MediaCatalogItem {
+  id: string;
+  name: string;
+  description: string;
+  sendInstruction: string;
+  kind: "IMAGE" | "VIDEO" | "AUDIO" | "DOCUMENT";
+  mimeType: string;
+  storagePath: string;
+}
+
+async function loadKnowledgeBlock(accountId: string): Promise<string> {
+  // Text entries — always cheap, always injected
+  const entries = await prisma.knowledgeEntry.findMany({
+    where: { accountId },
+    select: { title: true, content: true },
+    take: 50,
+    orderBy: { updatedAt: "desc" },
+  });
+
+  // Uploaded files — only the ones with inline text (txt/md/csv).
+  // PDFs/DOCX live as references; the file is exposed via the media
+  // catalog if the operator also added it there.
+  const files = await prisma.knowledgeFile.findMany({
+    where: { accountId, NOT: { extractedText: null } },
+    select: { title: true, description: true, extractedText: true },
+    take: 25,
+    orderBy: { updatedAt: "desc" },
+  });
+
+  const parts: string[] = [];
+  for (const e of entries) {
+    parts.push(`### ${e.title}\n${e.content.trim()}`);
+  }
+  for (const f of files) {
+    const head = f.description ? `${f.title} — ${f.description}` : f.title;
+    parts.push(`### ${head}\n${(f.extractedText || "").trim().slice(0, 8000)}`);
+  }
+  if (parts.length === 0) return "";
+
+  return `\nBASE DE CONHECIMENTO (consulte antes de responder, NÃO invente o que não estiver aqui):\n${parts.join("\n\n")}\n`;
+}
+
+async function loadMediaCatalog(accountId: string): Promise<MediaCatalogItem[]> {
+  const items = await prisma.assistantMedia.findMany({
+    where: { accountId, isActive: true },
+    select: {
+      id: true,
+      name: true,
+      description: true,
+      sendInstruction: true,
+      kind: true,
+      mimeType: true,
+      storagePath: true,
+    },
+    take: 30,
+    orderBy: { createdAt: "asc" },
+  });
+  return items;
+}
+
+function buildMediaBlock(items: MediaCatalogItem[]): string {
+  if (items.length === 0) return "";
+  const list = items
+    .map(
+      (m, i) =>
+        `${i + 1}. [${m.kind}] "${m.name}" — ${m.description}\n   QUANDO ENVIAR: ${m.sendInstruction}`
+    )
+    .join("\n");
+  return `\nARQUIVOS QUE VOCÊ PODE ENVIAR AO LEAD:
+Quando fizer sentido (siga "QUANDO ENVIAR" de cada arquivo), inclua no FINAL da sua resposta uma linha exatamente neste formato:
+SEND_MEDIA: "<nome exato do arquivo>"
+
+Pode enviar até 2 mídias por resposta. Use o NOME exato listado abaixo.
+Se nenhum arquivo se aplicar, não escreva SEND_MEDIA.
+
+ARQUIVOS DISPONÍVEIS:
+${list}
+`;
+}
+
+const MEDIA_TAG_RE = /SEND_MEDIA:\s*"([^"\n]+)"/gi;
+
+function extractMediaTags(raw: string, catalog: MediaCatalogItem[]): {
+  cleaned: string;
+  matched: MediaCatalogItem[];
+} {
+  const matched: MediaCatalogItem[] = [];
+  const seen = new Set<string>();
+  let m: RegExpExecArray | null;
+  while ((m = MEDIA_TAG_RE.exec(raw))) {
+    const name = m[1].trim().toLowerCase();
+    if (seen.has(name)) continue;
+    const item = catalog.find((c) => c.name.trim().toLowerCase() === name);
+    if (item) {
+      matched.push(item);
+      seen.add(name);
+    }
+    if (matched.length >= 2) break;
+  }
+  const cleaned = raw.replace(MEDIA_TAG_RE, "").trim();
+  return { cleaned, matched };
 }
 
 function parseKeywords(v: string | string[] | undefined): string[] {
@@ -403,7 +597,8 @@ function buildFirstContactSystemPrompt(
   cfg: LoadedConfig,
   params: FirstContactParams,
   businessContext: BusinessContext | null,
-  language: ResolvedLanguage
+  language: ResolvedLanguage,
+  knowledgeBlock: string = ""
 ): string {
   const firstMessageInstruction = personaField(
     cfg.persona,
@@ -413,6 +608,7 @@ function buildFirstContactSystemPrompt(
 
   return `${commonPreamble(cfg, params.channel, language)}
 ${businessContext ? renderBusinessContext(businessContext) : ""}
+${knowledgeBlock}
 CONTEXTO DESTE LEAD:
 - Nome: ${params.leadName || "ainda não sabemos"}
 - Origem: ${params.leadSource}
@@ -433,6 +629,8 @@ function buildResponseSystemPrompt(
     schedulingContext?: SchedulingContext | null;
     businessContext?: BusinessContext | null;
     language: ResolvedLanguage;
+    knowledgeBlock?: string;
+    mediaBlock?: string;
   }
 ): string {
   const pipelineGoal = personaField(cfg.persona, "pipelineGoal", "closeSale");
@@ -461,6 +659,8 @@ function buildResponseSystemPrompt(
 
   return `${commonPreamble(cfg, params.channel, flags.language)}
 ${businessBlock}
+${flags.knowledgeBlock || ""}
+${flags.mediaBlock || ""}
 CONTEXTO DO LEAD:
 - Nome: ${params.leadName || "desconhecido"}
 - Telefone: ${params.leadPhone || "—"}

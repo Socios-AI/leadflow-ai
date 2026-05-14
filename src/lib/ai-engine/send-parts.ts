@@ -47,6 +47,14 @@ export interface SendPartsInput {
   provider: ChannelProvider;
   sendOpts?: Record<string, unknown>;
   extraMetadata?: Record<string, unknown>;
+  /** Media items the AI decided to send. Delivered AFTER the text parts. */
+  attachments?: {
+    id: string;
+    name: string;
+    kind: "IMAGE" | "VIDEO" | "AUDIO" | "DOCUMENT";
+    mimeType: string;
+    url: string;
+  }[];
 }
 
 export interface SendPartsResult {
@@ -145,6 +153,81 @@ export async function sendMessagesInParts(
     //    Skipped after the last part and when a send failed.
     if (!result.success) break;
     if (i < parts.length - 1) {
+      await new Promise((r) => setTimeout(r, BREATH_MS));
+    }
+  }
+
+  // ── Send AI-selected media attachments after the text chunks ──
+  if (input.attachments && input.attachments.length > 0 && input.provider.sendMedia) {
+    for (const att of input.attachments) {
+      // Re-check kill-switch before each media send
+      const conv = await prisma.conversation.findUnique({
+        where: { id: input.conversationId },
+        select: { isAIEnabled: true, isActive: true },
+      });
+      if (!conv || !conv.isAIEnabled || !conv.isActive) break;
+
+      const contentType =
+        att.kind === "IMAGE"
+          ? "IMAGE"
+          : att.kind === "VIDEO"
+            ? "VIDEO"
+            : att.kind === "AUDIO"
+              ? "AUDIO"
+              : "DOCUMENT";
+
+      const dbMsg = await prisma.message.create({
+        data: {
+          accountId: input.accountId,
+          conversationId: input.conversationId,
+          direction: "OUTBOUND",
+          content: att.name,
+          contentType,
+          isAIGenerated: true,
+          status: "PENDING",
+          metadata: {
+            ...(input.extraMetadata || {}),
+            mediaId: att.id,
+            mediaUrl: att.url,
+            mimeType: att.mimeType,
+          },
+        },
+      });
+
+      let result: SendResult = { success: false };
+      try {
+        result = await input.provider.sendMedia(input.to, att.url, {
+          mediatype: att.kind.toLowerCase(),
+        });
+      } catch (err) {
+        result = {
+          success: false,
+          error: err instanceof Error ? err.message : String(err),
+        };
+      }
+
+      await prisma.message.update({
+        where: { id: dbMsg.id },
+        data: {
+          status: result.success ? "SENT" : "FAILED",
+          externalId: result.externalId || null,
+        },
+      });
+
+      messages.push({
+        id: dbMsg.id,
+        status: result.success ? "SENT" : "FAILED",
+        externalId: result.externalId || null,
+      });
+
+      if (!result.success) {
+        log.warn("media send failed", {
+          conversationId: input.conversationId,
+          mediaId: att.id,
+          error: result.error,
+        });
+        break;
+      }
       await new Promise((r) => setTimeout(r, BREATH_MS));
     }
   }

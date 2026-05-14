@@ -41,6 +41,9 @@ model Account {
   campaigns         Campaign[]
   aiConfig          AIConfig?
   knowledgeBase     KnowledgeEntry[]
+  knowledgeFiles    KnowledgeFile[]
+  assistants        AIAssistant[]
+  assistantMedia    AssistantMedia[]
   channels          Channel[]
   webhooks          Webhook[]
   eventLogs         EventLog[]
@@ -253,8 +256,37 @@ model Campaign {
 // ══════════════════════════════════════
 
 model AIConfig {
+  id                 String   @id @default(cuid())
+  accountId          String   @unique @map("account_id")
+  provider           String   @default("openai")
+  model              String   @default("gpt-4o")
+  systemPrompt       String   @map("system_prompt") @db.Text
+  temperature        Float    @default(0.7)
+  maxTokens          Int      @default(1000) @map("max_tokens")
+  persona            Json?
+  rules              Json?
+  businessHours      Json?    @map("business_hours")
+  offHoursMessage    String?  @map("off_hours_message")
+  escalationConfig   Json?    @map("escalation_config")
+  conversionConfig   Json?    @map("conversion_config")
+  // When set, overrides the inline fields above with the named assistant's config.
+  // Lets the tenant keep multiple personas and flip between them.
+  activeAssistantId  String?  @map("active_assistant_id")
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@map("ai_configs")
+}
+
+// Named AI personas. A tenant can keep several (e.g. "SDR Vendas",
+// "Suporte", "Pós-venda") and switch the active one from the UI.
+model AIAssistant {
   id               String   @id @default(cuid())
-  accountId        String   @unique @map("account_id")
+  accountId        String   @map("account_id")
+  name             String
+  description      String?
   provider         String   @default("openai")
   model            String   @default("gpt-4o")
   systemPrompt     String   @map("system_prompt") @db.Text
@@ -271,7 +303,8 @@ model AIConfig {
 
   account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
 
-  @@map("ai_configs")
+  @@index([accountId])
+  @@map("ai_assistants")
 }
 
 model KnowledgeEntry {
@@ -287,6 +320,63 @@ model KnowledgeEntry {
 
   @@index([accountId, category])
   @@map("knowledge_entries")
+}
+
+// Files uploaded by the tenant to feed the AI's knowledge base.
+// extractedText holds the parsed contents (PDF/DOCX/TXT) that get
+// injected into the system prompt when relevant.
+model KnowledgeFile {
+  id            String   @id @default(cuid())
+  accountId     String   @map("account_id")
+  title         String
+  description   String?  @db.Text
+  storagePath   String   @map("storage_path")
+  publicUrl     String?  @map("public_url")
+  mimeType      String   @map("mime_type")
+  sizeBytes     Int      @map("size_bytes")
+  extractedText String?  @db.Text @map("extracted_text")
+  category      String   @default("general")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@index([accountId, category])
+  @@map("knowledge_files")
+}
+
+// Media files the AI can send during a conversation (catalog, price list,
+// proposal PDF, demo video, sample image, audio testimonial). The AI
+// decides when to send each based on `sendInstruction`.
+model AssistantMedia {
+  id              String           @id @default(cuid())
+  accountId       String           @map("account_id")
+  // Display name shown to operator; also what the AI references internally.
+  name            String
+  // What the file is — fed to the AI so it knows what's inside.
+  description     String           @db.Text
+  // When the AI should send it (e.g. "quando perguntarem o preço", "se o lead pedir prova social").
+  sendInstruction String           @db.Text @map("send_instruction")
+  kind            AssistantMediaKind
+  storagePath     String           @map("storage_path")
+  publicUrl       String?          @map("public_url")
+  mimeType        String           @map("mime_type")
+  sizeBytes       Int              @map("size_bytes")
+  isActive        Boolean          @default(true) @map("is_active")
+  createdAt       DateTime         @default(now()) @map("created_at")
+  updatedAt       DateTime         @updatedAt @map("updated_at")
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@index([accountId, isActive])
+  @@map("assistant_media")
+}
+
+enum AssistantMediaKind {
+  IMAGE
+  VIDEO
+  AUDIO
+  DOCUMENT
 }
 
 // ══════════════════════════════════════

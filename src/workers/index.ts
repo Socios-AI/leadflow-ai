@@ -336,6 +336,7 @@ const aiWorker = new Worker(
         to: contactId,
         fullText: aiResult.message,
         provider,
+        attachments: aiResult.attachments,
         extraMetadata: {
           tags: aiResult.tags,
           sentiment: aiResult.sentiment,

@@ -1,62 +1,78 @@
 // src/app/api/campaigns/analyze/route.ts
 import { NextRequest, NextResponse } from "next/server";
+import { mkdtemp, rm, stat, open } from "fs/promises";
+import { tmpdir } from "os";
+import { join } from "path";
+import { Readable } from "stream";
+import { pipeline } from "stream/promises";
+import { createReadStream } from "fs";
 import { getSession } from "@/lib/auth/session";
-import { extractAudioForWhisper } from "@/lib/media/extract-audio";
+import { extractAudioFromPath } from "@/lib/media/extract-audio";
+import { logger } from "@/lib/logger";
 
-// Whisper hard limits — see https://platform.openai.com/docs/api-reference/audio
+const log = logger.child({ module: "api/campaigns/analyze" });
+
 const WHISPER_MAX_BYTES = 25 * 1024 * 1024;
 const VISION_MAX_BYTES = 20 * 1024 * 1024;
-// Max raw upload we'll accept for audio/video. Anything larger is almost
-// certainly an upload mistake — even a 30-minute 1080p H.264 is < 1GB.
-const MAX_UPLOAD_BYTES = 1024 * 1024 * 1024; // 1GB
+const MAX_UPLOAD_BYTES = 2 * 1024 * 1024 * 1024; // 2 GB raw upload ceiling
 
-// Container formats Whisper extracts audio from. Codec inside still matters,
-// but checking the container catches the most common upload mistakes.
-const WHISPER_ACCEPTED = [
+const WHISPER_PASSTHROUGH = new Set([
   "audio/mpeg", "audio/mp3", "audio/wav", "audio/wave", "audio/x-wav",
   "audio/webm", "audio/ogg", "audio/flac", "audio/x-m4a", "audio/m4a",
   "audio/mp4", "audio/aac",
-  "video/mp4", "video/mpeg", "video/webm", "video/quicktime",
-];
+]);
 
 export const runtime = "nodejs";
-export const maxDuration = 120;
+export const maxDuration = 300;
+export const dynamic = "force-dynamic";
 
 /**
  * POST /api/campaigns/analyze
  *
- * Analyzes campaign content using OpenAI:
- * - Audio/Video → Whisper transcription → GPT-4o analysis
- * - Image → GPT-4o Vision
- * - Text → GPT-4o analysis
+ * Pipeline:
+ *   1) Stream the upload directly to a temp file on disk (no in-memory buffering).
+ *   2) Video → ffmpeg extract audio → Whisper.
+ *      Audio in passthrough mime + < 25MB → Whisper direct.
+ *      Otherwise → ffmpeg re-encode → Whisper.
+ *   3) Image → GPT-4o Vision.
+ *   4) Text → direct prompt.
+ *   5) Final GPT-4o analysis.
  *
- * Returns structured error codes so the UI can show a human-friendly message:
- *   { error: "FILE_TOO_LARGE_UPLOAD", sizeMB, limitMB }
- *   { error: "AUDIO_TOO_LONG", sizeMB, limitMB }
- *   { error: "FILE_TOO_LARGE_IMAGE", sizeMB, limitMB }
- *   { error: "AUDIO_CODEC_UNSUPPORTED", detail }
- *   { error: "NO_CONTENT" }
- *   { error: "WHISPER_FAILED", detail }
- *   { error: "VISION_FAILED", detail }
- *   { error: "ANALYSIS_FAILED", detail }
+ * Error codes:
+ *   FILE_TOO_LARGE_UPLOAD, AUDIO_TOO_LONG, FILE_TOO_LARGE_IMAGE,
+ *   AUDIO_CODEC_UNSUPPORTED, FFMPEG_FAILED, NO_CONTENT,
+ *   WHISPER_FAILED, VISION_FAILED, ANALYSIS_FAILED
  */
 export async function POST(req: NextRequest) {
   const session = await getSession();
-  if (!session) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
-    return NextResponse.json({ error: "OpenAI API key not configured" }, { status: 500 });
+    return NextResponse.json({ error: "OPENAI_API_KEY missing" }, { status: 500 });
   }
+
+  // Quick reject on giant uploads before reading the body
+  const contentLength = Number(req.headers.get("content-length") || 0);
+  if (contentLength > MAX_UPLOAD_BYTES) {
+    return NextResponse.json(
+      {
+        error: "FILE_TOO_LARGE_UPLOAD",
+        sizeMB: Math.round((contentLength / 1024 / 1024) * 10) / 10,
+        limitMB: Math.round(MAX_UPLOAD_BYTES / 1024 / 1024),
+      },
+      { status: 413 }
+    );
+  }
+
+  const workDir = await mkdtemp(join(tmpdir(), "mktdigital-analyze-"));
 
   try {
     const formData = await req.formData();
-    const type = formData.get("type") as string;
+    const type = String(formData.get("type") || "");
     const file = formData.get("file") as File | null;
     const text = formData.get("text") as string | null;
-    const caption = formData.get("caption") as string | null;
+    const caption = (formData.get("caption") as string | null) || "";
     const campaignName = (formData.get("campaignName") as string) || "Sem nome";
 
     let contentToAnalyze = "";
@@ -65,8 +81,6 @@ export async function POST(req: NextRequest) {
     // 1. AUDIO / VIDEO → Whisper
     // ═══════════════════════════════════════
     if ((type === "audio" || type === "video") && file) {
-      // Hard ceiling so we don't OOM the server. 1GB is generous —
-      // a 30-minute 1080p H.264 video is typically < 700MB.
       if (file.size > MAX_UPLOAD_BYTES) {
         return NextResponse.json(
           {
@@ -79,62 +93,74 @@ export async function POST(req: NextRequest) {
       }
 
       const mime = (file.type || "").toLowerCase();
-      const rawBuffer = Buffer.from(await file.arrayBuffer());
+      const isVideo = type === "video" || mime.startsWith("video/");
+      const passthroughEligible =
+        !isVideo &&
+        file.size <= WHISPER_MAX_BYTES &&
+        WHISPER_PASSTHROUGH.has(mime);
 
-      // Decide whether to re-encode through ffmpeg:
-      //  - Video → always extract audio (saves 95%+)
-      //  - Audio already small enough and in a Whisper-friendly container → pass through
-      //  - Audio too big OR unknown codec → re-encode through ffmpeg
-      const needsExtraction =
-        type === "video" ||
-        rawBuffer.length > WHISPER_MAX_BYTES ||
-        (mime && !WHISPER_ACCEPTED.includes(mime));
+      // Stream upload to disk — never buffer the whole file in memory
+      const inputPath = join(workDir, "input" + extFromMime(mime));
+      await streamFileToDisk(file, inputPath);
 
-      let whisperBuffer: Buffer;
+      let whisperPath: string;
       let whisperMime: string;
       let whisperFilename: string;
 
-      if (needsExtraction) {
+      if (passthroughEligible) {
+        whisperPath = inputPath;
+        whisperMime = mime || "audio/mpeg";
+        whisperFilename = file.name || "audio.mp3";
+        log.info("passthrough audio", { mime, sizeMB: (file.size / 1024 / 1024).toFixed(1) });
+      } else {
         try {
-          const extracted = await extractAudioForWhisper(rawBuffer, mime || "video/mp4");
-          whisperBuffer = extracted.buffer;
+          const extracted = await extractAudioFromPath(inputPath);
+          // Persist the extracted buffer back to disk so we can stream it to Whisper.
+          const outPath = join(workDir, "audio.mp3");
+          const fh = await open(outPath, "w");
+          try {
+            await fh.writeFile(extracted.buffer);
+          } finally {
+            await fh.close();
+          }
+          whisperPath = outPath;
           whisperMime = extracted.mimeType;
           whisperFilename = extracted.filename;
         } catch (err) {
           const detail = err instanceof Error ? err.message : String(err);
-          console.error("ffmpeg extraction error:", detail);
+          log.error("ffmpeg failed", { detail });
+          // Distinguish binary-missing from codec-unsupported for the UI
+          const code =
+            /spawn|ENOENT|not found/i.test(detail)
+              ? "FFMPEG_FAILED"
+              : "AUDIO_CODEC_UNSUPPORTED";
           return NextResponse.json(
-            { error: "AUDIO_CODEC_UNSUPPORTED", detail },
-            { status: 415 }
+            { error: code, detail },
+            { status: code === "FFMPEG_FAILED" ? 500 : 415 }
           );
         }
-      } else {
-        whisperBuffer = rawBuffer;
-        whisperMime = mime || "audio/mpeg";
-        whisperFilename = file.name || "audio.mp3";
       }
 
-      // Even after extraction, an extremely long recording could still
-      // exceed 25MB. 25MB of 32kbps audio = ~100 minutes of speech.
-      if (whisperBuffer.length > WHISPER_MAX_BYTES) {
+      // Final size guard before paying for the Whisper call
+      const finalSize = (await stat(whisperPath)).size;
+      if (finalSize > WHISPER_MAX_BYTES) {
         return NextResponse.json(
           {
             error: "AUDIO_TOO_LONG",
-            sizeMB: Math.round((whisperBuffer.length / 1024 / 1024) * 10) / 10,
+            sizeMB: Math.round((finalSize / 1024 / 1024) * 10) / 10,
             limitMB: 25,
           },
           { status: 413 }
         );
       }
 
+      // Build the multipart payload for OpenAI by reading the temp file
+      // into a single ArrayBuffer. After ffmpeg this is always < 25 MB.
+      const audioBytes = await readFileAsArrayBuffer(whisperPath);
       const whisperForm = new FormData();
-      // Copy into a fresh Uint8Array so the BlobPart typing matches across
-      // Node's Buffer (ArrayBufferLike) and DOM Blob (ArrayBuffer).
-      const blobBytes = new Uint8Array(whisperBuffer.byteLength);
-      blobBytes.set(whisperBuffer);
       whisperForm.append(
         "file",
-        new Blob([blobBytes], { type: whisperMime }),
+        new Blob([audioBytes], { type: whisperMime }),
         whisperFilename
       );
       whisperForm.append("model", "whisper-1");
@@ -148,7 +174,7 @@ export async function POST(req: NextRequest) {
 
       if (!whisperRes.ok) {
         const err = await whisperRes.text();
-        console.error("Whisper error:", err);
+        log.error("whisper http error", { status: whisperRes.status, body: err.slice(0, 400) });
         const lower = err.toLowerCase();
         if (lower.includes("decode") || lower.includes("format") || lower.includes("invalid")) {
           return NextResponse.json(
@@ -199,9 +225,121 @@ export async function POST(req: NextRequest) {
               role: "user",
               content: [
                 { type: "image_url", image_url: { url: `data:${mimeType};base64,${base64}` } },
-                {
-                  type: "text",
-                  text: `Você é um estrategista sênior de marketing digital com 15 anos de experiência. Analise esta imagem do anúncio/campanha "${campaignName}" com profundidade cirúrgica.
+                { type: "text", text: imageAnalysisPrompt(campaignName, caption) },
+              ],
+            },
+          ],
+        }),
+      });
+
+      if (!visionRes.ok) {
+        const err = await visionRes.text();
+        log.error("vision http error", { status: visionRes.status, body: err.slice(0, 400) });
+        return NextResponse.json({ error: "VISION_FAILED", detail: err }, { status: 502 });
+      }
+
+      const visionData = await visionRes.json();
+      const analysis = visionData.choices?.[0]?.message?.content || "";
+      return NextResponse.json({ analysis, transcription: analysis });
+    }
+
+    // ═══════════════════════════════════════
+    // 3. TEXT → direct
+    // ═══════════════════════════════════════
+    else if (type === "text" && text) {
+      contentToAnalyze = text;
+    } else {
+      return NextResponse.json({ error: "NO_CONTENT" }, { status: 400 });
+    }
+
+    // ═══════════════════════════════════════
+    // Final GPT-4o analysis
+    // ═══════════════════════════════════════
+    const analysisRes = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "gpt-4o",
+        max_tokens: 2000,
+        temperature: 0.4,
+        messages: [
+          { role: "system", content: finalAnalysisSystemPrompt() },
+          { role: "user", content: finalAnalysisUserPrompt(campaignName, contentToAnalyze) },
+        ],
+      }),
+    });
+
+    if (!analysisRes.ok) {
+      const err = await analysisRes.text();
+      log.error("gpt http error", { status: analysisRes.status, body: err.slice(0, 400) });
+      return NextResponse.json({ error: "ANALYSIS_FAILED", detail: err }, { status: 502 });
+    }
+
+    const analysisData = await analysisRes.json();
+    const analysis =
+      analysisData.choices?.[0]?.message?.content || "Não foi possível analisar.";
+    return NextResponse.json({ analysis, transcription: contentToAnalyze });
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : "Unknown error";
+    log.error("analyze unexpected error", { msg });
+    return NextResponse.json({ error: "ANALYSIS_FAILED", detail: msg }, { status: 500 });
+  } finally {
+    await rm(workDir, { recursive: true, force: true }).catch(() => {});
+  }
+}
+
+// ─── helpers ──────────────────────────────────────────────────
+
+async function streamFileToDisk(file: File, dest: string): Promise<void> {
+  const fh = await open(dest, "w");
+  try {
+    // Convert the Web ReadableStream into a Node Readable and pipe
+    const nodeStream = Readable.fromWeb(file.stream() as unknown as import("stream/web").ReadableStream);
+    await pipeline(nodeStream, fh.createWriteStream());
+  } finally {
+    await fh.close().catch(() => {});
+  }
+}
+
+async function readFileAsArrayBuffer(path: string): Promise<ArrayBuffer> {
+  // Stream the file into an ArrayBuffer. Used for files we already know
+  // are tiny (post-ffmpeg, < 25MB). Returning ArrayBuffer (not Uint8Array)
+  // makes the Blob constructor accept it cleanly across Node/DOM typings.
+  const chunks: Buffer[] = [];
+  await new Promise<void>((resolve, reject) => {
+    const stream = createReadStream(path);
+    stream.on("data", (c: Buffer | string) =>
+      chunks.push(typeof c === "string" ? Buffer.from(c) : c)
+    );
+    stream.on("end", resolve);
+    stream.on("error", reject);
+  });
+  const merged = Buffer.concat(chunks);
+  const out = new ArrayBuffer(merged.byteLength);
+  new Uint8Array(out).set(merged);
+  return out;
+}
+
+function extFromMime(mime: string): string {
+  const m = mime.toLowerCase();
+  if (m.includes("mp4")) return ".mp4";
+  if (m.includes("webm")) return ".webm";
+  if (m.includes("quicktime") || m.includes("mov")) return ".mov";
+  if (m.includes("mpeg")) return ".mpeg";
+  if (m.includes("mp3")) return ".mp3";
+  if (m.includes("wav")) return ".wav";
+  if (m.includes("m4a") || m.includes("aac")) return ".m4a";
+  if (m.includes("ogg")) return ".ogg";
+  if (m.includes("flac")) return ".flac";
+  if (m.includes("matroska") || m.includes("mkv")) return ".mkv";
+  return ".bin";
+}
+
+function imageAnalysisPrompt(campaignName: string, caption?: string): string {
+  return `Você é um estrategista sênior de marketing digital com 15 anos de experiência. Analise esta imagem do anúncio/campanha "${campaignName}" com profundidade cirúrgica.
 
 Retorne a análise EXATAMENTE neste formato:
 
@@ -223,56 +361,11 @@ Liste 3-4 erros que a IA deve evitar ao atender leads dessa campanha (promessas 
 📊 DADOS TÉCNICOS
 Plataforma provável (Meta Ads, Google, TikTok), formato do criativo, CTA identificado, e landing page provável.
 ${caption ? `\nLegenda/Copy do anúncio: ${caption}` : ""}
-Responda em português do Brasil. Seja específico — quanto mais detalhado, melhor a IA vai atender os leads.`,
-                },
-              ],
-            },
-          ],
-        }),
-      });
+Responda em português do Brasil. Seja específico — quanto mais detalhado, melhor a IA vai atender os leads.`;
+}
 
-      if (!visionRes.ok) {
-        const err = await visionRes.text();
-        console.error("Vision error:", err);
-        return NextResponse.json({ error: "VISION_FAILED", detail: err }, { status: 502 });
-      }
-
-      const visionData = await visionRes.json();
-      contentToAnalyze = visionData.choices?.[0]?.message?.content || "";
-
-      // Image already analyzed, return directly
-      return NextResponse.json({ analysis: contentToAnalyze, transcription: contentToAnalyze });
-    }
-
-    // ═══════════════════════════════════════
-    // 3. TEXT → direct
-    // ═══════════════════════════════════════
-    else if (type === "text" && text) {
-      contentToAnalyze = text;
-    }
-
-    // No content
-    else {
-      return NextResponse.json({ error: "NO_CONTENT" }, { status: 400 });
-    }
-
-    // ═══════════════════════════════════════
-    // Final GPT-4o analysis
-    // ═══════════════════════════════════════
-    const analysisRes = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "gpt-4o",
-        max_tokens: 2000,
-        temperature: 0.4,
-        messages: [
-          {
-            role: "system",
-            content: `Você é um estrategista sênior de marketing digital com 15 anos de experiência analisando campanhas de alta performance. Analise o conteúdo dessa campanha com profundidade cirúrgica — sua análise vai alimentar uma IA de vendas que precisa atender leads em tempo real.
+function finalAnalysisSystemPrompt(): string {
+  return `Você é um estrategista sênior de marketing digital com 15 anos de experiência analisando campanhas de alta performance. Analise o conteúdo dessa campanha com profundidade cirúrgica — sua análise vai alimentar uma IA de vendas que precisa atender leads em tempo real.
 
 Retorne a análise EXATAMENTE neste formato:
 
@@ -303,37 +396,17 @@ Liste 4-5 coisas que a IA NÃO pode fazer:
 📊 INTELIGÊNCIA COMPETITIVA
 Com base no conteúdo, infira: nível de sofisticação do marketing (iniciante/intermediário/avançado), plataforma provável de veiculação, e sugestões de melhoria para a campanha.
 
-Seja extremamente específico e detalhado. Quanto mais precisa sua análise, melhor a IA vai converter leads em vendas. Responda em português do Brasil.`,
-          },
-          {
-            role: "user",
-            content: `Campanha: "${campaignName}"
+Seja extremamente específico e detalhado. Quanto mais precisa sua análise, melhor a IA vai converter leads em vendas. Responda em português do Brasil.`;
+}
+
+function finalAnalysisUserPrompt(campaignName: string, content: string): string {
+  return `Campanha: "${campaignName}"
 
 Conteúdo transcrito/extraído da campanha (pode ser um vídeo de vendas, áudio de pitch, copy de anúncio, ou script):
 
 ---
-${contentToAnalyze}
+${content}
 ---
 
-Analise com profundidade. Essa análise vai ser usada para treinar uma IA de vendas que vai atender os leads dessa campanha em tempo real via WhatsApp, Email e SMS.`,
-          },
-        ],
-      }),
-    });
-
-    if (!analysisRes.ok) {
-      const err = await analysisRes.text();
-      console.error("GPT error:", err);
-      return NextResponse.json({ error: "ANALYSIS_FAILED", detail: err }, { status: 502 });
-    }
-
-    const analysisData = await analysisRes.json();
-    const analysis = analysisData.choices?.[0]?.message?.content || "Não foi possível analisar.";
-
-    return NextResponse.json({ analysis, transcription: contentToAnalyze });
-  } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : "Unknown error";
-    console.error("Campaign analysis error:", msg);
-    return NextResponse.json({ error: "ANALYSIS_FAILED", detail: msg }, { status: 500 });
-  }
+Analise com profundidade. Essa análise vai ser usada para treinar uma IA de vendas que vai atender os leads dessa campanha em tempo real via WhatsApp, Email e SMS.`;
 }
