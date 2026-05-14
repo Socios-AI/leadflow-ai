@@ -108,6 +108,7 @@ export async function POST(req: NextRequest) {
         temperature: 0.7,
         max_tokens: 1000,
         persona,
+        updated_at: new Date().toISOString(),
       });
       if (error) throw new Error(`insert ai_config failed: ${error.message}`);
     }

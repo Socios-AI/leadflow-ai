@@ -227,9 +227,9 @@ async function provisionTenant(input: ProvisionInput): Promise<ProvisionedTenant
     "-" +
     Date.now().toString(36);
 
-  // Use Supabase REST inserts. We can't do a multi-statement transaction over
-  // REST, but the schema's foreign-key cascades + the fact that this only
-  // runs on first sign-in make ordering correctness sufficient.
+  // Supabase REST inserts don't trigger Prisma's @updatedAt, so we pass
+  // updated_at explicitly to satisfy the NOT NULL constraint.
+  const now = new Date().toISOString();
 
   const userId = input.existingUserId || cuid();
   if (!input.existingUserId) {
@@ -250,6 +250,7 @@ async function provisionTenant(input: ProvisionInput): Promise<ProvisionedTenant
     plan: "FREE",
     locale: "pt",
     timezone: "America/Sao_Paulo",
+    updated_at: now,
   });
   if (accErr) throw new Error(`provision account failed: ${accErr.message}`);
 
@@ -270,6 +271,7 @@ async function provisionTenant(input: ProvisionInput): Promise<ProvisionedTenant
       "You are a professional sales assistant. Be natural, helpful, and guide leads toward conversion.",
     temperature: 0.7,
     max_tokens: 1000,
+    updated_at: now,
   });
   if (cfgErr) {
     // Non-fatal — ai_config can be created later in onboarding.

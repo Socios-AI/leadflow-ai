@@ -195,6 +195,10 @@ export async function POST(req: NextRequest) {
       created.authUserId = authData.user.id;
     }
 
+    // Prisma fills updated_at on Prisma writes via @updatedAt, but raw
+    // Supabase REST inserts do NOT — pass it explicitly here.
+    const now = new Date().toISOString();
+
     // ── 2. Local user row ──
     step = "insert_users";
     const userId = cuid();
@@ -221,6 +225,7 @@ export async function POST(req: NextRequest) {
       timezone: "America/Sao_Paulo",
       max_users: maxUsers,
       created_by_id: me.userId,
+      updated_at: now,
     });
     if (aErr) throw new Error(`accounts insert: ${aErr.message} (code: ${aErr.code || "?"})`);
     created.accountId = accountId;
@@ -249,6 +254,7 @@ export async function POST(req: NextRequest) {
         "Você é um assistente de vendas profissional. Atenda os leads com naturalidade, entenda a necessidade e conduza ao próximo passo.",
       temperature: 0.7,
       max_tokens: 1000,
+      updated_at: now,
     });
     if (cfgErr) {
       log.warn("ai_config insert failed (non-fatal)", { err: cfgErr.message });
