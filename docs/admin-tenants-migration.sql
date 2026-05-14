@@ -21,12 +21,15 @@ END $$;
 ALTER TABLE "users"
 ADD COLUMN IF NOT EXISTS "platform_role" "PlatformRole" NOT NULL DEFAULT 'USER';
 
--- ── 3. accounts.max_users + accounts.created_by_id ──
+-- ── 3. accounts.max_users + accounts.created_by_id + onboarding ──
 ALTER TABLE "accounts"
 ADD COLUMN IF NOT EXISTS "max_users" INTEGER NOT NULL DEFAULT 5;
 
 ALTER TABLE "accounts"
 ADD COLUMN IF NOT EXISTS "created_by_id" TEXT;
+
+ALTER TABLE "accounts"
+ADD COLUMN IF NOT EXISTS "onboarding_completed_at" TIMESTAMPTZ;
 
 CREATE INDEX IF NOT EXISTS "accounts_created_by_id_idx" ON "accounts"("created_by_id");
 

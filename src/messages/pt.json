@@ -84,7 +84,8 @@
       "unauthorized": "Sessão expirada. Faça login novamente.",
       "forbidden": "Você não tem permissão para esta ação.",
       "network": "Erro de conexão. Tente novamente.",
-      "generic": "Erro interno. Tente novamente."
+      "generic": "Erro interno. Tente novamente.",
+      "internal_error": "Erro interno do servidor. Veja o detalhe abaixo."
     }
   },
   "auth": {

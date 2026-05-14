@@ -84,7 +84,8 @@
       "unauthorized": "Session expired. Sign in again.",
       "forbidden": "You don't have permission for this action.",
       "network": "Connection error. Try again.",
-      "generic": "Internal error. Try again."
+      "generic": "Internal error. Try again.",
+      "internal_error": "Server error. See the detail below."
     }
   },
   "auth": {

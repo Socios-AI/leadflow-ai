@@ -112,10 +112,15 @@ export async function POST(req: NextRequest) {
     accountMemberId: null as string | null,
     aiConfigId: null as string | null,
   };
+  // Used to attribute the failure in the response so the operator knows
+  // where to look — they see this in the UI when something blows up.
+  let step: string = "init";
   const sb = getSupabaseAdmin();
 
   try {
+    step = "require_super_admin";
     const me = await requireSuperAdminOrHigher();
+    step = "parse_body";
     const body = (await req.json().catch(() => ({}))) as CreateTenantBody;
 
     const companyName = (body.companyName || "").trim();
@@ -137,6 +142,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "weak_password" }, { status: 400 });
 
     // ── Detect existing email and tell apart real conflict vs orphan ──
+    step = "find_existing";
     const existing = await findExistingByEmail(ownerEmail);
     if (existing.complete) {
       return NextResponse.json(
@@ -150,10 +156,12 @@ export async function POST(req: NextRequest) {
         email: ownerEmail,
         orphan: existing.partial,
       });
+      step = "cleanup_orphan";
       await cleanupOrphan(existing.partial);
     }
 
     // ── 1. Auth user ──
+    step = "create_auth_user";
     const { data: authData, error: authError } =
       await sb.auth.admin.createUser({
         email: ownerEmail,
@@ -188,6 +196,7 @@ export async function POST(req: NextRequest) {
     }
 
     // ── 2. Local user row ──
+    step = "insert_users";
     const userId = cuid();
     const { error: uErr } = await sb.from("users").insert({
       id: userId,
@@ -196,10 +205,11 @@ export async function POST(req: NextRequest) {
       name: ownerName,
       platform_role: "USER",
     });
-    if (uErr) throw new Error(`users insert: ${uErr.message}`);
+    if (uErr) throw new Error(`users insert: ${uErr.message} (code: ${uErr.code || "?"})`);
     created.userRowId = userId;
 
     // ── 3. Account ──
+    step = "insert_accounts";
     const accountId = cuid();
     const slug = makeSlug(companyName);
     const { error: aErr } = await sb.from("accounts").insert({
@@ -212,10 +222,11 @@ export async function POST(req: NextRequest) {
       max_users: maxUsers,
       created_by_id: me.userId,
     });
-    if (aErr) throw new Error(`accounts insert: ${aErr.message}`);
+    if (aErr) throw new Error(`accounts insert: ${aErr.message} (code: ${aErr.code || "?"})`);
     created.accountId = accountId;
 
     // ── 4. Membership ──
+    step = "insert_account_members";
     const memberId = cuid();
     const { error: mErr } = await sb.from("account_members").insert({
       id: memberId,
@@ -223,10 +234,11 @@ export async function POST(req: NextRequest) {
       user_id: userId,
       role: "OWNER",
     });
-    if (mErr) throw new Error(`account_members insert: ${mErr.message}`);
+    if (mErr) throw new Error(`account_members insert: ${mErr.message} (code: ${mErr.code || "?"})`);
     created.accountMemberId = memberId;
 
     // ── 5. AI config (non-fatal but we track it for rollback parity) ──
+    step = "insert_ai_configs";
     const aiConfigId = cuid();
     const { error: cfgErr } = await sb.from("ai_configs").insert({
       id: aiConfigId,
@@ -279,12 +291,20 @@ export async function POST(req: NextRequest) {
       { status: 201 }
     );
   } catch (err) {
+    const errMsg = err instanceof Error ? err.message : String(err);
     log.error("tenant create failed — rolling back", {
-      err: err instanceof Error ? err.message : String(err),
+      step,
+      err: errMsg,
       created,
     });
     await rollback(created);
-    return mapError(err);
+    if (err instanceof AdminAuthError) {
+      return NextResponse.json({ error: err.code, step }, { status: err.status });
+    }
+    return NextResponse.json(
+      { error: "internal_error", step, message: errMsg },
+      { status: 500 }
+    );
   }
 }
 
@@ -455,10 +475,15 @@ function mapError(err: unknown): NextResponse {
   if (err instanceof AdminAuthError) {
     return NextResponse.json({ error: err.code }, { status: err.status });
   }
-  log.error("tenants handler crashed", { err });
-  const msg = err instanceof Error ? err.message : "internal_error";
+  const errorObj = err instanceof Error ? err : new Error(String(err));
+  // Log stack trace so we can pinpoint where it blew up
+  log.error("tenants handler crashed", {
+    message: errorObj.message,
+    name: errorObj.name,
+    stack: errorObj.stack?.split("\n").slice(0, 6).join(" | "),
+  });
   return NextResponse.json(
-    { error: "internal_error", message: msg },
+    { error: "internal_error", message: errorObj.message },
     { status: 500 }
   );
 }

@@ -534,12 +534,30 @@ function CreateTenantModal({
       });
       const data = await res.json();
       if (!res.ok) {
-        setError(t(`errors.${data.error || "generic"}` as never) || data.error);
+        // Use the translated label when we have one; otherwise surface the
+        // raw message from the server so internal_error doesn't show up as
+        // an opaque code on screen.
+        const translated = t(`errors.${data.error || "generic"}` as never);
+        const looksTranslated =
+          typeof translated === "string" &&
+          !translated.includes(`errors.${data.error}`) &&
+          translated !== data.error;
+        // For internal_error we ALWAYS want the raw server message — the
+        // translation is useless here, the operator needs to see the cause.
+        const isInternalError = data.error === "internal_error";
+        const baseMessage = isInternalError
+          ? (data.message || t("errors.generic"))
+          : (looksTranslated ? translated : data.message || data.error || t("errors.generic"));
+        const stepInfo = data.step ? ` [${data.step}]` : "";
+        setError(baseMessage + stepInfo);
+        // Log full payload so the operator can copy it from devtools
+        console.error("[admin/tenants] create failed", { status: res.status, data });
         return;
       }
       setResult(data);
       setStep("success");
-    } catch {
+    } catch (err) {
+      console.error("[admin/tenants] network error", err);
       setError(t("errors.network"));
     } finally {
       setSubmitting(false);
@@ -694,11 +712,19 @@ function CreateSuperAdminModal({
       });
       const data = await res.json();
       if (!res.ok) {
-        setError(t(`errors.${data.error || "generic"}` as never) || data.error);
+        const translated = t(`errors.${data.error || "generic"}` as never);
+        const looksTranslated =
+          typeof translated === "string" &&
+          !translated.includes(`errors.${data.error}`) &&
+          translated !== data.error;
+        const fallback = data.message || data.error || t("errors.generic");
+        setError(looksTranslated ? translated : fallback);
+        console.error("[admin/super-admins] create failed", { status: res.status, data });
         return;
       }
       setResult(data);
-    } catch {
+    } catch (err) {
+      console.error("[admin/super-admins] network error", err);
       setError(t("errors.network"));
     } finally {
       setSubmitting(false);
