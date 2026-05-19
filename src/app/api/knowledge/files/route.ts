@@ -1,13 +1,13 @@
 // src/app/api/knowledge/files/route.ts
 //
 // Upload, list, update and delete knowledge files. Files live in the
-// `knowledge-files` Supabase Storage bucket and are referenced by the
-// AI engine when answering leads.
+// `knowledge-files` Supabase Storage bucket and are referenced by the AI
+// engine when answering leads. Text is extracted in-process via the
+// extractor (PDF, DOCX, XLSX, PPTX and plain text are supported).
 //
-// Plain text files (.txt, .md, .csv) are parsed inline so the AI can read
-// them directly. PDFs / DOCX are stored as references — the title and
-// description are injected into the system prompt and the file is sent to
-// the lead via signed URL when asked.
+// Extraction never blocks the upload: if the parser fails or the format is
+// unsupported, the file is still stored as a reference and the user is
+// notified via a soft warning.
 
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/db/prisma";
@@ -18,18 +18,13 @@ import {
   createSignedUrl,
 } from "@/lib/storage/supabase-storage";
 import { logger } from "@/lib/logger";
+import { extractTextFromFile } from "@/lib/knowledge/extract";
 
 const log = logger.child({ module: "api/knowledge-files" });
-const MAX_FILE_BYTES = 50 * 1024 * 1024; // 50 MB per file
-const TEXT_MIMES = new Set([
-  "text/plain",
-  "text/markdown",
-  "text/csv",
-  "application/json",
-]);
+const MAX_FILE_BYTES = 50 * 1024 * 1024;
 
 export const runtime = "nodejs";
-export const maxDuration = 120;
+export const maxDuration = 300;
 
 export async function GET() {
   const session = await getSession();
@@ -46,14 +41,22 @@ export async function GET() {
       sizeBytes: true,
       category: true,
       storagePath: true,
+      extractedText: true,
       createdAt: true,
     },
   });
 
-  // Refresh signed URLs (storage signed URLs expire — generate fresh ones on list)
   const enriched = await Promise.all(
     files.map(async (f) => ({
-      ...f,
+      id: f.id,
+      title: f.title,
+      description: f.description,
+      mimeType: f.mimeType,
+      sizeBytes: f.sizeBytes,
+      category: f.category,
+      createdAt: f.createdAt,
+      indexed: !!(f.extractedText && f.extractedText.length > 0),
+      indexedChars: f.extractedText?.length ?? 0,
       url: await createSignedUrl("knowledge-files", f.storagePath).catch(() => null),
     }))
   );
@@ -94,15 +97,12 @@ export async function POST(req: NextRequest) {
   const mime = file.type || "application/octet-stream";
   const buffer = Buffer.from(await file.arrayBuffer());
 
-  // Inline-parse plain text so the AI can read it without download
-  let extractedText: string | null = null;
-  if (TEXT_MIMES.has(mime) || /\.(txt|md|csv|json)$/i.test(file.name)) {
-    try {
-      extractedText = buffer.toString("utf8").slice(0, 200_000);
-    } catch {
-      extractedText = null;
-    }
-  }
+  // Extract text first so the AI sees the file the moment it's stored.
+  const extraction = await extractTextFromFile({
+    buffer,
+    mimeType: mime,
+    fileName: file.name,
+  });
 
   try {
     const { storagePath } = await uploadToBucket(
@@ -121,13 +121,24 @@ export async function POST(req: NextRequest) {
         storagePath,
         mimeType: mime,
         sizeBytes: file.size,
-        extractedText,
+        extractedText: extraction.text,
         category,
       },
     });
 
     const signedUrl = await createSignedUrl("knowledge-files", storagePath);
-    return NextResponse.json({ ...row, url: signedUrl }, { status: 201 });
+    return NextResponse.json(
+      {
+        ...row,
+        url: signedUrl,
+        indexed: !!extraction.text,
+        indexedChars: extraction.text?.length ?? 0,
+        extractionWarning: extraction.text
+          ? undefined
+          : extraction.error || "UNSUPPORTED_FORMAT_OR_EMPTY",
+      },
+      { status: 201 }
+    );
   } catch (err) {
     const detail = err instanceof Error ? err.message : String(err);
     log.error("upload failed", { detail });

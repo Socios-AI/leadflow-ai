@@ -74,7 +74,7 @@ export async function POST(req: NextRequest) {
       email?: string;
       name?: string;
       role?: RoleInput;
-      locale?: "pt" | "en" | "es";
+      locale?: "pt" | "en" | "es" | "it";
     };
     const email = (body.email || "").trim().toLowerCase();
     const memberName = (body.name || "").trim() || email.split("@")[0] || "";

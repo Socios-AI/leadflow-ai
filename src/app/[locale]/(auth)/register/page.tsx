@@ -352,11 +352,11 @@ export default function RegisterPage() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="STARTER">
-                      Starter — $29/{t("month")}
+                      Starter, $29/{t("month")}
                     </SelectItem>
-                    <SelectItem value="PRO">Pro — $79/{t("month")}</SelectItem>
+                    <SelectItem value="PRO">Pro, $79/{t("month")}</SelectItem>
                     <SelectItem value="ENTERPRISE">
-                      Enterprise — $199/{t("month")}
+                      Enterprise, $199/{t("month")}
                     </SelectItem>
                   </SelectContent>
                 </Select>

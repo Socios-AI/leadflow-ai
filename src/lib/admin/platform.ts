@@ -3,11 +3,11 @@
 // Platform-role guards and helpers used by the /admin tenants flow.
 //
 // Roles:
-//   USER         — default, no admin powers.
-//   SUPER_ADMIN  — can create tenants for clients. Sees ONLY tenants they
-//                  themselves created.
-//   HIPER_ADMIN  — system creator. Sees everything, can promote/demote
-//                  super admins, can see all tenants from all super admins.
+//   USER         default, no admin powers.
+//   SUPER_ADMIN  can create tenants for clients. Sees ONLY tenants they
+//                themselves created.
+//   HIPER_ADMIN  system creator. Sees everything, can promote/demote
+//                super admins, can see all tenants from all super admins.
 
 import { getSession, type Session, type PlatformRole } from "@/lib/auth/session";
 
@@ -42,17 +42,11 @@ export async function requireHiperAdmin(): Promise<Session> {
   return s;
 }
 
-// ─────────────────────────────────────────────────────────────
-// Password generator + invite message template
-// ─────────────────────────────────────────────────────────────
+// Password generator + invite message templates
 
 const PASSWORD_ALPHABET =
   "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";
 
-/**
- * Generates a 14-char password using safe characters (no symbols, no
- * 0/O/I/l/1 — to avoid confusion when the client types it).
- */
 export function generatePassword(length = 14): string {
   const buf = new Uint32Array(length);
   if (typeof crypto !== "undefined" && "getRandomValues" in crypto) {
@@ -67,43 +61,54 @@ export function generatePassword(length = 14): string {
   return out;
 }
 
+type InviteLocale = "pt" | "en" | "es" | "it";
+
 export interface InviteMessageInput {
   appUrl: string;
   companyName: string;
   ownerName: string;
   email: string;
   password: string;
-  locale?: "pt" | "en" | "es";
+  locale?: InviteLocale;
 }
 
-const TEMPLATES: Record<"pt" | "en" | "es", (i: InviteMessageInput) => string> = {
-  pt: (i) => `Olá ${i.ownerName}! 👋
+const TEMPLATES: Record<InviteLocale, (i: InviteMessageInput) => string> = {
+  pt: (i) => `Ola ${i.ownerName},
 
-Sua conta no Marketing Digital AI foi criada para a ${i.companyName}.
+Sua conta na plataforma foi criada para a ${i.companyName}.
 
 Acesse: ${i.appUrl}/login
 E-mail: ${i.email}
-Senha temporária: ${i.password}
+Senha temporaria: ${i.password}
 
-Recomendamos que você troque a senha logo no primeiro acesso. Qualquer dúvida, é só responder esta mensagem.`,
-  en: (i) => `Hi ${i.ownerName}! 👋
+Recomendamos trocar a senha logo no primeiro acesso. Qualquer duvida responda esta mensagem.`,
+  en: (i) => `Hi ${i.ownerName},
 
-Your Marketing Digital AI account for ${i.companyName} is ready.
+Your platform account for ${i.companyName} is ready.
 
 Sign in: ${i.appUrl}/login
 Email: ${i.email}
 Temporary password: ${i.password}
 
 We recommend changing your password on first login. Reply to this message if anything is off.`,
-  es: (i) => `¡Hola ${i.ownerName}! 👋
+  es: (i) => `Hola ${i.ownerName},
 
-Tu cuenta de Marketing Digital AI para ${i.companyName} está lista.
+Tu cuenta de la plataforma para ${i.companyName} esta lista.
 
 Acceso: ${i.appUrl}/login
 Correo: ${i.email}
-Contraseña temporal: ${i.password}
+Contrasena temporal: ${i.password}
 
-Te recomendamos cambiar la contraseña en el primer acceso. Si algo no está bien, responde este mensaje.`,
+Te recomendamos cambiar la contrasena en el primer acceso. Si algo no esta bien responde este mensaje.`,
+  it: (i) => `Ciao ${i.ownerName},
+
+Il tuo account per ${i.companyName} e pronto.
+
+Accedi: ${i.appUrl}/login
+Email: ${i.email}
+Password temporanea: ${i.password}
+
+Ti consigliamo di cambiare la password al primo accesso. Per qualsiasi dubbio rispondi a questo messaggio.`,
 };
 
 export function buildInviteMessage(input: InviteMessageInput): string {
@@ -119,20 +124,20 @@ export interface TeamInviteInput {
   email: string;
   password: string;
   role: string;
-  locale?: "pt" | "en" | "es";
+  locale?: InviteLocale;
 }
 
-const TEAM_TEMPLATES: Record<"pt" | "en" | "es", (i: TeamInviteInput) => string> = {
-  pt: (i) => `Olá ${i.memberName}! 👋
+const TEAM_TEMPLATES: Record<InviteLocale, (i: TeamInviteInput) => string> = {
+  pt: (i) => `Ola ${i.memberName},
 
 ${i.inviterName} acabou de te adicionar como ${roleLabel(i.role, "pt")} no workspace ${i.workspaceName}.
 
 Acesse: ${i.appUrl}/login
 E-mail: ${i.email}
-Senha temporária: ${i.password}
+Senha temporaria: ${i.password}
 
 Recomendamos trocar a senha logo no primeiro acesso.`,
-  en: (i) => `Hi ${i.memberName}! 👋
+  en: (i) => `Hi ${i.memberName},
 
 ${i.inviterName} just added you as ${roleLabel(i.role, "en")} to the ${i.workspaceName} workspace.
 
@@ -141,22 +146,31 @@ Email: ${i.email}
 Temporary password: ${i.password}
 
 We recommend changing your password on first login.`,
-  es: (i) => `¡Hola ${i.memberName}! 👋
+  es: (i) => `Hola ${i.memberName},
 
 ${i.inviterName} te acaba de agregar como ${roleLabel(i.role, "es")} al workspace ${i.workspaceName}.
 
 Acceso: ${i.appUrl}/login
 Correo: ${i.email}
-Contraseña temporal: ${i.password}
+Contrasena temporal: ${i.password}
 
-Te recomendamos cambiar la contraseña en el primer acceso.`,
+Te recomendamos cambiar la contrasena en el primer acceso.`,
+  it: (i) => `Ciao ${i.memberName},
+
+${i.inviterName} ti ha appena aggiunto come ${roleLabel(i.role, "it")} nel workspace ${i.workspaceName}.
+
+Accedi: ${i.appUrl}/login
+Email: ${i.email}
+Password temporanea: ${i.password}
+
+Ti consigliamo di cambiare la password al primo accesso.`,
 };
 
-function roleLabel(role: string, locale: "pt" | "en" | "es"): string {
-  const map: Record<string, Record<string, string>> = {
-    OWNER: { pt: "proprietário", en: "owner", es: "propietario" },
-    ADMIN: { pt: "administrador", en: "admin", es: "administrador" },
-    MEMBER: { pt: "membro", en: "member", es: "miembro" },
+function roleLabel(role: string, locale: InviteLocale): string {
+  const map: Record<string, Record<InviteLocale, string>> = {
+    OWNER: { pt: "proprietario", en: "owner", es: "propietario", it: "proprietario" },
+    ADMIN: { pt: "administrador", en: "admin", es: "administrador", it: "amministratore" },
+    MEMBER: { pt: "membro", en: "member", es: "miembro", it: "membro" },
   };
   return map[role]?.[locale] || role.toLowerCase();
 }

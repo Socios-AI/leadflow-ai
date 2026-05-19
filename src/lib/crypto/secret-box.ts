@@ -20,7 +20,7 @@ import { createCipheriv, createDecipheriv, randomBytes, createHash } from "crypt
 
 const PREFIX = "enc:v1:";
 const ALG = "aes-256-gcm";
-const IV_LEN = 12; // 96-bit nonce — recommended for GCM
+const IV_LEN = 12; // 96-bit nonce, recommended for GCM
 const TAG_LEN = 16;
 
 let cachedKey: Buffer | null = null;
@@ -49,7 +49,10 @@ function loadKey(): Buffer {
     return cachedKey;
   }
 
-  // Dev fallback — never use in prod
+  // Dev fallback, never use in prod. Note: the literal "leadflow" string is
+  // intentionally preserved here, it's the salt that derives the encryption
+  // key for already-stored secrets. Renaming the salt would silently break
+  // decryption of every previously-encrypted secret in the database.
   const fallback =
     process.env.NEXTAUTH_SECRET ||
     process.env.SUPABASE_SERVICE_ROLE_KEY ||
@@ -75,7 +78,7 @@ export function encryptSecret(plaintext: string): string {
 
 export function decryptSecret(value: string | null | undefined): string {
   if (!value) return "";
-  if (!value.startsWith(PREFIX)) return value; // legacy plaintext — handled by caller
+  if (!value.startsWith(PREFIX)) return value; // legacy plaintext, handled by caller
 
   const parts = value.slice(PREFIX.length).split(":");
   if (parts.length !== 3) {

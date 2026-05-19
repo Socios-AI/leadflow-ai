@@ -361,11 +361,11 @@ Liste 3-4 erros que a IA deve evitar ao atender leads dessa campanha (promessas 
 📊 DADOS TÉCNICOS
 Plataforma provável (Meta Ads, Google, TikTok), formato do criativo, CTA identificado, e landing page provável.
 ${caption ? `\nLegenda/Copy do anúncio: ${caption}` : ""}
-Responda em português do Brasil. Seja específico — quanto mais detalhado, melhor a IA vai atender os leads.`;
+Responda em português do Brasil. Seja específico, quanto mais detalhado, melhor a IA vai atender os leads.`;
 }
 
 function finalAnalysisSystemPrompt(): string {
-  return `Você é um estrategista sênior de marketing digital com 15 anos de experiência analisando campanhas de alta performance. Analise o conteúdo dessa campanha com profundidade cirúrgica — sua análise vai alimentar uma IA de vendas que precisa atender leads em tempo real.
+  return `Você é um estrategista sênior de marketing digital com 15 anos de experiência analisando campanhas de alta performance. Analise o conteúdo dessa campanha com profundidade cirúrgica, sua análise vai alimentar uma IA de vendas que precisa atender leads em tempo real.
 
 Retorne a análise EXATAMENTE neste formato:
 

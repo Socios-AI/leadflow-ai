@@ -285,7 +285,7 @@ function PrimarySection({
           </div>
         </div>
 
-        {/* KPI strip — vertical on mobile, 2x2 on desktop */}
+        {/* KPI strip, vertical on mobile, 2x2 on desktop */}
         <div className="grid grid-cols-2 gap-x-6 gap-y-5 lg:border-l lg:border-border lg:pl-10">
           <Stat
             value={kpis.totalLeads}

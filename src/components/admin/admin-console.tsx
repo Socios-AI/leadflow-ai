@@ -511,7 +511,7 @@ function CreateTenantModal({
   const [ownerEmail, setOwnerEmail] = useState("");
   const [maxUsers, setMaxUsers] = useState(5);
   const [plan, setPlan] = useState<"FREE" | "STARTER" | "PRO" | "ENTERPRISE">("STARTER");
-  const [locale, setLocale] = useState<"pt" | "en" | "es">("pt");
+  const [locale, setLocale] = useState<"pt" | "en" | "es" | "it">("pt");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<CreatedTenantPayload | null>(null);

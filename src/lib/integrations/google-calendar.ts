@@ -90,7 +90,7 @@ export async function persistIntegration(
 ): Promise<void> {
   if (!tokens.refresh_token) {
     throw new Error(
-      "Google did not return a refresh_token. The user may have already authorized the app — revoke access at https://myaccount.google.com/permissions and try again."
+      "Google did not return a refresh_token. The user may have already authorized the app, revoke access at https://myaccount.google.com/permissions and try again."
     );
   }
   const email = await fetchUserEmail(tokens.access_token);

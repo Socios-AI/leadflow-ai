@@ -91,7 +91,7 @@ export async function extractAudioFromPath(inputPath: string): Promise<Extracted
       "-i", inputPath,
       "-vn",                      // strip video
       "-ac", "1",                 // mono
-      "-ar", "16000",             // 16 kHz — Whisper's internal sample rate
+      "-ar", "16000",             // 16 kHz, Whisper's internal sample rate
       "-b:a", "32k",              // 32 kbps is plenty for speech
       "-f", "mp3",
       "-y",

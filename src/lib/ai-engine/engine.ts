@@ -13,6 +13,7 @@ import {
 import { getIntegrationStatus as getMetaStatus } from "@/lib/integrations/meta";
 import { resolveLanguage, type ResolvedLanguage } from "@/lib/ai-engine/language";
 import { createSignedUrl } from "@/lib/storage/supabase-storage";
+import { buildKnowledgeBlock } from "@/lib/knowledge/retrieval";
 
 type Channel = "WHATSAPP" | "EMAIL" | "SMS";
 
@@ -113,7 +114,18 @@ export class AIEngine {
       campaignCountry: params.campaignCountry,
     });
 
-    const knowledgeBlock = await loadKnowledgeBlock(params.accountId);
+    const knowledgeQuery = [
+      params.campaignInfo || "",
+      params.leadName || "",
+      params.leadSource,
+    ]
+      .filter(Boolean)
+      .join(" ");
+    const knowledgeBlock = await buildKnowledgeBlock(
+      params.accountId,
+      knowledgeQuery,
+      { budgetChars: 6000, maxChunks: 5 }
+    );
 
     const systemPrompt = buildFirstContactSystemPrompt(
       cfg,
@@ -170,8 +182,21 @@ export class AIEngine {
     });
 
     // ── Knowledge base + media catalog ──
+    // Retrieve only the chunks most relevant to the lead's recent turns.
+    // We seed the query with the last 3 inbound messages so multi-turn
+    // context still drives retrieval.
+    const recentInbound = [
+      ...params.conversationHistory
+        .filter((m) => m.role === "user")
+        .slice(-3)
+        .map((m) => m.content),
+      params.currentMessage,
+    ].join(" ");
     const [knowledgeBlock, mediaCatalog] = await Promise.all([
-      loadKnowledgeBlock(params.accountId),
+      buildKnowledgeBlock(params.accountId, recentInbound, {
+        budgetChars: 10000,
+        maxChunks: 6,
+      }),
       loadMediaCatalog(params.accountId),
     ]);
     const mediaBlock = buildMediaBlock(mediaCatalog);
@@ -278,7 +303,7 @@ export class AIEngine {
   ): Promise<string> {
     const key = process.env.OPENAI_API_KEY;
     if (!key) {
-      console.warn("[AIEngine] OPENAI_API_KEY missing — skipping transcription");
+      console.warn("[AIEngine] OPENAI_API_KEY missing, skipping transcription");
       return "";
     }
 
@@ -390,38 +415,6 @@ interface MediaCatalogItem {
   storagePath: string;
 }
 
-async function loadKnowledgeBlock(accountId: string): Promise<string> {
-  // Text entries — always cheap, always injected
-  const entries = await prisma.knowledgeEntry.findMany({
-    where: { accountId },
-    select: { title: true, content: true },
-    take: 50,
-    orderBy: { updatedAt: "desc" },
-  });
-
-  // Uploaded files — only the ones with inline text (txt/md/csv).
-  // PDFs/DOCX live as references; the file is exposed via the media
-  // catalog if the operator also added it there.
-  const files = await prisma.knowledgeFile.findMany({
-    where: { accountId, NOT: { extractedText: null } },
-    select: { title: true, description: true, extractedText: true },
-    take: 25,
-    orderBy: { updatedAt: "desc" },
-  });
-
-  const parts: string[] = [];
-  for (const e of entries) {
-    parts.push(`### ${e.title}\n${e.content.trim()}`);
-  }
-  for (const f of files) {
-    const head = f.description ? `${f.title} — ${f.description}` : f.title;
-    parts.push(`### ${head}\n${(f.extractedText || "").trim().slice(0, 8000)}`);
-  }
-  if (parts.length === 0) return "";
-
-  return `\nBASE DE CONHECIMENTO (consulte antes de responder, NÃO invente o que não estiver aqui):\n${parts.join("\n\n")}\n`;
-}
-
 async function loadMediaCatalog(accountId: string): Promise<MediaCatalogItem[]> {
   const items = await prisma.assistantMedia.findMany({
     where: { accountId, isActive: true },
@@ -445,7 +438,7 @@ function buildMediaBlock(items: MediaCatalogItem[]): string {
   const list = items
     .map(
       (m, i) =>
-        `${i + 1}. [${m.kind}] "${m.name}" — ${m.description}\n   QUANDO ENVIAR: ${m.sendInstruction}`
+        `${i + 1}. [${m.kind}] "${m.name}", ${m.description}\n   QUANDO ENVIAR: ${m.sendInstruction}`
     )
     .join("\n");
   return `\nARQUIVOS QUE VOCÊ PODE ENVIAR AO LEAD:
@@ -528,7 +521,7 @@ IDIOMA: ${languageRule}
 CANAL: ${channel === "WHATSAPP" ? "WhatsApp (mensagem curta e informal)" : channel === "EMAIL" ? "Email" : "SMS (ultra-curto)"}
 
 ════════════════════════════════════════════════════
-FORMATO DE RESPOSTA — REGRA MAIS IMPORTANTE
+FORMATO DE RESPOSTA, REGRA MAIS IMPORTANTE
 ════════════════════════════════════════════════════
 Você NUNCA envia um textão em um balão só. No WhatsApp uma pessoa real manda várias mensagens curtas em sequência.
 
@@ -538,7 +531,7 @@ Regras:
 - Máximo 3 balões por resposta. Cada balão: 1 a 2 frases curtas.
 - Pense como se você estivesse digitando no celular: uma ideia por balão.
 - NUNCA envie listas numeradas, bullet points ou markdown (* ou - ou #). Isso é WhatsApp, não é documento.
-- Se a resposta é curta (uma frase simples), 1 balão só está ótimo — não force a divisão.
+- Se a resposta é curta (uma frase simples), 1 balão só está ótimo, não force a divisão.
 - Emoji: no máximo 1 por resposta inteira (não por balão), e só se fizer sentido no contexto.
 
 Exemplo bom:
@@ -572,8 +565,8 @@ COMPORTAMENTO
 - Nunca repita a saudação. Se você já disse "oi" antes, NÃO diga de novo. Entra direto no assunto.
 - Nunca repita textualmente o que o lead acabou de falar. Avance a conversa.
 - Nunca invente preço, prazo, política ou fato que não está no seu treinamento. Se não souber, diga "vou confirmar e te retorno".
-- Nunca use o nome do lead em TODA mensagem — use ocasionalmente.
-- Nunca diga que não consegue ouvir/processar áudio — o sistema já transcreveu pra você.
+- Nunca use o nome do lead em TODA mensagem, use ocasionalmente.
+- Nunca diga que não consegue ouvir/processar áudio, o sistema já transcreveu pra você.
 - Nunca envie o mesmo link duas vezes na mesma conversa.
 - Nunca faça pergunta que o lead acabou de responder.
 - Pode usar abreviações naturais de WhatsApp (vc, pra, tá, tb, tô) com moderação.
@@ -590,7 +583,7 @@ Exemplos:
 - "tô ocupado agora" → [FOLLOWUP:6h]
 - "volto semana que vem" → [FOLLOWUP:7d]
 
-Essa tag é REMOVIDA antes de enviar ao lead — ele nunca a vê. Só use quando fizer sentido real.`;
+Essa tag é REMOVIDA antes de enviar ao lead, ele nunca a vê. Só use quando fizer sentido real.`;
 }
 
 function buildFirstContactSystemPrompt(
@@ -646,7 +639,7 @@ function buildResponseSystemPrompt(
     ? "ATENÇÃO: O lead pediu atendimento humano ou demonstrou insatisfação séria. Avise com empatia que você vai conectar ele com um especialista agora e encerre sua resposta por aqui."
     : "";
   const conversionLine = flags.conversion
-    ? "ATENÇÃO: O lead demonstrou intenção clara de compra. Conduza o fechamento — confirme o que ele quer, colete os dados que faltam e indique o próximo passo concreto (link de pagamento, agendamento, proposta)."
+    ? "ATENÇÃO: O lead demonstrou intenção clara de compra. Conduza o fechamento, confirme o que ele quer, colete os dados que faltam e indique o próximo passo concreto (link de pagamento, agendamento, proposta)."
     : "";
 
   const schedulingBlock = flags.schedulingContext?.connected
@@ -740,8 +733,8 @@ function buildSchedulingBlock(ctx: SchedulingContext): string {
     : "  (sem horários disponíveis nos próximos 7 dias)";
 
   return `
-AGENDAMENTO GOOGLE CALENDAR — INSTRUÇÕES CRÍTICAS:
-Você pode agendar uma reunião de ${ctx.durationMinutes} min no calendário. Os slots abaixo já foram filtrados pelos horários comerciais e ocupações atuais do calendário — ofereça 2 ou 3 em linguagem natural ao lead.
+AGENDAMENTO GOOGLE CALENDAR, INSTRUÇÕES CRÍTICAS:
+Você pode agendar uma reunião de ${ctx.durationMinutes} min no calendário. Os slots abaixo já foram filtrados pelos horários comerciais e ocupações atuais do calendário, ofereça 2 ou 3 em linguagem natural ao lead.
 
 SLOTS DISPONÍVEIS (timezone ${ctx.timeZone}):
 ${slotList}
@@ -750,9 +743,9 @@ QUANDO O LEAD CONFIRMAR um horário específico:
 1) Confirme o horário em linguagem natural na sua resposta visível.
 2) No FINAL da sua resposta, adicione (sem anunciar) uma linha exatamente no formato:
 SCHEDULE: {"startISO":"<ISO>","endISO":"<ISO>","summary":"<título>","attendeeName":"<nome do lead>","attendeeEmail":"<email se o lead deu>"}
-3) Use EXATAMENTE os valores startISO/endISO de um dos slots acima — não invente horários.
+3) Use EXATAMENTE os valores startISO/endISO de um dos slots acima, não invente horários.
 4) Se o lead ainda estiver indeciso ou pedir outro horário, NÃO emita SCHEDULE. Apenas ofereça alternativas.
-5) A linha SCHEDULE é removida antes do envio ao lead — nunca a cite na fala visível.`;
+5) A linha SCHEDULE é removida antes do envio ao lead, nunca a cite na fala visível.`;
 }
 
 function formatSlotLabel(iso: string, tz: string): string {
@@ -1019,8 +1012,8 @@ function collectTags(flags: {
 
 function fallbackGreeting(name?: string): string {
   return name
-    ? `Oi ${name}! Tudo bem? Obrigado pelo contato — me conta rapidinho o que você procura?`
-    : "Oi! Tudo bem? Obrigado pelo contato — me conta rapidinho o que você procura?";
+    ? `Oi ${name}! Tudo bem? Obrigado pelo contato, me conta rapidinho o que você procura?`
+    : "Oi! Tudo bem? Obrigado pelo contato, me conta rapidinho o que você procura?";
 }
 
 // ════════════════════════════════════════════════════
@@ -1102,7 +1095,7 @@ function renderBusinessContext(ctx: BusinessContext): string {
     if (ctx.businessProduct)
       parts.push(`- Produto/Oferta principal: ${ctx.businessProduct}`);
     parts.push(
-      "Use estas informações para responder com autoridade. Nunca invente números, preços ou políticas que não estejam descritos aqui — se o lead perguntar algo que você não tem, diga que vai confirmar com o time."
+      "Use estas informações para responder com autoridade. Nunca invente números, preços ou políticas que não estejam descritos aqui, se o lead perguntar algo que você não tem, diga que vai confirmar com o time."
     );
     parts.push("");
   }

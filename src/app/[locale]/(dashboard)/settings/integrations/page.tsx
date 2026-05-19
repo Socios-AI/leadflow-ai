@@ -293,7 +293,7 @@ function MetaCard({ status, onRefresh }: { status: MetaStatus; onRefresh: () => 
             <StatusPill connected={status.connected} />
           </div>
           <p className="text-[12.5px] text-muted-foreground mt-0.5">
-            Facebook, Instagram e Lead Ads — conecte uma única vez e a IA passa a receber os leads em tempo real.
+            Facebook, Instagram e Lead Ads, conecte uma única vez e a IA passa a receber os leads em tempo real.
           </p>
         </div>
         {!status.connected ? (
@@ -949,7 +949,7 @@ function DocsSection() {
     {
       title: "Meta Lead Ads (Facebook / Instagram)",
       steps: [
-        "Conecte sua conta Meta na aba Conexões — a IA passa a receber os leads direto das campanhas.",
+        "Conecte sua conta Meta na aba Conexões, a IA passa a receber os leads direto das campanhas.",
         "Se preferir usar um intermediário (Zapier, Make, n8n), escolha o gatilho Facebook Lead Ads.",
         "Aponte o webhook da ferramenta para a URL da aba Fontes de leads.",
         "Inclua o header x-webhook-secret com o secret exibido.",

@@ -330,7 +330,7 @@ ${config.conversionTriggers.join(", ")}
 
 IMPORTANT GUIDELINES:
 - Be natural and human-like. NO robotic responses.
-- Keep messages concise — max 2-3 short paragraphs for WhatsApp.
+- Keep messages concise, max 2-3 short paragraphs for WhatsApp.
 - Don't use excessive emojis or exclamation marks.
 - Ask questions to understand the lead's needs.
 - Never hallucinate prices, features, or information you don't have.

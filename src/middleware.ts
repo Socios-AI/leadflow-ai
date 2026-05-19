@@ -66,9 +66,9 @@ export default async function middleware(req: NextRequest) {
   const intlResponse = intlMiddleware(req);
 
   // Extract path without locale prefix
-  const localeMatch = pathname.match(/^\/(pt|en|es)/);
+  const localeMatch = pathname.match(/^\/(pt|en|es|it)/);
   const locale = localeMatch?.[1] || "pt";
-  const pathWithoutLocale = pathname.replace(/^\/(pt|en|es)/, "") || "/";
+  const pathWithoutLocale = pathname.replace(/^\/(pt|en|es|it)/, "") || "/";
 
   const isAuthPath = AUTH_PATHS.some((p) => pathWithoutLocale.startsWith(p));
   const isPublicPath = PUBLIC_PATHS.some((p) => pathWithoutLocale.startsWith(p));

@@ -64,7 +64,7 @@ export async function PATCH(
       isAIEnabled: newState,
       message: newState
         ? "IA reativada nesta conversa"
-        : "IA pausada — controle manual ativado",
+        : "IA pausada, controle manual ativado",
     });
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : "Unknown error";

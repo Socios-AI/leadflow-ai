@@ -594,7 +594,7 @@ export default function PipelinePage() {
                   <label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground mb-2.5 block">
                     {t("step4.secondary")}{" "}
                     <span className="normal-case tracking-normal font-normal text-muted-foreground/70">
-                      — {tc("optional")}
+                     , {tc("optional")}
                     </span>
                   </label>
                   <div className="grid grid-cols-4 gap-2.5">

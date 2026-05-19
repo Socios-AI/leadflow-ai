@@ -49,7 +49,7 @@ interface AccountInfo {
   slug: string;
   plan: "FREE" | "STARTER" | "PRO" | "ENTERPRISE";
   timezone: string;
-  locale: "pt" | "en" | "es";
+  locale: "pt" | "en" | "es" | "it";
   memberCount: number;
   memberLimit: number;
   createdAt: string;
@@ -243,7 +243,7 @@ export default function SettingsPage() {
         <TeamTab
           members={members}
           account={account}
-          locale={locale as "pt" | "en" | "es"}
+          locale={locale as "pt" | "en" | "es" | "it"}
           onReload={reload}
           onToast={showToast}
         />
@@ -405,7 +405,7 @@ function WorkspaceTab({
   onSave,
 }: {
   account: AccountInfo;
-  onSave: (patch: { name?: string; timezone?: string; locale?: "pt" | "en" | "es" }) => Promise<void>;
+  onSave: (patch: { name?: string; timezone?: string; locale?: "pt" | "en" | "es" | "it" }) => Promise<void>;
 }) {
   const t = useTranslations("settings");
   const [name, setName] = useState(account.name);
@@ -453,7 +453,7 @@ function WorkspaceTab({
           <FormRow label={t("workspace.language")}>
             <Select
               value={accountLocale}
-              onValueChange={(v) => setAccountLocale(v as "pt" | "en" | "es")}
+              onValueChange={(v) => setAccountLocale(v as "pt" | "en" | "es" | "it")}
             >
               <SelectTrigger className="h-11">
                 <SelectValue />
@@ -529,7 +529,7 @@ function TeamTab({
 }: {
   members: Member[];
   account: AccountInfo;
-  locale: "pt" | "en" | "es";
+  locale: "pt" | "en" | "es" | "it";
   onReload: () => void;
   onToast: (msg: string, kind?: "ok" | "err") => void;
 }) {
@@ -684,7 +684,7 @@ function InviteMemberModal({
   onClose,
   onCreated,
 }: {
-  locale: "pt" | "en" | "es";
+  locale: "pt" | "en" | "es" | "it";
   onClose: () => void;
   onCreated: () => void;
 }) {
@@ -780,10 +780,10 @@ function InviteMemberModal({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="MEMBER">
-                  {t("team.roleMember")} — {t("team.roleMemberDesc")}
+                  {t("team.roleMember")}, {t("team.roleMemberDesc")}
                 </SelectItem>
                 <SelectItem value="ADMIN">
-                  {t("team.roleAdmin")} — {t("team.roleAdminDesc")}
+                  {t("team.roleAdmin")}, {t("team.roleAdminDesc")}
                 </SelectItem>
               </SelectContent>
             </Select>

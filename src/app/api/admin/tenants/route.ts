@@ -32,7 +32,7 @@ interface CreateTenantBody {
   password?: string;
   maxUsers?: number;
   plan?: "FREE" | "STARTER" | "PRO" | "ENTERPRISE";
-  locale?: "pt" | "en" | "es";
+  locale?: "pt" | "en" | "es" | "it";
 }
 
 export async function GET() {
@@ -174,7 +174,7 @@ export async function POST(req: NextRequest) {
       // orphan slipped past our cleanup. Try once more after a forced wipe.
       const msg = authError?.message?.toLowerCase() || "";
       if (msg.includes("already registered") || msg.includes("already exists")) {
-        log.warn("auth user already exists — forcing cleanup and retrying", {
+        log.warn("auth user already exists, forcing cleanup and retrying", {
           email: ownerEmail,
         });
         await cleanupByEmail(ownerEmail);
@@ -298,7 +298,7 @@ export async function POST(req: NextRequest) {
     );
   } catch (err) {
     const errMsg = err instanceof Error ? err.message : String(err);
-    log.error("tenant create failed — rolling back", {
+    log.error("tenant create failed, rolling back", {
       step,
       err: errMsg,
       created,

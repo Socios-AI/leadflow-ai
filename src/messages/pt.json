@@ -1,7 +1,7 @@
 {
   "admin": {
     "eyebrow": "Console de administração",
-    "titleHiper": "Plataforma — visão completa",
+    "titleHiper": "Plataforma, visão completa",
     "titleSuper": "Suas contas",
     "subtitleHiper": "Gerencie super admins e veja todas as contas da plataforma.",
     "subtitleSuper": "Crie e acompanhe as contas das empresas que você atende.",
@@ -186,7 +186,12 @@
     "send": "Enviar",
     "test": "Testar",
     "optional": "Opcional",
-    "required": "Obrigatório"
+    "required": "Obrigatório",
+    "copy": "Copiar",
+    "copied": "Copiado",
+    "copyFailed": "Falha ao copiar",
+    "rotate": "Rotacionar",
+    "notGenerated": "ainda nao gerado"
   },
   "status": {
     "NEW": "Novo",
@@ -234,7 +239,7 @@
       "step1Desc": "Defina o objetivo da IA, o canal e o tom da conversa.",
       "step1Cta": "Configurar funil",
       "step2Title": "Conecte um canal",
-      "step2Desc": "WhatsApp, e-mail ou SMS — escolha por onde a IA vai falar.",
+      "step2Desc": "WhatsApp, e-mail ou SMS, escolha por onde a IA vai falar.",
       "step2Cta": "Conectar canal",
       "step3Title": "Cadastre uma campanha",
       "step3Desc": "Suba o anúncio para a IA entender o que foi prometido ao lead.",
@@ -295,7 +300,7 @@
     "aiActive": "IA Ativa",
     "aiPaused": "IA Pausada",
     "reactivate": "Reativar",
-    "pausedBanner": "IA pausada — controle manual ativo.",
+    "pausedBanner": "IA pausada, controle manual ativo.",
     "noMessages": "Nenhuma mensagem",
     "aiWillStart": "A IA iniciará contato automaticamente",
     "writeMessage": "Escreva uma mensagem...",
@@ -369,7 +374,7 @@
     "connectionError": "Erro de conexão. Verifique sua internet.",
     "micError": "Não foi possível acessar o microfone.",
     "fileTooLargeUpload": "O arquivo tem {size} MB. O limite de upload é 1 GB. Comprima o arquivo ou envie um trecho.",
-    "audioTooLong": "O áudio extraído ficou em {size} MB, acima do limite do Whisper (25 MB). Isso normalmente acontece com mídias de mais de 100 minutos — corte em pedaços e envie separadamente.",
+    "audioTooLong": "O áudio extraído ficou em {size} MB, acima do limite do Whisper (25 MB). Isso normalmente acontece com mídias de mais de 100 minutos, corte em pedaços e envie separadamente.",
     "proxyTooLarge": "O servidor rejeitou o upload por tamanho. Tente um arquivo menor ou comprima antes de enviar.",
     "proxyTimeout": "O servidor demorou demais para responder. Tente novamente em alguns instantes ou com um arquivo menor.",
     "upstreamUnavailable": "O serviço de análise está indisponível no momento. Tente novamente em alguns minutos.",
@@ -728,7 +733,17 @@
       "testSent": "Email de teste enviado para",
       "testError": "Erro ao enviar teste",
       "disableConfirm": "Desativar o canal de Email?",
-      "disabled": "Email desativado"
+      "disabled": "Email desativado",
+      "senderNamePlaceholder": "Sua marca",
+      "inboundTitle": "Receber emails dos leads",
+      "inboundDesc": "Cada email novo vira um lead, a IA responde sozinha em qualquer hora do dia.",
+      "inboundInstructions": "Configure seu provedor de email (Resend Inbound, Postmark, Mailgun, Zapier ou Make) para enviar cada email recebido nesta URL. A IA vai responder automaticamente o lead.",
+      "inboundUrlLabel": "URL para o provedor",
+      "inboundSecretLabel": "Segredo (opcional)",
+      "inboundSecretHint": "Quando preenchido, exigimos o header x-webhook-secret igual a este valor.",
+      "rotateSecretConfirm": "Gerar um novo segredo? O atual deixa de funcionar imediatamente.",
+      "secretRotated": "Segredo atualizado",
+      "error": "Algo deu errado"
     },
     "sms": {
       "title": "SMS",
@@ -759,7 +774,11 @@
       "testSent": "SMS enviado para",
       "testError": "Erro ao enviar",
       "disableConfirm": "Desativar o canal de SMS?",
-      "disabled": "SMS desativado"
+      "disabled": "SMS desativado",
+      "inboundTitle": "Receber SMS dos leads",
+      "inboundDesc": "Cada mensagem nova vira um lead, a IA responde sozinha em qualquer hora do dia.",
+      "inboundInstructions": "Cole esta URL em Twilio Console, Phone Numbers, seu numero, Messaging, A message comes in. Selecione HTTP POST.",
+      "inboundOpenTwilio": "Abrir Twilio Console"
     }
   },
   "aiConfig": {
@@ -838,13 +857,13 @@
       "agendador": {
         "name": "O Agendador",
         "role": "Especialista em Agendamento",
-        "desc": "Qualifica rápido e agenda reunião com o closer humano. Não vende — garante que o lead certo chegue ao time.",
+        "desc": "Qualifica rápido e agenda reunião com o closer humano. Não vende, garante que o lead certo chegue ao time.",
         "bestFor": "High ticket, demos, consultorias personalizadas"
       },
       "rapido": {
         "name": "O Direto",
         "role": "Atendente Ágil",
-        "desc": "Respostas rápidas e objetivas. Sem enrolação. O lead sabe o que quer — dê a informação e o link.",
+        "desc": "Respostas rápidas e objetivas. Sem enrolação. O lead sabe o que quer, dê a informação e o link.",
         "bestFor": "E-commerce, infoprodutos, ticket baixo, promoções"
       }
     },
@@ -911,7 +930,13 @@
       "descriptionPlaceholder": "Tabela de preços completa, descontos por volume e política de reembolso",
       "categoryLabel": "Categoria",
       "cancel": "Cancelar",
-      "save": "Salvar"
+      "save": "Salvar",
+      "indexed": "Indexado",
+      "notIndexed": "Nao indexado",
+      "chars": "caracteres lidos pela IA",
+      "reindex": "Reindexar",
+      "reindexed": "Arquivo reindexado",
+      "reindexFailed": "Nao foi possivel ler o arquivo"
     },
     "mediaTab": {
       "title": "Mídias que a IA pode enviar",
@@ -939,7 +964,7 @@
       "descriptionHint": "Descreva o conteúdo para a IA saber o que está enviando",
       "descriptionPlaceholder": "PDF de 4 páginas com todos os planos, preços, condições e bônus do mês.",
       "sendInstructionLabel": "Quando a IA deve enviar?",
-      "sendInstructionHint": "Diga em linguagem natural — a IA vai seguir",
+      "sendInstructionHint": "Diga em linguagem natural, a IA vai seguir",
       "sendInstructionPlaceholder": "Quando o lead perguntar o preço, ou quando confirmar interesse e pedir mais detalhes da oferta.",
       "cancel": "Cancelar",
       "save": "Salvar"
@@ -1003,7 +1028,7 @@
       "subtitle": "Convide pessoas para colaborar dentro deste workspace.",
       "invite": "Adicionar membro",
       "members": "membros",
-      "atCap": "Limite atingido — faça upgrade do plano para adicionar mais.",
+      "atCap": "Limite atingido, faça upgrade do plano para adicionar mais.",
       "you": "você",
       "remove": "Remover",
       "confirmRemove": "Remover {name} da equipe?",

@@ -21,7 +21,7 @@ const registerSchema = z.object({
   password: z.string().min(8).max(72),
   companyName: z.string().min(2).max(100),
   plan: z.enum(["STARTER", "PRO", "ENTERPRISE"]).default("STARTER"),
-  locale: z.enum(["pt", "en", "es"]).default("pt"),
+  locale: z.enum(["pt", "en", "es", "it"]).default("pt"),
 });
 
 export async function POST(req: NextRequest) {

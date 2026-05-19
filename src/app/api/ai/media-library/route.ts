@@ -17,7 +17,7 @@ import {
 import { logger } from "@/lib/logger";
 
 const log = logger.child({ module: "api/media-library" });
-const MAX_FILE_BYTES = 100 * 1024 * 1024; // 100 MB — videos common in this bucket
+const MAX_FILE_BYTES = 100 * 1024 * 1024; // 100 MB, videos common in this bucket
 
 export const runtime = "nodejs";
 export const maxDuration = 120;

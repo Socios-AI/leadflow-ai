@@ -20,9 +20,10 @@ interface NavItem { href: string; icon: any; label: string; id?: string }
 interface NavGroup { label: string; icon: any; items: NavItem[]; defaultOpen?: boolean }
 
 const LOCALES = [
-  { code: 'pt' as const, flag: '🇧🇷', label: 'PT', name: 'Português' },
-  { code: 'en' as const, flag: '🇺🇸', label: 'EN', name: 'English' },
-  { code: 'es' as const, flag: '🇪🇸', label: 'ES', name: 'Español' },
+  { code: 'pt' as const, label: 'PT', name: 'Português' },
+  { code: 'en' as const, label: 'EN', name: 'English' },
+  { code: 'es' as const, label: 'ES', name: 'Español' },
+  { code: 'it' as const, label: 'IT', name: 'Italiano' },
 ]
 
 export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
@@ -56,7 +57,7 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
     else setTheme('light')
   }
 
-  function switchLocale(newLocale: 'pt' | 'en' | 'es') {
+  function switchLocale(newLocale: 'pt' | 'en' | 'es' | 'it') {
     router.replace(pathname, { locale: newLocale })
     setShowLangMenu(false)
   }
@@ -209,7 +210,7 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
           <div className="relative">
             <button onClick={() => setShowLangMenu(!showLangMenu)}
               className={cn("h-8 rounded-md flex items-center justify-center gap-1.5 hover:bg-muted/50 transition-all cursor-pointer", isCollapsed ? "w-8" : "px-2")}>
-              <span className="text-sm leading-none">{currentLocale.flag}</span>
+              <Globe className="w-3.5 h-3.5 text-[#909091]" />
               {!isCollapsed && <span className="text-[10px] font-bold text-[#909091]">{currentLocale.label}</span>}
             </button>
             {showLangMenu && (
@@ -223,7 +224,8 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
                       className={cn("w-full flex items-center gap-2 px-3 py-2 text-[12px] font-medium transition-colors cursor-pointer",
                         locale === loc.code ? "text-foreground bg-muted" : "text-[#909091] hover:text-foreground hover:bg-muted/50"
                       )}>
-                      <span className="text-sm">{loc.flag}</span><span>{loc.name}</span>
+                      <span className="text-[10px] font-mono text-muted-foreground/60 w-6">{loc.label}</span>
+                      <span>{loc.name}</span>
                     </button>
                   ))}
                 </div>
@@ -279,7 +281,7 @@ function SidebarNavLink({
       )}
       title={isCollapsed ? item.label : undefined}
     >
-      {/* Active indicator rail — only on expanded view */}
+      {/* Active indicator rail, only on expanded view */}
       {isActive && !isCollapsed && (
         <span
           className={cn(

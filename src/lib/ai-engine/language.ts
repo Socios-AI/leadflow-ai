@@ -47,7 +47,7 @@ const COUNTRY_TO_LANGUAGE: Record<string, LanguageCode> = {
   IT: "it",
   NL: "nl",
   JP: "ja",
-  CZ: "en", // fallback — the company most likely advertises in EN in Czechia
+  CZ: "en", // fallback, the company most likely advertises in EN in Czechia
 };
 
 export const LANGUAGE_NAMES: Record<LanguageCode, string> = {

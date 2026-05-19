@@ -38,6 +38,8 @@ interface KnowledgeFileEntry {
   category: string;
   url: string | null;
   createdAt: string;
+  indexed: boolean;
+  indexedChars: number;
 }
 
 interface AssistantMediaEntry {
@@ -138,7 +140,7 @@ Listen → Diagnose → Recommend → Validate → Close. NEVER present solution
 2. NEVER minimize the lead's pain. NEVER use sales jargon.
 3. Warm without being cheesy. Empathetic without being condescending. Genuine.` },
   { id: "agendador", icon: Calendar, color: "bg-emerald-500",
-    promptTemplate: `You qualify leads and schedule meetings. Your job is NOT to sell — it's to ensure qualified leads arrive prepared.
+    promptTemplate: `You qualify leads and schedule meetings. Your job is NOT to sell, it's to ensure qualified leads arrive prepared.
 
 ## IDENTITY
 - Name: {{AI_NAME}}
@@ -160,7 +162,7 @@ Listen → Diagnose → Recommend → Validate → Close. NEVER present solution
 1. NEVER try to sell. Your job is to SCHEDULE. Max 3 lines. Objective.
 2. NEVER force scheduling with unqualified lead.` },
   { id: "rapido", icon: Zap, color: "bg-amber-500",
-    promptTemplate: `You are an ultra-fast digital attendant. The lead knows what they want — give info and facilitate purchase. Zero fluff.
+    promptTemplate: `You are an ultra-fast digital attendant. The lead knows what they want, give info and facilitate purchase. Zero fluff.
 
 ## IDENTITY
 - Name: {{AI_NAME}}
@@ -359,7 +361,7 @@ export default function AIConfigPage() {
         </>
       )}
 
-      {/* Original basic config below — only shown on "basic" tab */}
+      {/* Original basic config below, only shown on "basic" tab */}
       {tab === "basic" && <>
 
       {/* Assistants */}
@@ -470,13 +472,13 @@ export default function AIConfigPage() {
         <div className="rounded-2xl border border-border bg-card p-5 space-y-4">
           <div>
             <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-1.5 block">
-              {t("temperature")}: {temperature} — <span className="normal-case tracking-normal text-muted-foreground/40">{temperature <= 0.3 ? t("precise") : temperature <= 0.6 ? t("balanced") : t("creative")}</span>
+              {t("temperature")}: {temperature}, <span className="normal-case tracking-normal text-muted-foreground/40">{temperature <= 0.3 ? t("precise") : temperature <= 0.6 ? t("balanced") : t("creative")}</span>
             </label>
             <input type="range" min="0" max="1" step="0.1" value={temperature} onChange={e => setTemperature(parseFloat(e.target.value))} className="w-full accent-[hsl(var(--primary))]" />
           </div>
           <div>
             <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-1.5 block">
-              {t("debounce")}: {debounceSeconds}s — <span className="normal-case tracking-normal text-muted-foreground/40">{t("debounceHint")}</span>
+              {t("debounce")}: {debounceSeconds}s, <span className="normal-case tracking-normal text-muted-foreground/40">{t("debounceHint")}</span>
             </label>
             <input type="range" min="3" max="30" step="1" value={debounceSeconds} onChange={e => setDebounceSeconds(parseInt(e.target.value))} className="w-full accent-[hsl(var(--primary))]" />
           </div>
@@ -689,6 +691,7 @@ function KnowledgeFilesTab({ onToast }: { onToast: (msg: string, ok: boolean) =>
   const [files, setFiles] = useState<KnowledgeFileEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploadOpen, setUploadOpen] = useState(false);
+  const [reindexingId, setReindexingId] = useState<string | null>(null);
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -706,6 +709,26 @@ function KnowledgeFilesTab({ onToast }: { onToast: (msg: string, ok: boolean) =>
     if (!confirm(t("confirmDelete"))) return;
     const res = await fetch(`/api/knowledge/files?id=${id}`, { method: "DELETE" });
     if (res.ok) { onToast(t("deleted"), true); reload(); } else onToast(t("error"), false);
+  }
+
+  async function reindex(id: string) {
+    setReindexingId(id);
+    try {
+      const res = await fetch("/api/knowledge/files/reindex", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.indexed > 0) {
+        onToast(t("reindexed"), true);
+        reload();
+      } else {
+        onToast(t("reindexFailed"), false);
+      }
+    } finally {
+      setReindexingId(null);
+    }
   }
 
   return (
@@ -736,12 +759,40 @@ function KnowledgeFilesTab({ onToast }: { onToast: (msg: string, ok: boolean) =>
                       <FileText className="w-5 h-5" />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="font-display text-[14px] font-semibold text-foreground truncate">{f.title}</p>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <p className="font-display text-[14px] font-semibold text-foreground truncate">{f.title}</p>
+                        {f.indexed ? (
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-emerald-500/10 text-emerald-500 text-[10px] font-medium border border-emerald-500/20">
+                            <CheckCircle2 className="w-3 h-3" />
+                            {t("indexed")}
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-amber-500/10 text-amber-500 text-[10px] font-medium border border-amber-500/20">
+                            <AlertCircle className="w-3 h-3" />
+                            {t("notIndexed")}
+                          </span>
+                        )}
+                      </div>
                       {f.description && <p className="text-[12px] text-muted-foreground line-clamp-2 mt-0.5">{f.description}</p>}
-                      <p className="text-[10.5px] text-muted-foreground mt-1 font-mono">{f.mimeType} • {formatSize(f.sizeBytes)}</p>
+                      <p className="text-[10.5px] text-muted-foreground mt-1 font-mono">{f.mimeType} - {formatSize(f.sizeBytes)}{f.indexed ? ` - ${f.indexedChars.toLocaleString()} ${t("chars")}` : ""}</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-1 shrink-0">
+                    {!f.indexed && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        disabled={reindexingId === f.id}
+                        onClick={() => reindex(f.id)}
+                        className="text-muted-foreground hover:text-foreground"
+                      >
+                        {reindexingId === f.id ? (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        ) : (
+                          t("reindex")
+                        )}
+                      </Button>
+                    )}
                     {f.url && (
                       <a href={f.url} target="_blank" rel="noreferrer" className="text-[11.5px] text-muted-foreground hover:text-foreground underline underline-offset-2 px-2">{t("download")}</a>
                     )}

@@ -335,7 +335,7 @@ function Welcome({ userName, onStart }: { userName: string; onStart: () => void 
         {t("subtitle")}
       </p>
 
-      {/* Language picker — shown in all 3 languages so anyone can pick theirs */}
+      {/* Language picker, shown in all 3 languages so anyone can pick theirs */}
       <div className="mb-10">
         <p className="text-[11.5px] font-medium text-muted-foreground mb-3 leading-relaxed">
           {t("langQuestionPt")} · {t("langQuestionEn")} · {t("langQuestionEs")}
@@ -572,7 +572,7 @@ function ChannelStep({
           <h3 className="text-[11.5px] font-semibold uppercase tracking-wide text-muted-foreground mb-2.5">
             {t("secondary")}{" "}
             <span className="normal-case tracking-normal font-normal text-muted-foreground/70">
-              — {tc("optional")}
+             , {tc("optional")}
             </span>
           </h3>
           <div className="grid grid-cols-4 gap-3">
@@ -732,7 +732,7 @@ function Done({ onFinish }: { onFinish: () => void }) {
   const t = useTranslations("onboarding.done");
   return (
     <div className="text-center animate-fade-in-up">
-      {/* Sober tech check — no confetti */}
+      {/* Sober tech check, no confetti */}
       <div className="relative w-14 h-14 mx-auto mb-6">
         <div className="absolute inset-0 rounded-2xl border border-primary/30 bg-primary/10 grid place-items-center">
           <CircleCheck className="w-6 h-6 text-primary" strokeWidth={2} />
