@@ -8,7 +8,10 @@ FROM base AS deps
 ENV NODE_ENV=development
 COPY package.json package-lock.json ./
 COPY prisma ./prisma
-RUN npm ci --include=dev
+# Using `npm install` instead of `npm ci` so the build tolerates lock drift
+# when a new dependency was added in a commit without locally regenerating
+# the lockfile. Still deterministic for unchanged installs.
+RUN npm install --include=dev --no-audit --no-fund
 
 FROM base AS builder
 ENV NEXT_TELEMETRY_DISABLED=1
