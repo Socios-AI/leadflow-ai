@@ -8,7 +8,20 @@ const nextConfig: NextConfig = {
   // (or `ffmpeg.exe` on Windows). It must be treated as external so Webpack
   // does not try to bundle it and so the standalone build keeps the binary
   // accessible via require.resolve at runtime.
-  serverExternalPackages: ["bullmq", "ioredis", "bcrypt", "ffmpeg-static"],
+  serverExternalPackages: [
+    "bullmq",
+    "ioredis",
+    "bcrypt",
+    "ffmpeg-static",
+    // Knowledge-base extractors. They're heavy, server-only, and pull in
+    // Node-builtin modules (fs, stream, crypto). Without listing them here
+    // webpack tries to bundle them and chokes on the dynamic requires that
+    // pdf-parse/mammoth/xlsx use internally.
+    "pdf-parse",
+    "mammoth",
+    "xlsx",
+    "jszip",
+  ],
   // Ensure the standalone output traces the ffmpeg binary file so it's
   // copied into .next/standalone. Without this, the path returned by
   // `require("ffmpeg-static")` exists in dev but is missing in production.
