@@ -517,7 +517,7 @@ function RecentLeadsCard({
           {leads.map((lead) => (
             <li
               key={lead.id}
-              className="px-5 py-3 flex items-center gap-3 hover:bg-muted/30 transition-colors"
+              className="row-interactive px-5 py-3 flex items-center gap-3 cursor-pointer animate-fade-in-up"
             >
               <Avatar name={lead.name || lead.phone || lead.email || "??"} />
               <div className="flex-1 min-w-0">
@@ -531,7 +531,7 @@ function RecentLeadsCard({
               <Pill cls={STATUS_STYLE[lead.status] || STATUS_STYLE.NEW}>
                 {ts(lead.status)}
               </Pill>
-              <span className="text-[10.5px] text-muted-foreground/70 shrink-0 tabular-nums w-8 text-right">
+              <span className="text-[10.5px] text-muted-foreground/70 shrink-0 tabular-nums w-9 text-right">
                 {formatRelative(lead.createdAt)}
               </span>
             </li>
@@ -587,12 +587,15 @@ function ActivityCard({
             return (
               <li
                 key={item.id}
-                className="relative flex items-start gap-3 py-2.5"
+                className="relative flex items-start gap-3 py-2.5 px-2 -mx-2 rounded-lg hover:bg-muted/30 transition-colors cursor-default animate-slide-in-right"
+                style={{ animationDelay: `${idx * 40}ms` }}
               >
                 <div
                   className={cn(
-                    "relative w-7 h-7 rounded-full grid place-items-center shrink-0 z-10 mt-0.5",
-                    latest ? "bg-primary/15 text-primary" : "bg-muted text-muted-foreground"
+                    "relative w-7 h-7 rounded-full grid place-items-center shrink-0 z-10 mt-0.5 ring-1 transition-all",
+                    latest
+                      ? "bg-primary/15 text-primary ring-primary/30"
+                      : "bg-muted text-muted-foreground ring-border/30"
                   )}
                 >
                   <Icon className="w-3.5 h-3.5" />

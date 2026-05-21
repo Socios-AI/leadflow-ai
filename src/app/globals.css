@@ -461,3 +461,206 @@
   initial-value: 0;
   inherits: false;
 }
+/* ═══════════════════════════════════════════
+   SaaS POLISH UTILITIES (added in pass v2)
+   Small, opinionated helpers used across pages
+   to land the "Linear/Vercel/Attio" feel.
+   ═══════════════════════════════════════════ */
+
+/* Table / list row that lifts subtly on hover with a primary accent rail */
+.row-interactive {
+  position: relative;
+  transition:
+    background-color 160ms cubic-bezier(0.4, 0, 0.2, 1),
+    border-color 160ms ease,
+    transform 220ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+.row-interactive::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 8px; bottom: 8px;
+  width: 2px;
+  border-radius: 1px;
+  background: hsl(var(--primary));
+  opacity: 0;
+  transform: scaleY(0.4);
+  transition: opacity 160ms ease, transform 220ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+.row-interactive:hover {
+  background-color: hsl(var(--muted) / 0.45);
+}
+.row-interactive:hover::before { opacity: 1; transform: scaleY(1); }
+.row-interactive[data-selected="true"] {
+  background-color: hsl(var(--muted) / 0.6);
+}
+.row-interactive[data-selected="true"]::before { opacity: 1; transform: scaleY(1); }
+
+/* Card that lifts on hover with refined shadow + border tone */
+.card-interactive {
+  transition:
+    transform 220ms cubic-bezier(0.4, 0, 0.2, 1),
+    border-color 220ms ease,
+    box-shadow 220ms cubic-bezier(0.4, 0, 0.2, 1);
+  border: 1px solid hsl(var(--border));
+}
+.card-interactive:hover {
+  transform: translateY(-2px);
+  border-color: hsl(var(--primary) / 0.45);
+  box-shadow:
+    0 10px 24px -12px rgba(0, 0, 0, 0.25),
+    0 0 0 1px hsl(var(--primary) / 0.06) inset;
+}
+
+/* Refined input focus ring used across forms */
+.input-refined {
+  width: 100%;
+  height: 2.5rem;
+  padding: 0 1rem;
+  border-radius: 0.75rem;
+  background: hsl(var(--muted));
+  border: 1px solid transparent;
+  font-size: 0.8125rem;
+  color: hsl(var(--foreground));
+  font-family: var(--font-dm-sans);
+  transition: border-color 160ms ease, box-shadow 160ms ease, background-color 160ms ease;
+}
+.input-refined:hover { background: hsl(var(--muted) / 0.85); }
+.input-refined:focus {
+  outline: none;
+  background: hsl(var(--background));
+  border-color: hsl(var(--ring) / 0.55);
+  box-shadow: 0 0 0 4px hsl(var(--ring) / 0.12);
+}
+.input-refined::placeholder { color: hsl(var(--muted-foreground) / 0.45); }
+
+/* Drop shadows tuned for dark mode (deeper than tailwind defaults) */
+.shadow-elevated {
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.2),
+    0 8px 24px -8px rgba(0, 0, 0, 0.35);
+}
+.shadow-floating {
+  box-shadow:
+    0 4px 6px -2px rgba(0, 0, 0, 0.25),
+    0 18px 40px -12px rgba(0, 0, 0, 0.5);
+}
+
+/* Status pills with rich semantic colors */
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.1875rem 0.5rem;
+  border-radius: 9999px;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  border-width: 1px;
+  border-style: solid;
+}
+.pill-new        { background: hsl(220 90% 56% / 0.12); color: hsl(220 90% 70%);  border-color: hsl(220 90% 56% / 0.25); }
+.pill-contacted  { background: hsl(35 95% 55% / 0.12);  color: hsl(35 95% 70%);   border-color: hsl(35 95% 55% / 0.25); }
+.pill-in-conv    { background: hsl(262 80% 65% / 0.12); color: hsl(262 80% 78%);  border-color: hsl(262 80% 65% / 0.25); }
+.pill-qualified  { background: hsl(180 70% 50% / 0.12); color: hsl(180 70% 65%);  border-color: hsl(180 70% 50% / 0.25); }
+.pill-converted  { background: hsl(142 70% 45% / 0.14); color: hsl(142 70% 65%);  border-color: hsl(142 70% 45% / 0.3); }
+.pill-lost       { background: hsl(0 70% 60% / 0.10);   color: hsl(0 70% 72%);    border-color: hsl(0 70% 60% / 0.25); }
+.pill-unresp     { background: hsl(220 8% 50% / 0.12);  color: hsl(220 8% 70%);   border-color: hsl(220 8% 50% / 0.25); }
+
+/* Toggle switch refined (larger touch target, smooth thumb glide) */
+.toggle-switch {
+  position: relative;
+  width: 2.5rem;
+  height: 1.375rem;
+  background: hsl(var(--muted));
+  border-radius: 9999px;
+  cursor: pointer;
+  transition: background-color 200ms ease;
+  flex-shrink: 0;
+}
+.toggle-switch[data-on="true"] { background: hsl(var(--primary) / 0.9); }
+.toggle-switch::after {
+  content: '';
+  position: absolute;
+  top: 2px; left: 2px;
+  width: 1.125rem; height: 1.125rem;
+  background: white;
+  border-radius: 9999px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+  transition: transform 220ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.toggle-switch[data-on="true"]::after { transform: translateX(1.125rem); }
+
+/* Premium divider with label (used in auth / settings) */
+.divider-labeled {
+  display: flex; align-items: center; gap: 0.75rem;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: hsl(var(--muted-foreground) / 0.6);
+}
+.divider-labeled::before,
+.divider-labeled::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, hsl(var(--border)), transparent);
+}
+
+/* Section eyebrow (small uppercase label that introduces a section) */
+.eyebrow {
+  font-size: 0.625rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: hsl(var(--muted-foreground) / 0.55);
+}
+
+/* Subtle ambient glow behind hero KPI numbers */
+.kpi-number {
+  font-family: var(--font-display);
+  font-feature-settings: "tnum" on, "lnum" on;
+  letter-spacing: -0.02em;
+}
+
+/* Skeleton variants for table rows / list items */
+.skeleton-row {
+  display: flex; gap: 0.75rem; align-items: center;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid hsl(var(--border) / 0.5);
+}
+.skeleton-line {
+  background: linear-gradient(90deg, hsl(var(--muted)) 0%, hsl(var(--accent)) 50%, hsl(var(--muted)) 100%);
+  background-size: 200% 100%;
+  animation: shimmer 1.6s linear infinite;
+  border-radius: 0.375rem;
+  height: 0.75rem;
+}
+
+/* Tab bar segmented control refinement */
+.tab-bar {
+  display: inline-flex;
+  background: hsl(var(--muted) / 0.4);
+  border-radius: 0.625rem;
+  padding: 0.25rem;
+  gap: 0.125rem;
+  border: 1px solid hsl(var(--border) / 0.5);
+}
+.tab-item {
+  display: inline-flex; align-items: center; gap: 0.375rem;
+  padding: 0.4375rem 0.875rem;
+  border-radius: 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: hsl(var(--muted-foreground));
+  transition: all 160ms cubic-bezier(0.4, 0, 0.2, 1);
+  cursor: pointer;
+  position: relative;
+}
+.tab-item:hover { color: hsl(var(--foreground)); }
+.tab-item[data-active="true"] {
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+  box-shadow: 0 1px 2px rgba(0,0,0,0.18), 0 0 0 1px hsl(var(--border)) inset;
+}

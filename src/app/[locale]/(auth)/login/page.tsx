@@ -99,9 +99,28 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-background text-foreground">
+    <div className="min-h-screen flex flex-col bg-background text-foreground relative overflow-hidden">
+      {/* Ambient backdrop, soft and slow */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 -z-10"
+      >
+        <div className="absolute -top-40 -left-20 w-[60vw] h-[60vw] rounded-full bg-primary/[0.06] blur-[120px]" />
+        <div className="absolute -bottom-40 -right-20 w-[50vw] h-[50vw] rounded-full bg-primary/[0.04] blur-[100px]" />
+        <div
+          className="absolute inset-0 opacity-[0.025]"
+          style={{
+            backgroundImage:
+              "linear-gradient(hsl(var(--foreground)/0.5) 1px, transparent 1px), linear-gradient(90deg, hsl(var(--foreground)/0.5) 1px, transparent 1px)",
+            backgroundSize: "56px 56px",
+            maskImage:
+              "radial-gradient(ellipse at center, black 40%, transparent 75%)",
+          }}
+        />
+      </div>
+
       {/* Top bar with locale picker */}
-      <header className="flex items-center justify-between px-6 py-4">
+      <header className="flex items-center justify-between px-6 py-5">
         <div className="flex items-center gap-2.5">
           <Image
             src="/logo.png"
@@ -119,17 +138,17 @@ export default function LoginPage() {
 
       {/* Card */}
       <main className="flex-1 flex items-center justify-center px-4 py-8">
-        <div className="w-full max-w-[400px] animate-fade-in-up">
+        <div className="w-full max-w-[408px] animate-fade-in-up">
           <div className="text-center mb-7">
-            <h1 className="font-display text-[26px] font-semibold tracking-tight text-foreground leading-tight">
+            <h1 className="font-display text-[28px] font-semibold tracking-tight text-foreground leading-[1.15]">
               {t("loginTitle")}
             </h1>
-            <p className="text-[13.5px] text-muted-foreground mt-2 leading-relaxed">
+            <p className="text-[13.5px] text-muted-foreground mt-2.5 leading-relaxed">
               {t("loginSubtitle")}
             </p>
           </div>
 
-          <div className="rounded-2xl border border-border bg-card shadow-sm p-6 space-y-5">
+          <div className="rounded-2xl border border-border/80 bg-card/95 backdrop-blur-xl shadow-floating p-7 space-y-5">
             {/* OAuth */}
             <div className="grid grid-cols-2 gap-2.5">
               <Button
@@ -137,7 +156,7 @@ export default function LoginPage() {
                 variant="outline"
                 onClick={() => handleOAuth("google")}
                 disabled={!!oauthLoading || loading}
-                className="h-10"
+                className="h-10 border-border/70 hover:bg-muted/70 hover:border-border transition-all active:scale-[0.98]"
               >
                 {oauthLoading === "google" ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -153,7 +172,7 @@ export default function LoginPage() {
                 variant="outline"
                 onClick={() => handleOAuth("apple")}
                 disabled={!!oauthLoading || loading}
-                className="h-10"
+                className="h-10 border-border/70 hover:bg-muted/70 hover:border-border transition-all active:scale-[0.98]"
               >
                 {oauthLoading === "apple" ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -166,18 +185,12 @@ export default function LoginPage() {
               </Button>
             </div>
 
-            <div className="relative flex items-center">
-              <span className="flex-1 h-px bg-border" />
-              <span className="px-3 text-[10.5px] uppercase tracking-wider text-muted-foreground/80 font-medium">
-                {t("orContinueWith")}
-              </span>
-              <span className="flex-1 h-px bg-border" />
-            </div>
+            <div className="divider-labeled">{t("orContinueWith")}</div>
 
             {error && (
               <div
                 role="alert"
-                className="flex items-start gap-2 px-3 py-2.5 rounded-lg bg-destructive/10 border border-destructive/20 text-[12.5px] text-destructive"
+                className="flex items-start gap-2 px-3 py-2.5 rounded-lg bg-destructive/10 border border-destructive/25 text-[12.5px] text-destructive animate-fade-in"
               >
                 <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
                 <span className="flex-1">{error}</span>
@@ -198,7 +211,7 @@ export default function LoginPage() {
                   required
                   autoComplete="email"
                   placeholder="voce@empresa.com"
-                  className="h-11 pl-9"
+                  className="h-11 pl-9 transition-all focus-visible:ring-4 focus-visible:ring-ring/15"
                 />
               </Field>
 
@@ -209,7 +222,7 @@ export default function LoginPage() {
                 trailing={
                   <Link
                     href={`/${locale}/forgot-password`}
-                    className="text-[11.5px] font-medium text-primary hover:underline"
+                    className="text-[11.5px] font-medium text-primary hover:underline underline-offset-2"
                   >
                     {t("forgotPassword")}
                   </Link>
@@ -222,7 +235,7 @@ export default function LoginPage() {
                   onChange={(e) => setPassword(e.target.value)}
                   required
                   autoComplete="current-password"
-                  className="h-11 pl-9 pr-10"
+                  className="h-11 pl-9 pr-10 transition-all focus-visible:ring-4 focus-visible:ring-ring/15"
                 />
                 <button
                   type="button"
@@ -243,8 +256,8 @@ export default function LoginPage() {
                 type="submit"
                 disabled={loading || !!oauthLoading}
                 className={cn(
-                  "w-full h-11 text-[13.5px] font-semibold gap-1.5",
-                  "bg-primary text-primary-foreground hover:opacity-90"
+                  "w-full h-11 text-[13.5px] font-semibold gap-1.5 mt-1",
+                  "btn-brand active:scale-[0.99]"
                 )}
               >
                 {loading ? (
@@ -262,14 +275,14 @@ export default function LoginPage() {
               {t("dontHaveAccount")}{" "}
               <Link
                 href={`/${locale}/register`}
-                className="font-semibold text-primary hover:underline"
+                className="font-semibold text-foreground hover:text-primary transition-colors underline-offset-4 hover:underline"
               >
                 {t("register")}
               </Link>
             </p>
           </div>
 
-          <p className="text-center text-[10.5px] text-muted-foreground/70 mt-6">
+          <p className="text-center text-[10.5px] text-muted-foreground/60 mt-6 px-4 leading-relaxed">
             {t("legalFooter")}
           </p>
         </div>
