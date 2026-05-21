@@ -320,73 +320,90 @@ export default function PipelinePage() {
       )}
 
       {/* ═══ HEADER ═══ */}
-      <header className="flex items-start justify-between gap-4 flex-wrap mb-8">
-        <div>
-          <div className="flex items-center gap-2 mb-2">
-            <PipelineEyebrow className="w-4 h-4 text-primary" />
-            <span className="text-[11px] font-semibold uppercase tracking-wide text-primary">
-              {t("eyebrow")}
-            </span>
-          </div>
-          <h1 className="font-display text-[28px] font-semibold tracking-tight text-foreground">
-            {t("title")}
-          </h1>
-          <p className="text-[13.5px] text-muted-foreground mt-1 max-w-xl">
-            {t("subtitle")}
-          </p>
-        </div>
-        <button
-          onClick={handleSave}
-          disabled={saving}
-          className={cn(
-            "inline-flex items-center gap-2 h-10 px-5 rounded-lg text-[13px] font-semibold transition-all disabled:opacity-50",
-            "bg-primary text-primary-foreground hover:opacity-90"
-          )}
+      <header className="relative overflow-hidden rounded-3xl border border-border bg-card shadow-elevated mb-8">
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0"
         >
-          {saving ? (
-            <Loader2 className="w-4 h-4 animate-spin" />
-          ) : saved ? (
-            <>
-              <CheckCircle2 className="w-4 h-4" />
-              {t("saved")}
-            </>
-          ) : (
-            <>
-              <Save className="w-4 h-4" />
-              {t("saveConfig")}
-            </>
-          )}
-        </button>
+          <div className="absolute -top-24 -right-16 w-[320px] h-[320px] rounded-full bg-primary/[0.07] blur-[90px]" />
+          <div
+            className="absolute inset-0 opacity-[0.04]"
+            style={{
+              backgroundImage:
+                "linear-gradient(hsl(var(--foreground)/0.6) 1px, transparent 1px), linear-gradient(90deg, hsl(var(--foreground)/0.6) 1px, transparent 1px)",
+              backgroundSize: "40px 40px",
+              maskImage:
+                "radial-gradient(ellipse at top right, black 25%, transparent 70%)",
+            }}
+          />
+        </div>
+        <div className="relative p-6 sm:p-7 flex items-start justify-between gap-4 flex-wrap">
+          <div>
+            <div className="inline-flex items-center gap-1.5 h-6 px-2.5 rounded-full bg-primary/12 border border-primary/25 text-primary text-[10.5px] font-semibold uppercase tracking-[0.14em] mb-3">
+              <PipelineEyebrow className="w-3 h-3" />
+              {t("eyebrow")}
+            </div>
+            <h1 className="font-display text-[26px] sm:text-[30px] font-semibold tracking-tight text-foreground leading-tight">
+              {t("title")}
+            </h1>
+            <p className="text-[13.5px] text-muted-foreground mt-2 max-w-xl leading-relaxed">
+              {t("subtitle")}
+            </p>
+          </div>
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="inline-flex items-center gap-2 h-10 px-5 rounded-xl text-[13px] font-semibold btn-brand active:scale-[0.98] transition-transform disabled:opacity-50"
+          >
+            {saving ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : saved ? (
+              <>
+                <CheckCircle2 className="w-4 h-4" />
+                {t("saved")}
+              </>
+            ) : (
+              <>
+                <Save className="w-4 h-4" />
+                {t("saveConfig")}
+              </>
+            )}
+          </button>
+        </div>
       </header>
 
       <div className="grid xl:grid-cols-[220px_1fr] gap-8">
         {/* ═══ STEPPER (sticky side nav) ═══ */}
         <aside className="hidden xl:block">
-          <div className="sticky top-4 space-y-1">
-            <p className="text-[10.5px] font-semibold uppercase tracking-wide text-muted-foreground/80 mb-3 px-3">
-              {t("stepperTitle")}
-            </p>
-            {stepsForNav.map((s, i) => (
-              <a
-                key={s.id}
-                href={`#step-${s.id}`}
-                className="flex items-center gap-2.5 px-3 py-2 rounded-lg hover:bg-muted/50 text-[12.5px] text-foreground transition-colors"
-              >
-                <span
-                  className={cn(
-                    "w-5 h-5 rounded-full grid place-items-center text-[10px] font-bold shrink-0 transition-colors",
-                    s.done
-                      ? "bg-primary text-primary-foreground"
-                      : "bg-muted text-muted-foreground"
-                  )}
+          <div className="sticky top-4 rounded-2xl border border-border bg-card p-3 shadow-elevated">
+            <p className="eyebrow mb-3 px-2">{t("stepperTitle")}</p>
+            <div className="relative">
+              <span
+                aria-hidden
+                className="absolute left-[18px] top-3 bottom-3 w-px bg-gradient-to-b from-transparent via-border to-transparent"
+              />
+              {stepsForNav.map((s, i) => (
+                <a
+                  key={s.id}
+                  href={`#step-${s.id}`}
+                  className="relative flex items-center gap-2.5 px-2 py-2 rounded-lg hover:bg-muted/40 text-[12.5px] text-foreground transition-colors group"
                 >
-                  {s.done ? <Check className="w-3 h-3" /> : i + 1}
-                </span>
-                <span className={cn(!s.done && "text-muted-foreground")}>
-                  {s.label}
-                </span>
-              </a>
-            ))}
+                  <span
+                    className={cn(
+                      "relative z-10 w-6 h-6 rounded-full grid place-items-center text-[10px] font-bold shrink-0 transition-all border",
+                      s.done
+                        ? "bg-primary text-primary-foreground border-primary shadow-[0_0_0_3px_hsl(var(--primary)/0.18)]"
+                        : "bg-card text-muted-foreground border-border group-hover:border-primary/40"
+                    )}
+                  >
+                    {s.done ? <Check className="w-3 h-3" /> : i + 1}
+                  </span>
+                  <span className={cn("font-medium", !s.done && "text-muted-foreground")}>
+                    {s.label}
+                  </span>
+                </a>
+              ))}
+            </div>
           </div>
         </aside>
 
@@ -930,17 +947,19 @@ function StepCard({
   return (
     <section
       id={id}
-      className="rounded-2xl border border-border bg-card p-6 scroll-mt-4 animate-fade-in-up"
+      className="rounded-2xl border border-border bg-card p-6 scroll-mt-4 animate-fade-in-up shadow-elevated"
     >
-      <header className="flex items-start gap-3 mb-5">
-        <div className="w-8 h-8 rounded-lg bg-primary/10 text-primary grid place-items-center text-[13px] font-bold shrink-0">
-          {step}
+      <header className="flex items-start gap-3.5 mb-6 pb-5 border-b border-border/50">
+        <div className="relative shrink-0">
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary/20 to-primary/5 ring-1 ring-primary/25 grid place-items-center font-display text-[14px] font-bold text-primary shadow-sm">
+            {step}
+          </div>
         </div>
         <div className="flex-1 min-w-0">
-          <h2 className="font-display text-[16px] font-semibold text-foreground">
+          <h2 className="font-display text-[16px] font-semibold text-foreground tracking-tight">
             {title}
           </h2>
-          <p className="text-[12.5px] text-muted-foreground mt-0.5">{desc}</p>
+          <p className="text-[12.5px] text-muted-foreground mt-1 leading-relaxed">{desc}</p>
         </div>
       </header>
       {children}
@@ -977,18 +996,9 @@ function Toggle({
       role="switch"
       aria-checked={checked}
       onClick={() => onChange(!checked)}
-      className={cn(
-        "relative w-10 h-5.5 rounded-full transition-colors",
-        checked ? "bg-primary" : "bg-muted"
-      )}
-    >
-      <span
-        className={cn(
-          "absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full transition-transform",
-          checked && "translate-x-[18px]"
-        )}
-      />
-    </button>
+      data-on={checked}
+      className="toggle-switch"
+    />
   );
 }
 

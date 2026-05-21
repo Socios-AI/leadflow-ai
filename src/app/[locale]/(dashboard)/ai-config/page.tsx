@@ -309,49 +309,73 @@ export default function AIConfigPage() {
   if (loading) return <div className="flex items-center justify-center py-32"><Loader2 className="w-5 h-5 text-muted-foreground animate-spin" /></div>;
 
   return (
-    <div className="max-w-3xl mx-auto space-y-6 pb-12">
+    <div className="max-w-4xl mx-auto space-y-6 pb-12">
       {toast && (
         <div className={cn("fixed top-4 right-4 z-50 px-4 py-2.5 rounded-xl text-[12px] font-medium shadow-lg border animate-in slide-in-from-top-2",
           toast.ok ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20" : "bg-red-500/10 text-red-400 border-red-500/20"
         )}>{toast.msg}</div>
       )}
 
-      <div className="flex items-center justify-between flex-wrap gap-4">
-        <div>
-          <h1 className="font-space-grotesk text-2xl font-bold text-foreground tracking-tight">{t("title")}</h1>
-          <p className="text-sm text-muted-foreground mt-0.5 font-dm-sans">{t("subtitle")}</p>
+      <header className="relative overflow-hidden rounded-3xl border border-border bg-card shadow-elevated">
+        <div aria-hidden className="pointer-events-none absolute inset-0">
+          <div className="absolute -top-20 -right-12 w-[280px] h-[280px] rounded-full bg-primary/[0.07] blur-[80px]" />
+          <div
+            className="absolute inset-0 opacity-[0.04]"
+            style={{
+              backgroundImage:
+                "linear-gradient(hsl(var(--foreground)/0.6) 1px, transparent 1px), linear-gradient(90deg, hsl(var(--foreground)/0.6) 1px, transparent 1px)",
+              backgroundSize: "40px 40px",
+              maskImage:
+                "radial-gradient(ellipse at top right, black 25%, transparent 70%)",
+            }}
+          />
         </div>
-        {tab === "basic" && (
-          <button onClick={handleSave} disabled={saving}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-xl btn-brand text-[13px] font-semibold disabled:opacity-50">
-            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : saved ? <><CheckCircle className="w-4 h-4" />{t("saved")}</> : <><Save className="w-4 h-4" />{tc("save")}</>}
-          </button>
-        )}
-      </div>
+        <div className="relative p-6 sm:p-7 flex items-start justify-between flex-wrap gap-4">
+          <div>
+            <div className="inline-flex items-center gap-1.5 h-6 px-2.5 rounded-full bg-primary/12 border border-primary/25 text-primary text-[10.5px] font-semibold uppercase tracking-[0.14em] mb-3">
+              <Brain className="w-3 h-3" />
+              {t("title")}
+            </div>
+            <h1 className="font-display text-[26px] sm:text-[30px] font-semibold text-foreground tracking-tight leading-tight">
+              {t("chooseAssistant")}
+            </h1>
+            <p className="text-[13.5px] text-muted-foreground mt-2 max-w-xl leading-relaxed">
+              {t("subtitle")}
+            </p>
+          </div>
+          {tab === "basic" && (
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="inline-flex items-center gap-2 h-10 px-5 rounded-xl btn-brand text-[13px] font-semibold disabled:opacity-50 active:scale-[0.98] transition-transform"
+            >
+              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : saved ? <><CheckCircle className="w-4 h-4" />{t("saved")}</> : <><Save className="w-4 h-4" />{tc("save")}</>}
+            </button>
+          )}
+        </div>
+      </header>
 
-      {/* Tabs */}
-      <nav className="flex flex-wrap gap-1 border-b border-border -mt-2">
-        {([
-          { id: "basic" as AIConfigTab, label: t("tabs.basic"), icon: Sliders },
-          { id: "assistants" as AIConfigTab, label: t("tabs.assistants"), icon: Bot },
-          { id: "knowledge" as AIConfigTab, label: t("tabs.knowledge"), icon: BookOpen },
-          { id: "media" as AIConfigTab, label: t("tabs.media"), icon: Paperclip },
-        ]).map((it) => (
-          <button
-            key={it.id}
-            onClick={() => setTab(it.id)}
-            className={cn(
-              "relative px-3.5 py-2.5 -mb-px border-b-2 text-[13px] font-medium transition-colors flex items-center gap-2 cursor-pointer",
-              tab === it.id
-                ? "border-primary text-foreground"
-                : "border-transparent text-muted-foreground hover:text-foreground"
-            )}
-          >
-            <it.icon className="w-3.5 h-3.5" />
-            {it.label}
-          </button>
-        ))}
-      </nav>
+      {/* Tabs (segmented control) */}
+      <div className="flex">
+        <nav className="tab-bar">
+          {([
+            { id: "basic" as AIConfigTab, label: t("tabs.basic"), icon: Sliders },
+            { id: "assistants" as AIConfigTab, label: t("tabs.assistants"), icon: Bot },
+            { id: "knowledge" as AIConfigTab, label: t("tabs.knowledge"), icon: BookOpen },
+            { id: "media" as AIConfigTab, label: t("tabs.media"), icon: Paperclip },
+          ]).map((it) => (
+            <button
+              key={it.id}
+              onClick={() => setTab(it.id)}
+              data-active={tab === it.id}
+              className="tab-item"
+            >
+              <it.icon className="w-3.5 h-3.5" />
+              {it.label}
+            </button>
+          ))}
+        </nav>
+      </div>
 
       {tab !== "basic" && (
         <>
@@ -365,23 +389,39 @@ export default function AIConfigPage() {
       {tab === "basic" && <>
 
       {/* Assistants */}
-      <div className="rounded-2xl border border-border bg-card p-5 space-y-4">
-        <h2 className="font-space-grotesk text-[14px] font-semibold text-foreground">{t("chooseAssistant")}</h2>
-        <p className="text-[11px] text-muted-foreground font-dm-sans -mt-2">{t("chooseAssistantDesc")}</p>
+      <div className="rounded-2xl border border-border bg-card p-6 space-y-4 shadow-elevated">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <h2 className="font-display text-[15px] font-semibold text-foreground tracking-tight">{t("chooseAssistant")}</h2>
+            <p className="text-[12px] text-muted-foreground font-dm-sans mt-1">{t("chooseAssistantDesc")}</p>
+          </div>
+        </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           {ASSISTANT_DEFS.map(a => {
             const Icon = a.icon; const sel = selectedAssistant === a.id;
             return (
               <button key={a.id} onClick={() => setSelectedAssistant(a.id)}
-                className={cn("p-4 rounded-xl border-2 text-left cursor-pointer transition-all", sel ? "border-primary bg-primary/[0.04]" : "border-border hover:border-primary/20")}>
-                <div className="flex items-center gap-2.5 mb-2">
-                  <div className={cn("w-8 h-8 rounded-lg flex items-center justify-center", a.color)}><Icon className="w-4 h-4 text-white" /></div>
-                  <div>
-                    <p className="text-[13px] font-semibold text-foreground">{t(`ast.${a.id}.name` as any)}</p>
-                    <p className="text-[10px] text-muted-foreground">{t(`ast.${a.id}.role` as any)}</p>
+                className={cn(
+                  "relative p-4 rounded-xl text-left cursor-pointer transition-all border overflow-hidden group",
+                  sel
+                    ? "border-primary/60 bg-primary/[0.06] shadow-[0_0_0_4px_hsl(var(--primary)/0.08)]"
+                    : "border-border hover:border-primary/30 hover:bg-muted/30 hover:-translate-y-0.5"
+                )}>
+                {sel && (
+                  <span aria-hidden className="absolute top-3 right-3 w-5 h-5 rounded-full bg-primary text-primary-foreground flex items-center justify-center shadow-sm">
+                    <Check className="w-3 h-3" strokeWidth={3} />
+                  </span>
+                )}
+                <div className="flex items-center gap-2.5 mb-3">
+                  <div className={cn("w-9 h-9 rounded-xl flex items-center justify-center shadow-sm ring-1 ring-white/10", a.color)}>
+                    <Icon className="w-4 h-4 text-white" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-[13px] font-semibold text-foreground truncate">{t(`ast.${a.id}.name` as never)}</p>
+                    <p className="text-[10.5px] text-muted-foreground truncate">{t(`ast.${a.id}.role` as never)}</p>
                   </div>
                 </div>
-                <p className="text-[11px] text-muted-foreground leading-relaxed font-dm-sans">{t(`ast.${a.id}.desc` as any)}</p>
+                <p className="text-[11.5px] text-muted-foreground leading-relaxed font-dm-sans">{t(`ast.${a.id}.desc` as never)}</p>
                 <p className="text-[10px] text-primary mt-2 font-medium font-dm-sans">{t("idealFor")}: {t(`ast.${a.id}.bestFor` as any)}</p>
               </button>
             );

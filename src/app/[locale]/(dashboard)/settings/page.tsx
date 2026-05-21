@@ -165,36 +165,49 @@ export default function SettingsPage() {
       )}
 
       {/* Header */}
-      <header>
-        <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground/80 mb-1.5">
-          {t("eyebrow")}
-        </p>
-        <h1 className="font-display text-[28px] sm:text-[32px] font-semibold tracking-tight text-foreground leading-none">
-          {t("title")}
-        </h1>
-        <p className="text-[13.5px] text-muted-foreground mt-2 max-w-xl">
-          {t("subtitle")}
-        </p>
+      <header className="relative overflow-hidden rounded-3xl border border-border bg-card shadow-elevated">
+        <div aria-hidden className="pointer-events-none absolute inset-0">
+          <div className="absolute -top-20 -right-12 w-[260px] h-[260px] rounded-full bg-primary/[0.06] blur-[80px]" />
+          <div
+            className="absolute inset-0 opacity-[0.04]"
+            style={{
+              backgroundImage:
+                "linear-gradient(hsl(var(--foreground)/0.6) 1px, transparent 1px), linear-gradient(90deg, hsl(var(--foreground)/0.6) 1px, transparent 1px)",
+              backgroundSize: "40px 40px",
+              maskImage:
+                "radial-gradient(ellipse at top right, black 25%, transparent 70%)",
+            }}
+          />
+        </div>
+        <div className="relative p-6 sm:p-7">
+          <div className="inline-flex items-center gap-1.5 h-6 px-2.5 rounded-full bg-primary/12 border border-primary/25 text-primary text-[10.5px] font-semibold uppercase tracking-[0.14em] mb-3">
+            {t("eyebrow")}
+          </div>
+          <h1 className="font-display text-[26px] sm:text-[30px] font-semibold tracking-tight text-foreground leading-tight">
+            {t("title")}
+          </h1>
+          <p className="text-[13.5px] text-muted-foreground mt-2 max-w-xl leading-relaxed">
+            {t("subtitle")}
+          </p>
+        </div>
       </header>
 
-      {/* Tab bar */}
-      <nav className="flex flex-wrap gap-1 border-b border-border">
-        {tabs.map((tabItem) => (
-          <button
-            key={tabItem.id}
-            onClick={() => setTab(tabItem.id)}
-            className={cn(
-              "relative px-3.5 py-2.5 -mb-px border-b-2 text-[13px] font-medium transition-colors flex items-center gap-2",
-              tab === tabItem.id
-                ? "border-primary text-foreground"
-                : "border-transparent text-muted-foreground hover:text-foreground"
-            )}
-          >
-            <tabItem.icon className="w-3.5 h-3.5" />
-            {tabItem.label}
-          </button>
-        ))}
-      </nav>
+      {/* Tab bar (segmented) */}
+      <div className="flex">
+        <nav className="tab-bar">
+          {tabs.map((tabItem) => (
+            <button
+              key={tabItem.id}
+              onClick={() => setTab(tabItem.id)}
+              data-active={tab === tabItem.id}
+              className="tab-item"
+            >
+              <tabItem.icon className="w-3.5 h-3.5" />
+              {tabItem.label}
+            </button>
+          ))}
+        </nav>
+      </div>
 
       {/* Tab content */}
       {tab === "profile" && profile && (

@@ -463,9 +463,11 @@
 }
 /* ═══════════════════════════════════════════
    SaaS POLISH UTILITIES (added in pass v2)
-   Small, opinionated helpers used across pages
-   to land the "Linear/Vercel/Attio" feel.
+   Wrapped in @layer components so that Tailwind
+   utilities (pl-9, h-10, etc.) win when combined.
    ═══════════════════════════════════════════ */
+
+@layer components {
 
 /* Table / list row that lifts subtly on hover with a primary accent rail */
 .row-interactive {
@@ -670,3 +672,5 @@
   color: hsl(var(--foreground));
   box-shadow: 0 1px 2px rgba(0,0,0,0.18), 0 0 0 1px hsl(var(--border)) inset;
 }
+
+} /* close @layer components */
