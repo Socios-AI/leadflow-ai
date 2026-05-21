@@ -243,7 +243,8 @@
       "step2Cta": "Connect channel",
       "step3Title": "Register a campaign",
       "step3Desc": "Upload the ad so the AI understands what was promised to the lead.",
-      "step3Cta": "Create campaign"
+      "step3Cta": "Create campaign",
+      "eyebrow": "Getting started"
     },
     "goalHero": {
       "eyebrow": "Your AI's active goal",

@@ -1,7 +1,7 @@
 // src/components/dashboard/dashboard-content.tsx
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
@@ -26,6 +26,7 @@ import {
   MessageSquare,
   Phone,
   Plug,
+  Plus,
   Rocket,
   Target,
   TrendingUp,
@@ -170,29 +171,59 @@ export function DashboardContent({
 // ══════════════════════════════════════════════
 
 function Header({
-  title,
   subtitle,
   userName,
 }: {
-  title: string;
+  // `title` is intentionally unused, the greeting acts as the page title now.
+  title?: string;
   subtitle: string;
   userName?: string;
 }) {
   const greeting = useGreeting();
-  // Only show the first name to keep the greeting compact and casual.
   const firstName = (userName || "").trim().split(/\s+/)[0] || "";
-  const greetingLine = firstName ? `${greeting}, ${firstName}` : greeting;
+  const tCampaigns = useTranslations("campaigns");
+  const today = useMemo(() => {
+    try {
+      return new Date().toLocaleDateString(undefined, {
+        weekday: "long",
+        day: "2-digit",
+        month: "long",
+      });
+    } catch {
+      return "";
+    }
+  }, []);
   return (
-    <header className="flex flex-col gap-1.5">
-      <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground/80">
-        {greetingLine}
-      </p>
-      <h1 className="font-display text-[28px] sm:text-[32px] font-semibold tracking-tight text-foreground leading-none">
-        {title}
-      </h1>
-      <p className="text-[13.5px] text-muted-foreground mt-1 max-w-xl">
-        {subtitle}
-      </p>
+    <header className="relative flex items-end justify-between gap-6 flex-wrap pb-2">
+      <div className="flex flex-col gap-2 min-w-0">
+        <div className="flex items-center gap-1.5 text-[10.5px] font-semibold tracking-[0.14em] uppercase text-muted-foreground/75">
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_0_3px_hsl(142_70%_45%_/_0.18)]" />
+          {today}
+        </div>
+        <h1 className="font-display text-[28px] sm:text-[34px] font-semibold tracking-tight text-foreground leading-[1.05]">
+          {greeting}
+          {firstName && (
+            <>
+              ,{" "}
+              <span className="bg-gradient-to-r from-primary via-primary to-primary/60 bg-clip-text text-transparent">
+                {firstName}
+              </span>
+            </>
+          )}
+        </h1>
+        <p className="text-[13.5px] text-muted-foreground max-w-2xl leading-relaxed">
+          {subtitle}
+        </p>
+      </div>
+      <div className="hidden md:flex items-center gap-2 shrink-0">
+        <Link
+          href="/campaigns/new"
+          className="inline-flex items-center gap-1.5 h-10 px-4 rounded-xl btn-brand text-[12.5px] font-semibold active:scale-[0.98] transition-transform"
+        >
+          <Plus className="w-4 h-4" />
+          {tCampaigns("addCampaign")}
+        </Link>
+      </div>
     </header>
   );
 }
@@ -781,6 +812,7 @@ function WelcomeScreen({ t }: { t: ReturnType<typeof useTranslations> }) {
       descKey: "empty.step1Desc",
       ctaKey: "empty.step1Cta",
       href: "/pipeline",
+      tone: "from-violet-500/15 to-violet-500/5 text-violet-400 ring-violet-500/20",
     },
     {
       icon: Plug,
@@ -788,6 +820,7 @@ function WelcomeScreen({ t }: { t: ReturnType<typeof useTranslations> }) {
       descKey: "empty.step2Desc",
       ctaKey: "empty.step2Cta",
       href: "/channels/whatsapp",
+      tone: "from-emerald-500/15 to-emerald-500/5 text-emerald-400 ring-emerald-500/20",
     },
     {
       icon: Target,
@@ -795,50 +828,91 @@ function WelcomeScreen({ t }: { t: ReturnType<typeof useTranslations> }) {
       descKey: "empty.step3Desc",
       ctaKey: "empty.step3Cta",
       href: "/campaigns",
+      tone: "from-primary/20 to-primary/5 text-primary ring-primary/25",
     },
   ];
+
   return (
-    <section className="space-y-8">
-      <div className="rounded-3xl border border-border bg-card p-8 sm:p-12 text-center max-w-3xl mx-auto">
-        <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-primary/10 text-primary mb-5">
-          <Rocket className="w-6 h-6" />
+    <section className="space-y-6">
+      {/* Hero: refined, premium feel, no centered card-in-a-page */}
+      <div className="relative overflow-hidden rounded-3xl border border-border bg-card shadow-elevated">
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0"
+        >
+          <div className="absolute -top-32 -right-24 w-[420px] h-[420px] rounded-full bg-primary/[0.07] blur-[100px]" />
+          <div className="absolute -bottom-32 -left-20 w-[360px] h-[360px] rounded-full bg-primary/[0.04] blur-[90px]" />
+          <div
+            className="absolute inset-0 opacity-[0.04]"
+            style={{
+              backgroundImage:
+                "linear-gradient(hsl(var(--foreground)/0.6) 1px, transparent 1px), linear-gradient(90deg, hsl(var(--foreground)/0.6) 1px, transparent 1px)",
+              backgroundSize: "44px 44px",
+              maskImage:
+                "radial-gradient(ellipse at top right, black 30%, transparent 70%)",
+            }}
+          />
         </div>
-        <h2 className="font-display text-[24px] sm:text-[28px] font-semibold tracking-tight text-foreground mb-2.5">
-          {t("empty.heroTitle")}
-        </h2>
-        <p className="text-[14px] text-muted-foreground max-w-md mx-auto leading-relaxed">
-          {t("empty.heroSubtitle")}
-        </p>
+        <div className="relative p-8 sm:p-10 grid grid-cols-1 lg:grid-cols-[1fr_auto] gap-8 items-end">
+          <div className="max-w-2xl">
+            <div className="inline-flex items-center gap-1.5 h-6 px-2.5 rounded-full bg-primary/12 border border-primary/25 text-primary text-[10.5px] font-semibold uppercase tracking-[0.14em] mb-5">
+              <Rocket className="w-3 h-3" />
+              {t("empty.eyebrow") /* falls back gracefully if key missing */}
+            </div>
+            <h2 className="font-display text-[26px] sm:text-[34px] font-semibold tracking-tight text-foreground leading-[1.1]">
+              {t("empty.heroTitle")}
+            </h2>
+            <p className="text-[14px] text-muted-foreground mt-3 max-w-xl leading-relaxed">
+              {t("empty.heroSubtitle")}
+            </p>
+          </div>
+          <div className="hidden lg:flex items-center gap-1.5 text-[10.5px] font-medium text-muted-foreground/70">
+            <span className="w-1 h-1 rounded-full bg-emerald-500 animate-pulse" />
+            <span>3 passos &middot; ~5 min</span>
+          </div>
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 max-w-5xl mx-auto">
-        {steps.map((s, i) => (
-          <Link
-            key={s.titleKey}
-            href={s.href}
-            prefetch
-            className="group relative rounded-2xl border border-border bg-card p-5 hover:border-primary/40 transition-colors block"
-          >
-            <div className="flex items-center justify-between mb-3">
-              <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary grid place-items-center group-hover:scale-105 transition-transform">
-                <s.icon className="w-4.5 h-4.5" />
+      {/* Steps: connected, numbered, with progress rail */}
+      <div className="relative">
+        <div
+          aria-hidden
+          className="hidden md:block absolute top-[34px] left-[12%] right-[12%] h-px bg-gradient-to-r from-transparent via-border to-transparent"
+        />
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          {steps.map((s, i) => (
+            <Link
+              key={s.titleKey}
+              href={s.href}
+              prefetch
+              className="group card-interactive relative rounded-2xl bg-card p-5 shadow-elevated block"
+            >
+              <div className="flex items-center justify-between mb-4">
+                <div
+                  className={cn(
+                    "w-11 h-11 rounded-xl grid place-items-center bg-gradient-to-br ring-1 transition-transform group-hover:scale-105",
+                    s.tone
+                  )}
+                >
+                  <s.icon className="w-5 h-5" />
+                </div>
+                <span className="font-display text-[28px] font-semibold tabular-nums text-muted-foreground/15 leading-none">
+                  0{i + 1}
+                </span>
               </div>
-              <span className="text-[10.5px] font-semibold tabular-nums text-muted-foreground/40">
-                0{i + 1}
+              <h3 className="font-display text-[15px] font-semibold text-foreground tracking-tight mb-1.5 group-hover:text-primary transition-colors">
+                {t(s.titleKey)}
+              </h3>
+              <p className="text-[12.5px] text-muted-foreground leading-relaxed mb-4">
+                {t(s.descKey)}
+              </p>
+              <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-primary">
+                {t(s.ctaKey)}
+                <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
               </span>
-            </div>
-            <h3 className="font-display text-[14.5px] font-semibold text-foreground tracking-tight mb-1">
-              {t(s.titleKey)}
-            </h3>
-            <p className="text-[12px] text-muted-foreground leading-relaxed mb-3">
-              {t(s.descKey)}
-            </p>
-            <span className="inline-flex items-center gap-1 text-[12px] font-semibold text-primary">
-              {t(s.ctaKey)}
-              <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
-            </span>
-          </Link>
-        ))}
+            </Link>
+          ))}
+        </div>
       </div>
     </section>
   );
