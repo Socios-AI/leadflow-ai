@@ -8,6 +8,7 @@
 
 import prisma from "@/lib/db/prisma";
 import { debounceMessage } from "@/lib/debounce";
+import { claimInbound } from "@/lib/inbound-idempotency";
 
 export interface InboundSmsPayload {
   /** E.164 phone of the sender */
@@ -35,8 +36,15 @@ export async function handleSmsInbound(
     return { status: "ignored", reason: "empty" };
   }
 
-  // Idempotency on Twilio's MessageSid.
+  // Idempotency: Redis SETNX claims this MessageSid for this account so
+  // concurrent retries from Twilio cannot create duplicate leads/messages.
+  // We layer a DB check too in case the first run already completed and
+  // expired the Redis key (1h TTL).
   if (payload.externalId) {
+    const claim = await claimInbound(`sms:${accountId}:${payload.externalId}`);
+    if (!claim.fresh) {
+      return { status: "ignored", reason: "duplicate_in_flight" };
+    }
     const already = await prisma.message.findFirst({
       where: { accountId, externalId: payload.externalId, direction: "INBOUND" },
       select: { id: true },

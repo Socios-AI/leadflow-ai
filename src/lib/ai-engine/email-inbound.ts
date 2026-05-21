@@ -9,6 +9,7 @@
 
 import prisma from "@/lib/db/prisma";
 import { debounceMessage } from "@/lib/debounce";
+import { claimInbound } from "@/lib/inbound-idempotency";
 
 export interface InboundEmailPayload {
   from: string;
@@ -45,6 +46,10 @@ export async function handleEmailInbound(
   if (!body) return { status: "ignored", reason: "empty" };
 
   if (payload.messageId) {
+    const claim = await claimInbound(`email:${accountId}:${payload.messageId}`);
+    if (!claim.fresh) {
+      return { status: "ignored", reason: "duplicate_in_flight" };
+    }
     const already = await prisma.message.findFirst({
       where: { accountId, externalId: payload.messageId, direction: "INBOUND" },
       select: { id: true },

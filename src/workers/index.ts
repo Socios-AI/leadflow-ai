@@ -195,18 +195,40 @@ const messageSendingWorker = new Worker(
       return;
     }
 
-    const result = await provider.send(to, msg.content);
+    // Retry transient send failures (timeout, 5xx, network blip).
+    // Permanent errors like invalid_phone_format short-circuit immediately
+    // so we don't burn the queue on something that won't recover.
+    const PERMANENT = new Set([
+      "invalid_phone_format",
+      "invalid_email_format",
+      "empty_body",
+      "missing_api_key",
+    ]);
+    let result = await provider.send(to, msg.content);
+    for (let attempt = 1; attempt <= 2 && !result.success; attempt++) {
+      const errCode = String(result.error || "");
+      if (PERMANENT.has(errCode)) break;
+      const delay = 400 * Math.pow(3, attempt - 1) + Math.floor(Math.random() * 200);
+      await new Promise((r) => setTimeout(r, delay));
+      result = await provider.send(to, msg.content);
+    }
 
     await prisma.message.update({
       where: { id: messageId },
       data: {
         status: result.success ? "SENT" : "FAILED",
         externalId: result.externalId || null,
+        metadata: result.success
+          ? msg.metadata ?? undefined
+          : {
+              ...((msg.metadata as Record<string, unknown>) || {}),
+              lastSendError: result.error || "unknown",
+            },
       },
     });
 
     console.log(
-      `[message-sending] ${result.success ? "Sent" : "Failed"} message ${messageId}`
+      `[message-sending] ${result.success ? "Sent" : `Failed (${result.error})`} message ${messageId}`
     );
   },
   { connection, concurrency: 10 }

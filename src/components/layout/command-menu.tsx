@@ -194,7 +194,22 @@ export function CommandMenu() {
       <div className="relative group">
         <input
           ref={inputRef}
-          type="text"
+          type="search"
+          /* Block browser autofill from dumping the user's saved email here.
+             Chrome ignores autoComplete="off" on text inputs, so we layer
+             several defenses: name + role + the unique aria-autocomplete
+             value, and we hint with autoComplete="off" anyway for Firefox/Safari. */
+          name="cmd-search-box"
+          role="combobox"
+          aria-expanded={open}
+          aria-autocomplete="list"
+          autoComplete="off"
+          autoCorrect="off"
+          autoCapitalize="off"
+          spellCheck={false}
+          data-form-type="other"
+          data-lpignore="true"
+          data-1p-ignore="true"
           value={query}
           onChange={(e) => {
             setQuery(e.target.value);
@@ -207,7 +222,9 @@ export function CommandMenu() {
           className={cn(
             "h-10 w-full rounded-xl border bg-background/50 pl-10 pr-12 text-sm text-foreground placeholder:text-muted-foreground transition-all",
             "border-border/60 group-hover:border-border group-hover:bg-muted/30",
-            "focus:border-primary/30 focus:bg-background focus:outline-none focus:ring-2 focus:ring-primary/10"
+            "focus:border-primary/30 focus:bg-background focus:outline-none focus:ring-2 focus:ring-primary/10",
+            // type=search adds a built-in clear button in some browsers, kill it
+            "[&::-webkit-search-cancel-button]:hidden"
           )}
         />
         <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none group-hover:text-foreground transition-colors" />
