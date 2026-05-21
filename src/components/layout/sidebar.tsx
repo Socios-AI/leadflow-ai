@@ -81,6 +81,18 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
     setShowLangMenu(false)
   }
 
+  // Real sign-out: hit the API first so Supabase cookies are cleared,
+  // THEN navigate. Just redirecting kept the session alive and middleware
+  // bounced the user right back to the dashboard.
+  async function handleSignOut() {
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' })
+    } catch {
+      // best-effort, we navigate either way
+    }
+    window.location.href = `/${locale}/login`
+  }
+
   function toggleGroup(key: string) {
     setExpandedGroups((prev) => ({ ...prev, [key]: !prev[key] }))
   }
@@ -334,7 +346,7 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
                     </Link>
                     <button
                       onClick={() => {
-                        window.location.href = '/login'
+                        handleSignOut()
                       }}
                       className="w-full flex items-center gap-2 px-3 py-2 text-[12.5px] text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer"
                     >
@@ -450,7 +462,7 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
             </button>
             <button
               onClick={() => {
-                window.location.href = '/login'
+                handleSignOut()
               }}
               title={t('signOut')}
               className="h-8 w-8 rounded-md flex items-center justify-center text-muted-foreground hover:text-rose-500 hover:bg-rose-500/10 transition-all cursor-pointer"
