@@ -1,20 +1,19 @@
 // src/lib/db/prisma.ts
 //
-// Prisma client singleton, explicitly avoids creating new connections on
-// every Next.js dev hot-reload, and adds `connection_limit` to the URL when
-// missing so we never blow past Supabase's PgBouncer pool.
+// Prisma client singleton with two safety nets:
 //
-// Also installs a query interceptor that auto-recovers from the Supavisor
-// "Tenant or user not found" error. That message comes up when the pooler
-// drops a stale client connection or when the engine is reconnecting on
-// boot. A single retry after $disconnect almost always resolves it, and we
-// log clearly when it persists so the operator can diagnose the
-// connection string.
+//   1) URL repair, when DATABASE_URL is the pooler URL but the username is
+//      the bare `postgres`, we auto-rewrite it to `postgres.<project-ref>`
+//      using the ref from NEXT_PUBLIC_SUPABASE_URL. Supavisor requires
+//      that prefix or every query fails with `Tenant or user not found`.
+//      This is the single most common Coolify misconfiguration.
 //
-// Production (Coolify): set DATABASE_URL to the Supabase pooled URL,
+//   2) Transient-error retry, all model operations are wrapped with a
+//      jittered retry loop for pooler-side errors like connection drops
+//      and prepared-statement misses, common on Supabase free tier.
+//
+// Production: set DATABASE_URL to the Supabase pooled URL,
 //   postgresql://postgres.<project-ref>:<password>@aws-0-<region>.pooler.supabase.com:6543/postgres?pgbouncer=true&connection_limit=10
-// Note the **postgres.<project-ref>** username, the bare "postgres" user
-// will trigger "Tenant or user not found" 100% of the time.
 
 import { PrismaClient } from "@prisma/client";
 
@@ -22,30 +21,79 @@ type PrismaClientWithRetry = PrismaClient;
 
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClientWithRetry | undefined;
-  prismaWarned: boolean | undefined;
+  prismaPatchLogged: boolean | undefined;
 };
 
-function withPoolHints(url: string | undefined): string | undefined {
+/** Extract the Supabase project ref from NEXT_PUBLIC_SUPABASE_URL. */
+function projectRefFromPublicUrl(): string | null {
+  const raw = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  if (!raw) return null;
+  try {
+    const u = new URL(raw);
+    // Expected: <ref>.supabase.co  (sometimes <ref>.supabase.in, <ref>.<region>.supabase.co)
+    const host = u.hostname;
+    const m = host.match(/^([a-z0-9]{16,32})\./i);
+    return m ? m[1] : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Repair a Supabase pooler URL that has the wrong username.
+ * - If the host is a pooler (port 6543 or hostname contains `pooler`/`pgbouncer`)
+ *   and the username is bare `postgres` (no `.<ref>` suffix), inject the ref
+ *   from NEXT_PUBLIC_SUPABASE_URL.
+ * - Always patch missing `pgbouncer=true` and `connection_limit` query params
+ *   on pooler URLs so we never blow the pool.
+ */
+function repairUrl(url: string | undefined): string | undefined {
   if (!url) return url;
+  let patched = false;
   try {
     const u = new URL(url);
     const isPooled =
       u.port === "6543" ||
       u.hostname.includes("pooler") ||
       u.hostname.includes("pgbouncer");
-    if (!isPooled) return url;
-    if (!u.searchParams.has("pgbouncer")) u.searchParams.set("pgbouncer", "true");
-    if (!u.searchParams.has("connection_limit"))
-      u.searchParams.set("connection_limit", "10");
+
+    if (isPooled) {
+      // Fix username if it's bare `postgres` instead of `postgres.<ref>`.
+      if (u.username === "postgres") {
+        const ref = projectRefFromPublicUrl();
+        if (ref) {
+          u.username = `postgres.${ref}`;
+          patched = true;
+        }
+      }
+      // Patch pool hints.
+      if (!u.searchParams.has("pgbouncer")) {
+        u.searchParams.set("pgbouncer", "true");
+        patched = true;
+      }
+      if (!u.searchParams.has("connection_limit")) {
+        u.searchParams.set("connection_limit", "10");
+        patched = true;
+      }
+    }
+
+    if (patched && !globalForPrisma.prismaPatchLogged) {
+      globalForPrisma.prismaPatchLogged = true;
+      const safeUser = u.username;
+      const safeHost = `${u.hostname}:${u.port || "5432"}`;
+      console.warn(
+        `[prisma] DATABASE_URL auto-repaired: user=${safeUser}, host=${safeHost}, ` +
+          `pgbouncer=${u.searchParams.get("pgbouncer")}, connection_limit=${u.searchParams.get("connection_limit")}`
+      );
+    }
     return u.toString();
   } catch {
     return url;
   }
 }
 
+/** Warn loudly if the URL is still bad after our best-effort repair. */
 function diagnoseUrl(url: string | undefined): void {
-  if (globalForPrisma.prismaWarned) return;
-  globalForPrisma.prismaWarned = true;
   if (!url) {
     console.error("[prisma] DATABASE_URL is not set");
     return;
@@ -57,9 +105,10 @@ function diagnoseUrl(url: string | undefined): void {
       u.hostname.includes("pooler") ||
       u.hostname.includes("pgbouncer");
     if (isPooled && u.username === "postgres") {
-      console.warn(
-        "[prisma] DATABASE_URL uses the pooler but the username is bare `postgres`. " +
-          "Supavisor needs `postgres.<project-ref>` or every query will fail with `Tenant or user not found`."
+      console.error(
+        "[prisma] DATABASE_URL still uses bare `postgres` on the pooler and we " +
+          "couldn't derive the project ref from NEXT_PUBLIC_SUPABASE_URL. Every query " +
+          "will fail with `Tenant or user not found`. Fix the connection string in your env."
       );
     }
   } catch {
@@ -67,11 +116,10 @@ function diagnoseUrl(url: string | undefined): void {
   }
 }
 
-const databaseUrl = withPoolHints(process.env.DATABASE_URL);
+const databaseUrl = repairUrl(process.env.DATABASE_URL);
 diagnoseUrl(databaseUrl);
 
-// Transient connection-layer errors from the pooler. We retry once after
-// forcing a reconnect. Anything outside this list bubbles up unchanged.
+// Transient connection-layer errors from the pooler. Bubble everything else.
 const RETRYABLE_RE =
   /tenant or user not found|server has closed the connection|connection terminated|engine is not yet connected|terminating connection due to administrator command|prepared statement .* does not exist|server closed the connection unexpectedly/i;
 
@@ -86,11 +134,11 @@ function createClient(): PrismaClientWithRetry {
     datasources: databaseUrl ? { db: { url: databaseUrl } } : undefined,
   });
 
-  // Client extension that wraps every model operation with a couple of
-  // retries on transient pooler errors. We deliberately do NOT call
-  // $disconnect() inside the retry, that would tank any other in-flight
-  // queries on the same client. A short jittered backoff is enough for
-  // Supavisor to hand us a fresh backend connection on the next attempt.
+  // Client extension that wraps every model operation with retries on
+  // transient pooler errors. We do NOT call $disconnect inside the loop
+  // because that would tank parallel queries on the same client. A short
+  // jittered backoff is enough for Supavisor to hand us a fresh backend
+  // connection on the next attempt.
   const extended = base.$extends({
     name: "supavisor-retry",
     query: {
@@ -113,8 +161,6 @@ function createClient(): PrismaClientWithRetry {
     },
   });
 
-  // $extends returns a typed proxy. Cast back to PrismaClient so the rest
-  // of the app keeps the original surface.
   return extended as unknown as PrismaClientWithRetry;
 }
 
