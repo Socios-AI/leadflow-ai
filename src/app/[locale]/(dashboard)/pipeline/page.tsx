@@ -423,40 +423,36 @@ export default function PipelinePage() {
                   <button
                     key={tpl.id}
                     onClick={() => changeTemplate(tpl.id)}
-                    className={cn(
-                      "text-left p-4 rounded-xl border-2 transition-all animate-fade-in-up",
-                      sel
-                        ? "border-primary bg-primary/5"
-                        : "border-border hover:border-primary/30 hover:bg-muted/30"
-                    )}
+                    data-selected={sel}
+                    className="selectable-card animate-fade-in-up"
                     style={{ animationDelay: `${idx * 30}ms` }}
                   >
-                    <div className="flex items-start justify-between mb-2.5">
+                    <div className="flex items-start gap-3 mb-3 pr-7">
                       <div
                         className={cn(
-                          "w-10 h-10 rounded-lg grid place-items-center transition-colors",
+                          "w-10 h-10 rounded-xl grid place-items-center shrink-0 ring-1 transition-all",
                           sel
-                            ? "bg-primary/15 text-primary"
-                            : "bg-muted text-muted-foreground"
+                            ? "bg-primary/20 text-primary ring-primary/30"
+                            : "bg-muted text-muted-foreground ring-border/40"
                         )}
                       >
-                        <tpl.icon className="w-4.5 h-4.5" />
+                        <tpl.icon className="w-[18px] h-[18px]" />
                       </div>
                       <span
                         className={cn(
-                          "text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-md",
+                          "text-[10px] font-semibold uppercase tracking-[0.1em] px-2 py-0.5 rounded-md border self-start",
                           tpl.proactive
-                            ? "bg-primary/10 text-primary"
-                            : "bg-blue-500/10 text-blue-500"
+                            ? "bg-primary/10 text-primary border-primary/25"
+                            : "bg-blue-500/10 text-blue-400 border-blue-500/25"
                         )}
                       >
                         {tpl.proactive ? t("tpl.proactive") : t("tpl.reactive")}
                       </span>
                     </div>
-                    <h3 className="font-display text-[13.5px] font-semibold text-foreground mb-1">
+                    <h3 className="font-display text-[14px] font-semibold text-foreground mb-1.5">
                       {t(`tpl.${tpl.k}.title`)}
                     </h3>
-                    <p className="text-[11.5px] text-muted-foreground leading-relaxed">
+                    <p className="text-[12px] text-muted-foreground leading-relaxed">
                       {t(`tpl.${tpl.k}.desc`)}
                     </p>
                   </button>
@@ -480,28 +476,24 @@ export default function PipelinePage() {
                     <button
                       key={g.id}
                       onClick={() => changeGoal(g.id)}
-                      className={cn(
-                        "text-left p-4 rounded-xl border-2 transition-all animate-fade-in-up",
-                        sel
-                          ? "border-primary bg-primary/5"
-                          : "border-border hover:border-primary/30 hover:bg-muted/30"
-                      )}
+                      data-selected={sel}
+                      className="selectable-card animate-fade-in-up"
                       style={{ animationDelay: `${idx * 30}ms` }}
                     >
                       <div
                         className={cn(
-                          "w-10 h-10 rounded-lg grid place-items-center mb-3 transition-colors",
+                          "w-10 h-10 rounded-xl grid place-items-center mb-3 ring-1 transition-all",
                           sel
-                            ? "bg-primary/15 text-primary"
-                            : "bg-muted text-muted-foreground"
+                            ? "bg-primary/20 text-primary ring-primary/30"
+                            : "bg-muted text-muted-foreground ring-border/40"
                         )}
                       >
-                        <g.icon className="w-4.5 h-4.5" />
+                        <g.icon className="w-[18px] h-[18px]" />
                       </div>
-                      <h3 className="font-display text-[13.5px] font-semibold text-foreground mb-1">
+                      <h3 className="font-display text-[14px] font-semibold text-foreground mb-1.5">
                         {t(`goal.${g.k}.title`)}
                       </h3>
-                      <p className="text-[11.5px] text-muted-foreground leading-relaxed">
+                      <p className="text-[12px] text-muted-foreground leading-relaxed">
                         {t(`goal.${g.k}.desc`)}
                       </p>
                     </button>
@@ -528,23 +520,19 @@ export default function PipelinePage() {
                       onClick={() =>
                         setConfig((p) => ({ ...p, firstContact: tm.id }))
                       }
-                      className={cn(
-                        "p-3.5 rounded-xl border-2 text-center transition-all",
-                        sel
-                          ? "border-primary bg-primary/5"
-                          : "border-border hover:border-primary/30 hover:bg-muted/30"
-                      )}
+                      data-selected={sel}
+                      className="selectable-card text-center"
                     >
                       <Clock
                         className={cn(
-                          "w-4 h-4 mx-auto mb-1.5",
+                          "w-4 h-4 mx-auto mb-2",
                           sel ? "text-primary" : "text-muted-foreground"
                         )}
                       />
-                      <p className="font-display text-[12.5px] font-semibold text-foreground">
+                      <p className="font-display text-[13px] font-semibold text-foreground">
                         {t(`timing.${tm.labelK}`)}
                       </p>
-                      <p className="text-[10.5px] text-muted-foreground mt-0.5">
+                      <p className="text-[11px] text-muted-foreground mt-0.5">
                         {t(`timing.${tm.subK}`)}
                       </p>
                     </button>
@@ -583,16 +571,12 @@ export default function PipelinePage() {
                                   : p.secondaryChannel,
                             }))
                           }
-                          className={cn(
-                            "flex items-center gap-2.5 p-3.5 rounded-xl border-2 transition-all",
-                            sel
-                              ? "border-primary bg-primary/5"
-                              : "border-border hover:border-primary/30 hover:bg-muted/30"
-                          )}
+                          data-selected={sel}
+                          className="selectable-card flex items-center gap-3"
                         >
                           <div
                             className={cn(
-                              "w-8 h-8 rounded-lg grid place-items-center shrink-0",
+                              "w-9 h-9 rounded-xl grid place-items-center shrink-0 shadow-sm ring-1 ring-white/10",
                               ch.bg
                             )}
                           >
@@ -619,12 +603,8 @@ export default function PipelinePage() {
                       onClick={() =>
                         setConfig((p) => ({ ...p, secondaryChannel: "" }))
                       }
-                      className={cn(
-                        "p-3 rounded-xl border-2 transition-all text-[12px] font-medium",
-                        config.secondaryChannel === ""
-                          ? "border-primary bg-primary/5 text-foreground"
-                          : "border-border hover:border-primary/30 text-muted-foreground hover:bg-muted/30"
-                      )}
+                      data-selected={config.secondaryChannel === ""}
+                      className="selectable-card text-center text-[12.5px] font-semibold"
                     >
                       {t("step4.none")}
                     </button>
@@ -638,14 +618,10 @@ export default function PipelinePage() {
                           onClick={() =>
                             setConfig((p) => ({ ...p, secondaryChannel: ch.id }))
                           }
-                          className={cn(
-                            "p-3 rounded-xl border-2 transition-all flex items-center justify-center gap-2 text-[12px] font-medium",
-                            sel
-                              ? "border-primary bg-primary/5 text-foreground"
-                              : "border-border hover:border-primary/30 text-muted-foreground hover:bg-muted/30"
-                          )}
+                          data-selected={sel}
+                          className="selectable-card flex items-center justify-center gap-2 text-[12.5px] font-semibold"
                         >
-                          <ch.icon className="w-4 h-4" />
+                          <ch.icon className="w-4 h-4 opacity-80" />
                           {ch.label}
                         </button>
                       );
@@ -905,7 +881,7 @@ export default function PipelinePage() {
           <button
             onClick={handleSave}
             disabled={saving}
-            className="w-full h-12 rounded-xl bg-primary text-primary-foreground text-[14px] font-semibold hover:opacity-90 disabled:opacity-50 flex items-center justify-center gap-2"
+            className="w-full h-12 rounded-xl btn-brand text-[14px] font-semibold disabled:opacity-50 active:scale-[0.99] transition-transform flex items-center justify-center gap-2"
           >
             {saving ? (
               <Loader2 className="w-4 h-4 animate-spin" />

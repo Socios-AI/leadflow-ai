@@ -319,24 +319,28 @@ function ProfileTab({
 
   return (
     <Card title={t("profile.title")} subtitle={t("profile.subtitle")}>
-      <div className="flex items-center gap-4 pb-6 border-b border-border">
-        <div className="w-16 h-16 rounded-2xl bg-primary/10 grid place-items-center text-[18px] font-display font-semibold text-primary">
-          {initials}
+      {/* Profile hero strip: avatar + name + email + role badge */}
+      <div className="flex items-center gap-4 pb-6 border-b border-border/60 -mt-1">
+        <div className="relative shrink-0">
+          <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-primary/30 to-primary/5 ring-1 ring-primary/30 grid place-items-center text-[18px] font-display font-semibold text-primary shadow-sm">
+            {initials}
+          </div>
+          <span className="absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full bg-emerald-500 border-2 border-card shadow-sm" />
         </div>
         <div className="min-w-0 flex-1">
           <p className="font-display text-[15px] font-semibold text-foreground truncate">
             {profile.name || profile.email.split("@")[0]}
           </p>
-          <p className="text-[12.5px] text-muted-foreground truncate">
+          <p className="text-[12.5px] text-muted-foreground truncate mt-0.5">
             {profile.email}
           </p>
           {profile.platformRole !== "USER" && (
             <span
               className={cn(
-                "inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-semibold mt-2",
+                "inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold tracking-wider mt-2 border uppercase",
                 profile.platformRole === "HIPER_ADMIN"
-                  ? "bg-amber-500/15 text-amber-500 border border-amber-500/30"
-                  : "bg-primary/15 text-primary border border-primary/30"
+                  ? "bg-amber-500/15 text-amber-400 border-amber-500/30"
+                  : "bg-primary/15 text-primary border-primary/30"
               )}
             >
               {profile.platformRole === "HIPER_ADMIN" ? (
@@ -350,25 +354,27 @@ function ProfileTab({
         </div>
       </div>
 
-      <FormRow label={t("profile.fullName")}>
-        <Input
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder={t("profile.fullNamePlaceholder")}
-          className="h-11"
-        />
-      </FormRow>
+      <div className="pt-1 space-y-4">
+        <FormRow label={t("profile.fullName")}>
+          <Input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder={t("profile.fullNamePlaceholder")}
+            className="h-11"
+          />
+        </FormRow>
 
-      <FormRow label={t("profile.email")} hint={t("profile.emailHint")}>
-        <Input
-          value={profile.email}
-          readOnly
-          disabled
-          className="h-11 bg-muted/40"
-        />
-      </FormRow>
+        <FormRow label={t("profile.email")} hint={t("profile.emailHint")}>
+          <Input
+            value={profile.email}
+            readOnly
+            disabled
+            className="h-11 bg-muted/30 font-mono text-[12.5px]"
+          />
+        </FormRow>
+      </div>
 
-      <div className="flex justify-end pt-2">
+      <div className="flex justify-end pt-2 mt-2 border-t border-border/40">
         <Button
           disabled={!dirty || saving}
           onClick={async () => {
@@ -376,6 +382,7 @@ function ProfileTab({
             await onSave(name.trim());
             setSaving(false);
           }}
+          className="btn-brand h-10 px-5 active:scale-[0.98] transition-transform mt-4"
         >
           {saving ? (
             <Loader2 className="w-4 h-4 animate-spin mr-1.5" />
@@ -472,9 +479,10 @@ function WorkspaceTab({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="pt">🇧🇷 Português</SelectItem>
-                <SelectItem value="en">🇺🇸 English</SelectItem>
-                <SelectItem value="es">🇪🇸 Español</SelectItem>
+                <SelectItem value="pt">Português</SelectItem>
+                <SelectItem value="en">English</SelectItem>
+                <SelectItem value="es">Español</SelectItem>
+                <SelectItem value="it">Italiano</SelectItem>
               </SelectContent>
             </Select>
           </FormRow>
@@ -1113,19 +1121,19 @@ function Card({
   children: React.ReactNode;
 }) {
   return (
-    <section className="rounded-2xl border border-border bg-card overflow-hidden">
-      <header className="px-5 py-4 flex items-end justify-between gap-3 border-b border-border">
+    <section className="section-card animate-fade-in-up">
+      <header className="section-card__head flex items-end justify-between gap-3">
         <div>
           <h2 className="font-display text-[15px] font-semibold text-foreground tracking-tight">
             {title}
           </h2>
           {subtitle && (
-            <p className="text-[12px] text-muted-foreground mt-0.5">{subtitle}</p>
+            <p className="text-[12.5px] text-muted-foreground mt-1 leading-relaxed">{subtitle}</p>
           )}
         </div>
         {action}
       </header>
-      <div className="p-5 space-y-4">{children}</div>
+      <div className="section-card__body space-y-4">{children}</div>
     </section>
   );
 }

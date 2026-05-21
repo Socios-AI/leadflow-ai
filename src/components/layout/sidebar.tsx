@@ -136,35 +136,37 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
       {/* ═══ LOGO / BRAND ═══ */}
       <div
         className={cn(
-          'h-16 flex items-center border-b border-border shrink-0',
-          isCollapsed ? 'justify-center px-2' : 'justify-between px-4'
+          'flex items-center border-b border-border shrink-0',
+          isCollapsed ? 'h-16 justify-center px-2' : 'h-[68px] justify-between px-4'
         )}
       >
         {!isCollapsed ? (
-          <Link href="/" className="group flex items-center gap-2.5 min-w-0">
-            <div className="relative w-8 h-8 rounded-lg overflow-hidden shrink-0 ring-1 ring-border/60 shadow-sm transition-transform group-hover:scale-[1.03]">
+          <Link href="/" className="group flex items-center gap-3 min-w-0">
+            <div className="relative w-9 h-9 rounded-xl overflow-hidden shrink-0 ring-1 ring-border/70 shadow-md transition-transform group-hover:scale-[1.04]">
               <Image
                 src="/logo.png"
                 alt="MKT Digital"
-                width={32}
-                height={32}
+                width={36}
+                height={36}
                 className="object-contain"
               />
+              <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-500 border-2 border-card shadow-sm" />
             </div>
             <div className="flex flex-col leading-tight min-w-0">
-              <span className="text-[13px] font-semibold text-foreground tracking-tight truncate font-display">
+              <span className="text-[14px] font-semibold text-foreground tracking-tight truncate font-display">
                 MKT Digital
               </span>
-              <span className="text-[9.5px] font-medium uppercase tracking-[0.16em] text-muted-foreground/70 truncate">
+              <span className="text-[9.5px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/65 truncate">
                 {t('tagline')}
               </span>
             </div>
           </Link>
         ) : (
-          <Link href="/" className="block">
-            <div className="w-8 h-8 rounded-lg overflow-hidden ring-1 ring-border/60 shadow-sm hover:scale-[1.03] transition-transform">
-              <Image src="/logo.png" alt="MKT Digital" width={32} height={32} className="object-contain" />
+          <Link href="/" className="block relative">
+            <div className="w-9 h-9 rounded-xl overflow-hidden ring-1 ring-border/70 shadow-md hover:scale-[1.04] transition-transform">
+              <Image src="/logo.png" alt="MKT Digital" width={36} height={36} className="object-contain" />
             </div>
+            <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-500 border-2 border-card shadow-sm" />
           </Link>
         )}
       </div>
@@ -173,7 +175,7 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
       <button
         onClick={onToggle}
         aria-label={isCollapsed ? 'Expand' : 'Collapse'}
-        className="absolute -right-3 top-[58px] z-50 w-6 h-6 rounded-full bg-card border border-border shadow-sm flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-all cursor-pointer"
+        className="absolute -right-3 top-[60px] z-50 w-6 h-6 rounded-full bg-card border border-border shadow-sm flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted hover:border-primary/40 transition-all cursor-pointer"
       >
         {isCollapsed ? <ChevronRight className="w-3 h-3" /> : <ChevronLeft className="w-3 h-3" />}
       </button>
