@@ -26,6 +26,18 @@ export default function WhatsAppChannelPage() {
   const [webhookUrl, setWebhookUrl] = useState<string>("");
   const [reconfiguring, setReconfiguring] = useState(false);
   const [webhookToast, setWebhookToast] = useState<string | null>(null);
+  const [webhookAttempts, setWebhookAttempts] = useState<
+    | {
+        label: string;
+        method: string;
+        url: string;
+        status: number;
+        ok: boolean;
+        detail?: string;
+      }[]
+    | null
+  >(null);
+  const [webhookInstance, setWebhookInstance] = useState<string | null>(null);
   const pollRef = useRef<NodeJS.Timeout | null>(null);
 
   const loadStatus = useCallback(async () => {
@@ -45,6 +57,8 @@ export default function WhatsAppChannelPage() {
   async function handleReconfigureWebhook() {
     setReconfiguring(true);
     setWebhookToast(null);
+    setWebhookAttempts(null);
+    setWebhookInstance(null);
     try {
       const r = await fetch("/api/channels/whatsapp", {
         method: "POST",
@@ -56,14 +70,16 @@ export default function WhatsAppChannelPage() {
         setWebhookConfigured(true);
         if (d.webhookUrl) setWebhookUrl(d.webhookUrl);
         setWebhookToast(t("webhookReconfigured"));
+        setTimeout(() => setWebhookToast(null), 4000);
       } else {
         setWebhookToast(d.error || t("webhookReconfigureError"));
+        if (Array.isArray(d.attempts)) setWebhookAttempts(d.attempts);
+        if (typeof d.instanceName === "string") setWebhookInstance(d.instanceName);
       }
     } catch {
       setWebhookToast(t("webhookReconfigureError"));
     } finally {
       setReconfiguring(false);
-      setTimeout(() => setWebhookToast(null), 4000);
     }
   }
 
@@ -187,6 +203,35 @@ export default function WhatsAppChannelPage() {
               )}
               {webhookToast && (
                 <p className="text-[11.5px] text-foreground mt-2">{webhookToast}</p>
+              )}
+              {webhookAttempts && webhookAttempts.length > 0 && (
+                <details className="mt-3 text-[10.5px]">
+                  <summary className="cursor-pointer text-muted-foreground hover:text-foreground select-none">
+                    {t("webhookAttemptsTitle", { instance: webhookInstance || "?" })}
+                  </summary>
+                  <div className="mt-2 space-y-1 font-mono">
+                    {webhookAttempts.map((a, i) => (
+                      <div
+                        key={i}
+                        className={cn(
+                          "px-2 py-1.5 rounded border",
+                          a.ok
+                            ? "border-emerald-500/30 bg-emerald-500/[0.05] text-emerald-500"
+                            : "border-border bg-muted/30 text-muted-foreground"
+                        )}
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold">{a.method}</span>
+                          <span className="opacity-70">{a.status || "ERR"}</span>
+                          <span className="truncate flex-1">{a.label}</span>
+                        </div>
+                        {a.detail && (
+                          <div className="opacity-60 truncate mt-0.5">{a.detail}</div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </details>
               )}
             </div>
             <button

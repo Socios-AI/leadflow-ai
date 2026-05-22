@@ -13,7 +13,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/db/prisma";
 import { getSession } from "@/lib/auth/session";
-import { configureEvolutionWebhook } from "@/lib/channels/evolution-webhook";
+import {
+  configureEvolutionWebhook,
+  webhookBodies,
+} from "@/lib/channels/evolution-webhook";
 import { appUrlFromRequest } from "@/lib/app-url";
 
 const EVO_URL = () => (process.env.EVOLUTION_API_URL || "").replace(/\/$/, "");
@@ -160,20 +163,45 @@ export async function POST(req: NextRequest) {
 
     // ═══ CONFIGURE WEBHOOK (backfill for existing instances) ═══
     if (action === "configureWebhook") {
-      const res = await setWebhookForAccount(req, session.accountId, {
-        ...cfg,
-        instanceName: cfg.instanceName || instName,
-      });
-      if (!res.ok) {
-        return NextResponse.json(
-          { error: res.detail || "webhook_config_failed" },
-          { status: 502 }
-        );
-      }
-      return NextResponse.json({
-        success: true,
+      const targetInstance = cfg.instanceName || instName;
+      const result = await configureEvolutionWebhook({
+        baseUrl,
+        apiKey,
+        instanceName: targetInstance,
         webhookUrl: webhookUrlFor(req),
+        webhookSecret: cfg.webhookSecret,
       });
+
+      if (result.ok) {
+        await prisma.channel.update({
+          where: { accountId_type: { accountId: session.accountId, type: "WHATSAPP" } },
+          data: {
+            config: {
+              ...cfg,
+              instanceName: targetInstance,
+              webhookConfigured: true,
+              webhookConfiguredAt: new Date().toISOString(),
+            },
+          },
+        });
+        return NextResponse.json({
+          success: true,
+          webhookUrl: webhookUrlFor(req),
+          variant: result.variant,
+        });
+      }
+
+      // Surface the full attempt log so the dashboard can show exactly which
+      // paths failed. Helps when the user's Evolution fork uses an unknown
+      // endpoint shape.
+      return NextResponse.json(
+        {
+          error: result.detail || "webhook_config_failed",
+          instanceName: targetInstance,
+          attempts: result.attempts,
+        },
+        { status: 502 }
+      );
     }
 
     // ═══ CONNECT ═══
@@ -181,7 +209,16 @@ export async function POST(req: NextRequest) {
       let qrCode: string | null = null;
       let created = false;
 
-      // 1. Try to create instance (ignore if already exists)
+      // 1. Try to create instance (ignore if already exists).
+      // Pass the webhook config in the create body so brand-new instances
+      // come up already wired, no second round-trip needed.
+      const { wrapped: webhookWrapped } = webhookBodies({
+        baseUrl,
+        apiKey,
+        instanceName: instName,
+        webhookUrl: webhookUrlFor(req),
+        webhookSecret: cfg.webhookSecret,
+      });
       try {
         const createRes = await fetch(`${baseUrl}/instance/create`, {
           method: "POST",
@@ -196,6 +233,9 @@ export async function POST(req: NextRequest) {
             readMessages: false,
             readStatus: false,
             syncFullHistory: false,
+            // Evolution v2.x reads the webhook from the create payload.
+            // Older versions ignore unknown keys, so this is safe.
+            ...webhookWrapped,
           }),
         });
 

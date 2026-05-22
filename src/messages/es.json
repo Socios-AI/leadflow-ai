@@ -751,7 +751,8 @@
       "webhookConfigure": "Configurar",
       "webhookReconfigure": "Reconfigurar",
       "webhookReconfigured": "Webhook configurado",
-      "webhookReconfigureError": "No se pudo configurar el webhook en Evolution"
+      "webhookReconfigureError": "No se pudo configurar el webhook en Evolution",
+      "webhookAttemptsTitle": "Ver intentos (instancia: {instance})"
     },
     "email": {
       "title": "Email",
