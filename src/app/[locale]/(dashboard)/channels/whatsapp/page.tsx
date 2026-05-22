@@ -69,8 +69,35 @@ export default function WhatsAppChannelPage() {
       if (r.ok && d.success) {
         setWebhookConfigured(true);
         if (d.webhookUrl) setWebhookUrl(d.webhookUrl);
-        setWebhookToast(t("webhookReconfigured"));
-        setTimeout(() => setWebhookToast(null), 4000);
+        // When the API had to recreate the instance, it returns a fresh QR
+        // and signals that pairing is needed again. Surface that flow
+        // immediately so the operator scans without a second click.
+        if (d.qrCode && d.recreated) {
+          setQrCode(d.qrCode);
+          setStatus("qr");
+          setPhoneNumber(null);
+          setWebhookToast(t("webhookRecreated"));
+          stopPolling();
+          pollRef.current = setInterval(async () => {
+            try {
+              const sr = await fetch("/api/channels/whatsapp", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ action: "status" }),
+              });
+              const sd = await sr.json();
+              if (sd.connected) {
+                setStatus("connected");
+                setPhoneNumber(sd.phoneNumber);
+                setQrCode(null);
+                stopPolling();
+              }
+            } catch {}
+          }, 4000);
+        } else {
+          setWebhookToast(t("webhookReconfigured"));
+          setTimeout(() => setWebhookToast(null), 4000);
+        }
       } else {
         setWebhookToast(d.error || t("webhookReconfigureError"));
         if (Array.isArray(d.attempts)) setWebhookAttempts(d.attempts);

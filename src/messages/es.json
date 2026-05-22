@@ -752,7 +752,8 @@
       "webhookReconfigure": "Reconfigurar",
       "webhookReconfigured": "Webhook configurado",
       "webhookReconfigureError": "No se pudo configurar el webhook en Evolution",
-      "webhookAttemptsTitle": "Ver intentos (instancia: {instance})"
+      "webhookAttemptsTitle": "Ver intentos (instancia: {instance})",
+      "webhookRecreated": "La instancia fue recreada. Escanea el QR Code abajo para reconectar."
     },
     "email": {
       "title": "Email",

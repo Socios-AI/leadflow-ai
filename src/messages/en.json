@@ -752,7 +752,8 @@
       "webhookReconfigure": "Reconfigure",
       "webhookReconfigured": "Webhook configured",
       "webhookReconfigureError": "Could not configure the webhook on Evolution",
-      "webhookAttemptsTitle": "View attempts (instance: {instance})"
+      "webhookAttemptsTitle": "View attempts (instance: {instance})",
+      "webhookRecreated": "Instance was recreated. Scan the QR Code below to pair again."
     },
     "email": {
       "title": "Email",

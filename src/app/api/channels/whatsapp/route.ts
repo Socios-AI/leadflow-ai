@@ -164,13 +164,65 @@ export async function POST(req: NextRequest) {
     // ═══ CONFIGURE WEBHOOK (backfill for existing instances) ═══
     if (action === "configureWebhook") {
       const targetInstance = cfg.instanceName || instName;
-      const result = await configureEvolutionWebhook({
+      let result = await configureEvolutionWebhook({
         baseUrl,
         apiKey,
         instanceName: targetInstance,
         webhookUrl: webhookUrlFor(req),
         webhookSecret: cfg.webhookSecret,
       });
+
+      // Self-heal: when Evolution says the instance does not exist (was
+      // deleted from the Evolution server but our DB still points at it),
+      // create it with the webhook baked into the create payload and try
+      // again. This is the same path used by the "connect" action so the
+      // operator always lands in a working state with one click.
+      const instanceMissing = result.attempts.some(
+        (a) => a.status === 404 && /instance.*does not exist/i.test(a.detail || "")
+      );
+      let recreatedQr: string | null = null;
+      if (!result.ok && instanceMissing) {
+        const { wrapped: webhookWrapped } = webhookBodies({
+          baseUrl,
+          apiKey,
+          instanceName: targetInstance,
+          webhookUrl: webhookUrlFor(req),
+          webhookSecret: cfg.webhookSecret,
+        });
+        try {
+          const createRes = await fetch(`${baseUrl}/instance/create`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", apikey: apiKey },
+            body: JSON.stringify({
+              instanceName: targetInstance,
+              integration: "WHATSAPP-BAILEYS",
+              qrcode: true,
+              rejectCall: true,
+              groupsIgnore: true,
+              alwaysOnline: true,
+              readMessages: false,
+              readStatus: false,
+              syncFullHistory: false,
+              ...webhookWrapped,
+            }),
+          });
+          if (createRes.ok) {
+            const createData = await createRes.json().catch(() => ({}));
+            recreatedQr = createData?.qrcode?.base64 || null;
+            // Some Evolution versions don't honor webhook on /create.
+            // Re-attempt the set call, instance now exists.
+            result = await configureEvolutionWebhook({
+              baseUrl,
+              apiKey,
+              instanceName: targetInstance,
+              webhookUrl: webhookUrlFor(req),
+              webhookSecret: cfg.webhookSecret,
+            });
+          }
+        } catch {
+          // fall through to error path below
+        }
+      }
 
       if (result.ok) {
         await prisma.channel.update({
@@ -181,6 +233,9 @@ export async function POST(req: NextRequest) {
               instanceName: targetInstance,
               webhookConfigured: true,
               webhookConfiguredAt: new Date().toISOString(),
+              // If we just recreated the instance, the lead also needs to
+              // pair again, mark connection as stale so the UI prompts QR.
+              ...(recreatedQr ? { connected: false } : {}),
             },
           },
         });
@@ -188,12 +243,13 @@ export async function POST(req: NextRequest) {
           success: true,
           webhookUrl: webhookUrlFor(req),
           variant: result.variant,
+          // If the instance had to be recreated, surface the QR so the
+          // operator can re-pair without a second click.
+          qrCode: recreatedQr,
+          recreated: !!recreatedQr,
         });
       }
 
-      // Surface the full attempt log so the dashboard can show exactly which
-      // paths failed. Helps when the user's Evolution fork uses an unknown
-      // endpoint shape.
       return NextResponse.json(
         {
           error: result.detail || "webhook_config_failed",
