@@ -269,7 +269,9 @@ export default function PipelinePage() {
     template: !!config.template,
     goal: !!config.goal,
     timing: !isProactive || !!config.firstContact,
-    channel: !!config.primaryChannel,
+    channel: config.channels.length > 0,
+    firstMessage: !!config.firstMessageInstruction.trim(),
+    followUps: config.followUps.length >= 0, // optional, always "done"
     extra:
       (!needsTransfer || !!config.transferPhone) &&
       (!needsCalendar || config.calendarEnabled !== undefined) &&
@@ -1223,15 +1225,15 @@ function FunnelPreview({
       </div>
       <div className="mt-3 flex items-center gap-4 text-[11px] text-muted-foreground flex-wrap">
         <span>
-          {t("step4.primary")}:{" "}
-          <strong className="text-foreground">{config.primaryChannel}</strong>
+          {t("step4.channelsLabel")}:{" "}
+          <strong className="text-foreground">
+            {config.channels.join(" + ") || "—"}
+          </strong>
         </span>
-        {config.secondaryChannel && (
+        {config.followUps.length > 0 && (
           <span>
-            {t("step4.secondary")}:{" "}
-            <strong className="text-foreground">
-              {config.secondaryChannel}
-            </strong>
+            {t("followUps.title")}:{" "}
+            <strong className="text-foreground">{config.followUps.length}</strong>
           </span>
         )}
         {isProactive && (
