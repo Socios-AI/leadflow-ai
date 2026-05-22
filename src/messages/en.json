@@ -710,6 +710,11 @@
       "instructionPlaceholder": "Example: Ask if the lead is still interested, offer to clear quick questions. Lighter tone, no pressure.",
       "add": "Add follow-up",
       "cap": "Maximum of 10 follow-ups"
+    },
+    "language": {
+      "title": "AI language",
+      "desc": "Lock the language the AI will use to reply to EVERY lead in this funnel. If you leave Auto, the AI guesses from the lead's text.",
+      "lockedHint": "Locked to {lang}. The AI will reply in this language even if the lead writes in another one."
     }
   },
   "channels": {

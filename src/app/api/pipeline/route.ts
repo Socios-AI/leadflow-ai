@@ -106,6 +106,9 @@ export async function GET() {
       firstMessageInstruction: String(p.pipelineFirstMessageInstruction || ""),
       firstMessageVariability:
         p.pipelineFirstMessageVariability === "exact" ? "exact" : "instruction",
+      // Hard language override stored at persona.language. "auto" lets the
+      // engine fall back to the campaign/lead heuristic.
+      language: String(p.language || "auto"),
       followUps,
       followUpEnabled: followUps.length > 0,
       transferPhone: p.pipelineTransferPhone || "",
@@ -143,9 +146,18 @@ export async function PUT(req: NextRequest) {
       .slice(0, 2000);
     const firstMessageVariability =
       body.firstMessageVariability === "exact" ? "exact" : "instruction";
+    // Whitelist of language codes the engine knows how to render. Anything
+    // else is normalized to "auto" so we never write garbage.
+    const ALLOWED_LANGS = new Set([
+      "auto", "pt", "pt-BR", "en", "es", "it", "de", "fr", "nl", "ja",
+    ]);
+    const rawLang = String(body.language || "auto");
+    const language = ALLOWED_LANGS.has(rawLang) ? rawLang : "auto";
 
     const persona: PersonaShape = {
       ...existingPersona,
+      // Hard language override read by the AI engine on every generation.
+      language,
       pipelineTemplate: body.template,
       pipelineGoal: body.goal,
       pipelineFirstContact: body.firstContact,

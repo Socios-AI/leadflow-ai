@@ -49,6 +49,9 @@ interface PipelineConfig {
   firstContact: string;
   // Multi-channel: AI sends through every channel listed, in order.
   channels: Channel[];
+  // Hard language override: "auto" lets the AI guess from the lead's text;
+  // anything else FORCES that language no matter what the lead writes in.
+  language: string;
   firstMessageInstruction: string;
   firstMessageVariability: "instruction" | "exact";
   followUps: FollowUp[];
@@ -60,11 +63,25 @@ interface PipelineConfig {
   webhookId: string;
 }
 
+const LANGUAGE_OPTIONS: { code: string; label: string }[] = [
+  { code: "auto", label: "Auto (detect from lead)" },
+  { code: "pt-BR", label: "Português (Brasil)" },
+  { code: "pt", label: "Português (Portugal)" },
+  { code: "en", label: "English" },
+  { code: "es", label: "Español" },
+  { code: "it", label: "Italiano" },
+  { code: "de", label: "Deutsch" },
+  { code: "fr", label: "Français" },
+  { code: "nl", label: "Nederlands" },
+  { code: "ja", label: "日本語" },
+];
+
 const DEFAULT_CONFIG: PipelineConfig = {
   template: "",
   goal: "",
   firstContact: "immediate",
   channels: ["WHATSAPP"],
+  language: "auto",
   firstMessageInstruction: "",
   firstMessageVariability: "instruction",
   followUps: [
@@ -430,6 +447,55 @@ export default function PipelinePage() {
 
         {/* ═══ CONTENT ═══ */}
         <div className="space-y-6 min-w-0">
+          {/* LANGUAGE LOCK
+              Cravado em cima de tudo. Quando setado != "auto", a engine
+              ignora o que o lead escrever e responde sempre nesse idioma. */}
+          <section
+            id="step-language"
+            className="rounded-2xl border border-border bg-card p-5 shadow-elevated"
+          >
+            <div className="flex items-start gap-3.5">
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-500/20 to-amber-500/5 ring-1 ring-amber-500/25 grid place-items-center text-amber-400 shrink-0">
+                <Globe className="w-[18px] h-[18px]" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <h2 className="font-display text-[15px] font-semibold text-foreground tracking-tight">
+                  {t("language.title")}
+                </h2>
+                <p className="text-[12.5px] text-muted-foreground mt-1 leading-relaxed">
+                  {t("language.desc")}
+                </p>
+                <div className="mt-3 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
+                  {LANGUAGE_OPTIONS.map((lang) => {
+                    const sel = config.language === lang.code;
+                    return (
+                      <button
+                        key={lang.code}
+                        onClick={() =>
+                          setConfig((p) => ({ ...p, language: lang.code }))
+                        }
+                        data-selected={sel}
+                        className="selectable-card text-left text-[12.5px] font-semibold py-2.5 px-3"
+                      >
+                        {lang.label}
+                      </button>
+                    );
+                  })}
+                </div>
+                {config.language !== "auto" && (
+                  <p className="text-[11.5px] text-amber-400 mt-3 flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                    {t("language.lockedHint", {
+                      lang:
+                        LANGUAGE_OPTIONS.find((l) => l.code === config.language)
+                          ?.label || config.language,
+                    })}
+                  </p>
+                )}
+              </div>
+            </div>
+          </section>
+
           {/* STEP: TEMPLATE */}
           <StepCard
             id="step-template"

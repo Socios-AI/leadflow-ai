@@ -710,6 +710,11 @@
       "instructionPlaceholder": "Exemplo: Pergunte ao lead se ele ainda esta interessado, ofereca tirar duvidas rapidamente. Tom mais leve, sem cobrar.",
       "add": "Adicionar follow up",
       "cap": "Maximo de 10 follow ups"
+    },
+    "language": {
+      "title": "Idioma da IA",
+      "desc": "Trave aqui o idioma em que a IA vai responder TODO lead deste funil. Se deixar Auto, a IA detecta pelo texto do lead.",
+      "lockedHint": "Travado em {lang}. A IA vai responder neste idioma mesmo se o lead escrever em outro."
     }
   },
   "channels": {

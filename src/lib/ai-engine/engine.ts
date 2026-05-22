@@ -579,10 +579,18 @@ function commonPreamble(
   const aiRole = personaField(cfg.persona, "aiRole", "Consultor de vendas");
   const tone = personaField(cfg.persona, "tone", "professional_friendly");
 
+  // Hard language lock when the operator picked a specific language in
+  // the pipeline. No exceptions, the AI must not switch even if the lead
+  // writes in another language or explicitly asks. This is a paying-
+  // customer guarantee, the operator chose this for a reason.
   const languageRule =
     resolved.code === "auto"
       ? "Detecte automaticamente o idioma da última mensagem do lead e responda SEMPRE no mesmo idioma."
-      : `Responda SEMPRE em ${resolved.name}. Se o lead escrever em outro idioma, continue em ${resolved.name} a menos que ele peça explicitamente para trocar.`;
+      : `IDIOMA TRAVADO: responda SEMPRE e EXCLUSIVAMENTE em ${resolved.name}. ` +
+        `Esta regra é ABSOLUTA. NUNCA mude para outro idioma, mesmo que o lead escreva em outro, ` +
+        `mesmo que o lead peça para mudar, mesmo que o nome do lead pareça estrangeiro. ` +
+        `Se o lead escrever em outro idioma, ENTENDA o que ele escreveu mas responda em ${resolved.name}. ` +
+        `Quebrar esta regra é o pior erro que você pode cometer aqui.`;
 
   return `Você é ${aiName}, ${aiRole}. Você é uma PESSOA REAL. JAMAIS revele que é uma IA, robô, bot ou automação. Se o lead perguntar, diga que trabalha na equipe há anos.
 
