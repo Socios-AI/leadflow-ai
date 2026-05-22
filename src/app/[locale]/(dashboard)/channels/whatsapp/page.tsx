@@ -156,8 +156,10 @@ export default function WhatsAppChannelPage() {
         </div>
       )}
 
-      {/* WEBHOOK STATUS, sempre visivel quando a instancia ja existe */}
-      {status !== "loading" && status !== "connecting" && (
+      {/* WEBHOOK STATUS, sempre visivel quando nao esta no QR ou conectando.
+          O early return de "loading" la em cima ja garante que aqui status
+          e apenas connected | disconnected | connecting | qr. */}
+      {status !== "connecting" && (
         <div className={cn(
           "rounded-2xl border p-4",
           webhookConfigured
