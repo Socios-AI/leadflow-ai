@@ -10,6 +10,11 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
+      # Force the matrix to run one app at a time. The Coolify server only
+      # has enough RAM to compile one Next.js build at a time; running web
+      # and workers in parallel was OOM-killing the container mid-install
+      # (exit 255). With max-parallel=1, web finishes first, then workers.
+      max-parallel: 1
       matrix:
         app:
           - name: web
