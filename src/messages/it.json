@@ -744,7 +744,15 @@
       "autoReply": "Atendimento automático",
       "autoReplyDesc": "Assim che collegato, a IA começa a atender i tuoi leads automaticamente per il WhatsApp.",
       "useNormally": "Use normalmente",
-      "useNormallyDesc": "Puoi continuar usandel il tuo WhatsApp normalmente. A IA funcionella em paralelo."
+      "useNormallyDesc": "Puoi continuar usandel il tuo WhatsApp normalmente. A IA funcionella em paralelo.",
+      "webhookActive": "Webhook attivo",
+      "webhookActiveDesc": "L'IA riceve e risponde automaticamente ai messaggi che arrivano a questo WhatsApp.",
+      "webhookMissing": "Webhook non configurato",
+      "webhookMissingDesc": "Senza il webhook l'IA non riceve i messaggi dei lead. Clicca su configura.",
+      "webhookConfigure": "Configura",
+      "webhookReconfigure": "Riconfigura",
+      "webhookReconfigured": "Webhook configurato",
+      "webhookReconfigureError": "Impossibile configurare il webhook su Evolution"
     },
     "email": {
       "title": "Email",

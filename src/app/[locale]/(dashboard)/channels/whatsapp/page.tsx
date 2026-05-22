@@ -22,12 +22,18 @@ export default function WhatsAppChannelPage() {
   const [lastActivity, setLastActivity] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [disconnecting, setDisconnecting] = useState(false);
+  const [webhookConfigured, setWebhookConfigured] = useState(false);
+  const [webhookUrl, setWebhookUrl] = useState<string>("");
+  const [reconfiguring, setReconfiguring] = useState(false);
+  const [webhookToast, setWebhookToast] = useState<string | null>(null);
   const pollRef = useRef<NodeJS.Timeout | null>(null);
 
   const loadStatus = useCallback(async () => {
     try {
       const r = await fetch("/api/channels/whatsapp"); if (!r.ok) return;
       const d = await r.json();
+      setWebhookConfigured(!!d.webhookConfigured);
+      setWebhookUrl(d.webhookUrl || "");
       if (d.connected) { setStatus("connected"); setPhoneNumber(d.phoneNumber); setLastActivity(d.lastActivity); setQrCode(null); stopPolling(); }
       else if (status === "loading") setStatus("disconnected");
     } catch {}
@@ -35,6 +41,31 @@ export default function WhatsAppChannelPage() {
 
   useEffect(() => { loadStatus(); return () => stopPolling(); }, [loadStatus]);
   function stopPolling() { if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; } }
+
+  async function handleReconfigureWebhook() {
+    setReconfiguring(true);
+    setWebhookToast(null);
+    try {
+      const r = await fetch("/api/channels/whatsapp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "configureWebhook" }),
+      });
+      const d = await r.json();
+      if (r.ok && d.success) {
+        setWebhookConfigured(true);
+        if (d.webhookUrl) setWebhookUrl(d.webhookUrl);
+        setWebhookToast(t("webhookReconfigured"));
+      } else {
+        setWebhookToast(d.error || t("webhookReconfigureError"));
+      }
+    } catch {
+      setWebhookToast(t("webhookReconfigureError"));
+    } finally {
+      setReconfiguring(false);
+      setTimeout(() => setWebhookToast(null), 4000);
+    }
+  }
 
   async function handleConnect() {
     setStatus("connecting"); setError(null); setQrCode(null);
@@ -122,6 +153,54 @@ export default function WhatsAppChannelPage() {
           <Loader2 className="w-8 h-8 text-primary animate-spin mx-auto mb-3" />
           <p className="text-[13px] text-foreground font-medium">{t("preparing")}</p>
           <p className="text-[11px] text-muted-foreground mt-1">{t("preparingDesc")}</p>
+        </div>
+      )}
+
+      {/* WEBHOOK STATUS, sempre visivel quando a instancia ja existe */}
+      {status !== "loading" && status !== "connecting" && (
+        <div className={cn(
+          "rounded-2xl border p-4",
+          webhookConfigured
+            ? "border-emerald-500/20 bg-emerald-500/[0.04]"
+            : "border-amber-500/30 bg-amber-500/[0.06]"
+        )}>
+          <div className="flex items-start gap-3">
+            <div className={cn(
+              "w-9 h-9 rounded-xl grid place-items-center shrink-0",
+              webhookConfigured ? "bg-emerald-500/15 text-emerald-500" : "bg-amber-500/20 text-amber-500"
+            )}>
+              {webhookConfigured ? <Wifi className="w-4 h-4" /> : <WifiOff className="w-4 h-4" />}
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-[13px] font-semibold text-foreground">
+                {webhookConfigured ? t("webhookActive") : t("webhookMissing")}
+              </p>
+              <p className="text-[11.5px] text-muted-foreground mt-1 leading-relaxed">
+                {webhookConfigured ? t("webhookActiveDesc") : t("webhookMissingDesc")}
+              </p>
+              {webhookUrl && (
+                <p className="text-[10.5px] text-muted-foreground/70 font-mono mt-2 break-all">
+                  {webhookUrl}
+                </p>
+              )}
+              {webhookToast && (
+                <p className="text-[11.5px] text-foreground mt-2">{webhookToast}</p>
+              )}
+            </div>
+            <button
+              onClick={handleReconfigureWebhook}
+              disabled={reconfiguring}
+              className={cn(
+                "h-9 px-3 rounded-lg text-[11.5px] font-semibold border transition-colors flex items-center gap-1.5 shrink-0 disabled:opacity-50",
+                webhookConfigured
+                  ? "border-border text-muted-foreground hover:bg-muted hover:text-foreground"
+                  : "border-amber-500/40 text-amber-500 hover:bg-amber-500/10"
+              )}
+            >
+              {reconfiguring ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+              {webhookConfigured ? t("webhookReconfigure") : t("webhookConfigure")}
+            </button>
+          </div>
         </div>
       )}
 

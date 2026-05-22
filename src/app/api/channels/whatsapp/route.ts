@@ -1,13 +1,20 @@
 // src/app/api/channels/whatsapp/route.ts
+//
+// Evolution API integration. On connect we now ALSO push the webhook
+// config to Evolution so inbound messages flow to /api/webhooks/evolution
+// automatically. The dashboard also exposes a `configureWebhook` action
+// so the owner can backfill instances that were created before this code
+// existed.
+//
+// ENV VARS:
+//   EVOLUTION_API_URL=https://evo.example.com
+//   EVOLUTION_API_KEY=<global api key>
+
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/db/prisma";
 import { getSession } from "@/lib/auth/session";
-
-/*
- * ENV VARS needed:
- * EVOLUTION_API_URL=https://evo.projetok.app.w8hub.com.br
- * EVOLUTION_API_KEY=your-global-api-key
- */
+import { configureEvolutionWebhook } from "@/lib/channels/evolution-webhook";
+import { appUrlFromRequest } from "@/lib/app-url";
 
 const EVO_URL = () => (process.env.EVOLUTION_API_URL || "").replace(/\/$/, "");
 const EVO_KEY = () => process.env.EVOLUTION_API_KEY || "";
@@ -16,8 +23,62 @@ function instanceName(accountId: string) {
   return `mdai-${accountId}`;
 }
 
-/** GET — current WhatsApp status */
-export async function GET() {
+function webhookUrlFor(req: Request | NextRequest): string {
+  return `${appUrlFromRequest(req)}/api/webhooks/evolution`;
+}
+
+interface WaConfig {
+  instanceName?: string;
+  connected?: boolean;
+  phoneNumber?: string | null;
+  lastActivity?: string | null;
+  webhookConfigured?: boolean;
+  webhookConfiguredAt?: string | null;
+  webhookSecret?: string;
+}
+
+/**
+ * Best-effort push of the webhook config to Evolution for the given
+ * account's instance. Returns a small status object the caller can log
+ * or surface. Never throws, never blocks the calling flow.
+ */
+async function setWebhookForAccount(
+  req: Request | NextRequest,
+  accountId: string,
+  cfg: WaConfig
+): Promise<{ ok: boolean; detail?: string }> {
+  const baseUrl = EVO_URL();
+  const apiKey = EVO_KEY();
+  const inst = cfg.instanceName || instanceName(accountId);
+  if (!baseUrl || !apiKey) return { ok: false, detail: "missing_evolution_env" };
+
+  const res = await configureEvolutionWebhook({
+    baseUrl,
+    apiKey,
+    instanceName: inst,
+    webhookUrl: webhookUrlFor(req),
+    webhookSecret: cfg.webhookSecret,
+  });
+
+  if (res.ok) {
+    await prisma.channel.update({
+      where: { accountId_type: { accountId, type: "WHATSAPP" } },
+      data: {
+        config: {
+          ...cfg,
+          instanceName: inst,
+          webhookConfigured: true,
+          webhookConfiguredAt: new Date().toISOString(),
+        },
+      },
+    });
+    return { ok: true };
+  }
+  return { ok: false, detail: res.detail || `http_${res.status}` };
+}
+
+/** GET, current WhatsApp status */
+export async function GET(req: NextRequest) {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
@@ -25,34 +86,54 @@ export async function GET() {
     const channel = await prisma.channel.findUnique({
       where: { accountId_type: { accountId: session.accountId, type: "WHATSAPP" } },
     });
-    const cfg = (channel?.config as any) || {};
+    const cfg = (channel?.config as WaConfig | null) || {};
 
-    // If channel says connected, verify with Evolution
     if (cfg.connected && EVO_URL()) {
       try {
-        const r = await fetch(`${EVO_URL()}/instance/connectionState/${instanceName(session.accountId)}`, {
-          headers: { apikey: EVO_KEY() },
-        });
+        const r = await fetch(
+          `${EVO_URL()}/instance/connectionState/${instanceName(session.accountId)}`,
+          { headers: { apikey: EVO_KEY() } }
+        );
         const d = await r.json();
         const stillConnected = d.instance?.state === "open";
         if (!stillConnected && channel) {
-          await prisma.channel.update({ where: { id: channel.id }, data: { config: { ...cfg, connected: false } } });
-          return NextResponse.json({ connected: false, phoneNumber: null, lastActivity: null });
+          await prisma.channel.update({
+            where: { id: channel.id },
+            data: { config: { ...cfg, connected: false } },
+          });
+          return NextResponse.json({
+            connected: false,
+            phoneNumber: null,
+            lastActivity: null,
+            webhookConfigured: cfg.webhookConfigured || false,
+            webhookUrl: webhookUrlFor(req),
+          });
         }
-      } catch {}
+      } catch {
+        // best-effort
+      }
     }
 
     return NextResponse.json({
       connected: cfg.connected || false,
       phoneNumber: cfg.phoneNumber || null,
       lastActivity: cfg.lastActivity || null,
+      webhookConfigured: cfg.webhookConfigured || false,
+      webhookConfiguredAt: cfg.webhookConfiguredAt || null,
+      webhookUrl: webhookUrlFor(req),
     });
   } catch {
-    return NextResponse.json({ connected: false, phoneNumber: null, lastActivity: null });
+    return NextResponse.json({
+      connected: false,
+      phoneNumber: null,
+      lastActivity: null,
+      webhookConfigured: false,
+      webhookUrl: webhookUrlFor(req),
+    });
   }
 }
 
-/** POST — connect, disconnect, status */
+/** POST, connect / disconnect / status / configureWebhook */
 export async function POST(req: NextRequest) {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -61,7 +142,10 @@ export async function POST(req: NextRequest) {
   const apiKey = EVO_KEY();
 
   if (!baseUrl || !apiKey) {
-    return NextResponse.json({ error: "Evolution API não configurada no servidor" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Evolution API nao configurada no servidor" },
+      { status: 500 }
+    );
   }
 
   const body = await req.json();
@@ -72,10 +156,30 @@ export async function POST(req: NextRequest) {
     const channel = await prisma.channel.findUnique({
       where: { accountId_type: { accountId: session.accountId, type: "WHATSAPP" } },
     });
-    const cfg = (channel?.config as any) || {};
+    const cfg = (channel?.config as WaConfig | null) || {};
+
+    // ═══ CONFIGURE WEBHOOK (backfill for existing instances) ═══
+    if (action === "configureWebhook") {
+      const res = await setWebhookForAccount(req, session.accountId, {
+        ...cfg,
+        instanceName: cfg.instanceName || instName,
+      });
+      if (!res.ok) {
+        return NextResponse.json(
+          { error: res.detail || "webhook_config_failed" },
+          { status: 502 }
+        );
+      }
+      return NextResponse.json({
+        success: true,
+        webhookUrl: webhookUrlFor(req),
+      });
+    }
 
     // ═══ CONNECT ═══
     if (action === "connect") {
+      let qrCode: string | null = null;
+      let created = false;
 
       // 1. Try to create instance (ignore if already exists)
       try {
@@ -95,73 +199,145 @@ export async function POST(req: NextRequest) {
           }),
         });
 
-        // If instance was just created and returned QR
         if (createRes.ok) {
           const createData = await createRes.json();
           if (createData.qrcode?.base64) {
-            // Save channel record
+            qrCode = createData.qrcode.base64;
+            created = true;
             await prisma.channel.upsert({
               where: { accountId_type: { accountId: session.accountId, type: "WHATSAPP" } },
-              create: { accountId: session.accountId, type: "WHATSAPP", isEnabled: true, config: { instanceName: instName, connected: false } },
+              create: {
+                accountId: session.accountId,
+                type: "WHATSAPP",
+                isEnabled: true,
+                config: { instanceName: instName, connected: false },
+              },
               update: { isEnabled: true },
             });
-            return NextResponse.json({ qrCode: createData.qrcode.base64 });
           }
         }
-      } catch {}
+      } catch {
+        // fall through
+      }
 
-      // 2. Instance already exists — get connection/QR
-      try {
-        const connectRes = await fetch(`${baseUrl}/instance/connect/${instName}`, {
-          method: "GET",
-          headers: { apikey: apiKey },
+      // 2. Instance already exists, fetch connection/QR
+      if (!qrCode) {
+        try {
+          const connectRes = await fetch(
+            `${baseUrl}/instance/connect/${instName}`,
+            { method: "GET", headers: { apikey: apiKey } }
+          );
+          if (connectRes.ok) {
+            const connectData = await connectRes.json();
+            const isOpen =
+              connectData.instance?.status === "open" ||
+              connectData.instance?.state === "open";
+            if (isOpen) {
+              const phone = connectData.instance?.wuid?.split("@")[0] || null;
+              await prisma.channel.upsert({
+                where: { accountId_type: { accountId: session.accountId, type: "WHATSAPP" } },
+                create: {
+                  accountId: session.accountId,
+                  type: "WHATSAPP",
+                  isEnabled: true,
+                  config: {
+                    instanceName: instName,
+                    connected: true,
+                    phoneNumber: phone,
+                    lastActivity: new Date().toISOString(),
+                  },
+                },
+                update: {
+                  isEnabled: true,
+                  config: {
+                    ...cfg,
+                    instanceName: instName,
+                    connected: true,
+                    phoneNumber: phone,
+                    lastActivity: new Date().toISOString(),
+                  },
+                },
+              });
+
+              // Configure webhook now that we are connected, idempotent.
+              await setWebhookForAccount(req, session.accountId, {
+                ...cfg,
+                instanceName: instName,
+              });
+
+              return NextResponse.json({
+                connected: true,
+                phoneNumber: phone,
+                webhookUrl: webhookUrlFor(req),
+              });
+            }
+            if (connectData.base64) qrCode = connectData.base64;
+          }
+        } catch {
+          // fall through
+        }
+      }
+
+      // 3. Try fetching instance directly
+      if (!qrCode) {
+        try {
+          const qrRes = await fetch(
+            `${baseUrl}/instance/fetchInstances?instanceName=${instName}`,
+            { headers: { apikey: apiKey } }
+          );
+          if (qrRes.ok) {
+            const instances = await qrRes.json();
+            const inst = Array.isArray(instances) ? instances[0] : instances;
+            if (inst?.instance?.status === "open") {
+              const phone = inst.instance?.wuid?.split("@")[0] || null;
+              await prisma.channel.upsert({
+                where: { accountId_type: { accountId: session.accountId, type: "WHATSAPP" } },
+                create: {
+                  accountId: session.accountId,
+                  type: "WHATSAPP",
+                  isEnabled: true,
+                  config: { instanceName: instName, connected: true, phoneNumber: phone },
+                },
+                update: {
+                  isEnabled: true,
+                  config: { ...cfg, connected: true, phoneNumber: phone },
+                },
+              });
+              await setWebhookForAccount(req, session.accountId, {
+                ...cfg,
+                instanceName: instName,
+              });
+              return NextResponse.json({
+                connected: true,
+                phoneNumber: phone,
+                webhookUrl: webhookUrlFor(req),
+              });
+            }
+          }
+        } catch {
+          // fall through
+        }
+      }
+
+      // Whether the instance was just created OR was already there, push
+      // the webhook config. Evolution accepts the call even when the
+      // instance is not yet paired, so the next QR scan inherits it.
+      if (qrCode) {
+        await setWebhookForAccount(req, session.accountId, {
+          ...cfg,
+          instanceName: instName,
         });
-
-        if (connectRes.ok) {
-          const connectData = await connectRes.json();
-
-          // Already connected
-          if (connectData.instance?.status === "open" || connectData.instance?.state === "open") {
-            const phone = connectData.instance?.wuid?.split("@")[0] ||
-                          connectData.instance?.profilePictureUrl ? null : null;
-
-            await prisma.channel.upsert({
-              where: { accountId_type: { accountId: session.accountId, type: "WHATSAPP" } },
-              create: { accountId: session.accountId, type: "WHATSAPP", isEnabled: true, config: { instanceName: instName, connected: true, phoneNumber: phone, lastActivity: new Date().toISOString() } },
-              update: { isEnabled: true, config: { ...cfg, instanceName: instName, connected: true, phoneNumber: phone, lastActivity: new Date().toISOString() } },
-            });
-
-            return NextResponse.json({ connected: true, phoneNumber: phone });
-          }
-
-          // Got QR code
-          if (connectData.base64) {
-            return NextResponse.json({ qrCode: connectData.base64 });
-          }
-        }
-      } catch {}
-
-      // 3. Try fetching QR directly
-      try {
-        const qrRes = await fetch(`${baseUrl}/instance/fetchInstances?instanceName=${instName}`, {
-          headers: { apikey: apiKey },
+        return NextResponse.json({
+          qrCode,
+          created,
+          webhookUrl: webhookUrlFor(req),
         });
-        if (qrRes.ok) {
-          const instances = await qrRes.json();
-          const inst = Array.isArray(instances) ? instances[0] : instances;
-          if (inst?.instance?.status === "open") {
-            const phone = inst.instance?.wuid?.split("@")[0] || null;
-            await prisma.channel.upsert({
-              where: { accountId_type: { accountId: session.accountId, type: "WHATSAPP" } },
-              create: { accountId: session.accountId, type: "WHATSAPP", isEnabled: true, config: { instanceName: instName, connected: true, phoneNumber: phone } },
-              update: { isEnabled: true, config: { ...cfg, connected: true, phoneNumber: phone } },
-            });
-            return NextResponse.json({ connected: true, phoneNumber: phone });
-          }
-        }
-      } catch {}
+      }
 
-      return NextResponse.json({ error: "Não foi possível gerar o QR Code. Tente novamente." }, { status: 400 });
+      return NextResponse.json(
+        { error: "Nao foi possivel gerar o QR Code. Tente novamente." },
+        { status: 400 }
+      );
     }
 
     // ═══ STATUS ═══
@@ -174,20 +350,52 @@ export async function POST(req: NextRequest) {
         const connected = d.instance?.state === "open";
 
         if (connected) {
-          // Try to get phone number
-          let phone = cfg.phoneNumber;
+          let phone = cfg.phoneNumber || null;
           try {
-            const fetchRes = await fetch(`${baseUrl}/instance/fetchInstances?instanceName=${instName}`, { headers: { apikey: apiKey } });
+            const fetchRes = await fetch(
+              `${baseUrl}/instance/fetchInstances?instanceName=${instName}`,
+              { headers: { apikey: apiKey } }
+            );
             const fetchData = await fetchRes.json();
             const inst = Array.isArray(fetchData) ? fetchData[0] : fetchData;
             phone = inst?.instance?.wuid?.split("@")[0] || phone;
-          } catch {}
+          } catch {
+            // ignore
+          }
 
           await prisma.channel.upsert({
             where: { accountId_type: { accountId: session.accountId, type: "WHATSAPP" } },
-            create: { accountId: session.accountId, type: "WHATSAPP", isEnabled: true, config: { instanceName: instName, connected: true, phoneNumber: phone, lastActivity: new Date().toISOString() } },
-            update: { isEnabled: true, config: { ...cfg, connected: true, phoneNumber: phone, lastActivity: new Date().toISOString() } },
+            create: {
+              accountId: session.accountId,
+              type: "WHATSAPP",
+              isEnabled: true,
+              config: {
+                instanceName: instName,
+                connected: true,
+                phoneNumber: phone,
+                lastActivity: new Date().toISOString(),
+              },
+            },
+            update: {
+              isEnabled: true,
+              config: {
+                ...cfg,
+                connected: true,
+                phoneNumber: phone,
+                lastActivity: new Date().toISOString(),
+              },
+            },
           });
+
+          // Self-heal: if the webhook was never configured for this
+          // instance (older record), push it now. Idempotent.
+          if (!cfg.webhookConfigured) {
+            await setWebhookForAccount(req, session.accountId, {
+              ...cfg,
+              instanceName: instName,
+            });
+          }
+
           return NextResponse.json({ connected: true, phoneNumber: phone });
         }
 
@@ -204,12 +412,17 @@ export async function POST(req: NextRequest) {
           method: "DELETE",
           headers: { apikey: apiKey },
         });
-      } catch {}
+      } catch {
+        // best effort
+      }
 
       if (channel) {
         await prisma.channel.update({
           where: { id: channel.id },
-          data: { isEnabled: false, config: { ...cfg, connected: false, phoneNumber: null } },
+          data: {
+            isEnabled: false,
+            config: { ...cfg, connected: false, phoneNumber: null },
+          },
         });
       }
 

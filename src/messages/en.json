@@ -743,7 +743,15 @@
       "autoReply": "Automatic service",
       "autoReplyDesc": "Once connected, the AI starts serving your leads automatically via WhatsApp.",
       "useNormally": "Use normally",
-      "useNormallyDesc": "You can continue using your WhatsApp normally. The AI works in parallel."
+      "useNormallyDesc": "You can continue using your WhatsApp normally. The AI works in parallel.",
+      "webhookActive": "Webhook active",
+      "webhookActiveDesc": "The AI receives and replies to messages coming to this WhatsApp automatically.",
+      "webhookMissing": "Webhook not configured",
+      "webhookMissingDesc": "Without the webhook the AI never sees inbound messages. Click configure.",
+      "webhookConfigure": "Configure",
+      "webhookReconfigure": "Reconfigure",
+      "webhookReconfigured": "Webhook configured",
+      "webhookReconfigureError": "Could not configure the webhook on Evolution"
     },
     "email": {
       "title": "Email",
