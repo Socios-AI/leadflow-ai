@@ -11,6 +11,7 @@
 // path keeps working until everything is redeployed.
 
 import { NextRequest, NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 import prisma from "@/lib/db/prisma";
 import { getSession } from "@/lib/auth/session";
 import crypto from "crypto";
@@ -167,6 +168,12 @@ export async function PUT(req: NextRequest) {
       pipelineWebhookId: webhookId,
     };
 
+    // Prisma's JSON column types require an InputJsonValue, but our
+    // PersonaShape is a flexible Record<string, unknown>. The runtime
+    // shape is JSON-serializable, the cast just silences the strict
+    // structural check.
+    const personaJson = persona as Prisma.InputJsonValue;
+
     await prisma.aIConfig.upsert({
       where: { accountId: session.accountId },
       create: {
@@ -176,9 +183,9 @@ export async function PUT(req: NextRequest) {
         systemPrompt: "",
         temperature: 0.7,
         maxTokens: 500,
-        persona,
+        persona: personaJson,
       },
-      update: { persona, updatedAt: new Date() },
+      update: { persona: personaJson, updatedAt: new Date() },
     });
 
     return NextResponse.json({ success: true, webhookId });
