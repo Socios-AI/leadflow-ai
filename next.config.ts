@@ -4,6 +4,10 @@ import createNextIntlPlugin from "next-intl/plugin";
 const withNextIntl = createNextIntlPlugin("./src/i18n/request.ts");
 
 const nextConfig: NextConfig = {
+  // Produce a minimal runner: Next ships a self-contained server with just
+  // the node_modules it actually traces. Cuts the runtime image from
+  // ~600MB to ~150MB and avoids the OOM we were hitting on `docker export`.
+  output: "standalone",
   // `ffmpeg-static` ships a native binary at `node_modules/ffmpeg-static/ffmpeg`
   // (or `ffmpeg.exe` on Windows). It must be treated as external so Webpack
   // does not try to bundle it and so the standalone build keeps the binary
