@@ -14,6 +14,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/db/supabase-server";
+import { appUrlFromRequest } from "@/lib/app-url";
 import {
   requireSuperAdminOrHigher,
   AdminAuthError,
@@ -262,7 +263,7 @@ export async function POST(req: NextRequest) {
       created.aiConfigId = aiConfigId;
     }
 
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://app";
+    const appUrl = appUrlFromRequest(req);
     const message = buildInviteMessage({
       appUrl,
       companyName,

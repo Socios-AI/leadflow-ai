@@ -645,7 +645,12 @@
       "desc": "Select how the AI will communicate with leads",
       "primary": "Primary channel",
       "secondary": "Secondary channel",
-      "none": "None"
+      "none": "None",
+      "channelsLabel": "Which channels will the AI use",
+      "willSend": "AI will send through this channel",
+      "tapToAdd": "Click to include",
+      "atLeastOne": "Keep at least one channel",
+      "hint": "The AI sends the first message and follow-ups through ALL selected channels. Pick as many as you want."
     },
     "step5transfer": {
       "title": "Transfer to human",
@@ -676,6 +681,35 @@
       "lpFollowup": "Configure your landing page to send signup data via POST to the URL above. The AI will follow up via email and/or WhatsApp.",
       "metaTitle": "Meta Lead Ads (Facebook/Instagram)",
       "metaDesc": "Native integration coming soon. In the meantime, set up your Meta form to send leads via Zapier, Make or another webhook pointing to the URL above."
+    },
+    "firstMessage": {
+      "title": "First message",
+      "desc": "How the AI should approach the lead on the first interaction",
+      "modeInstruction": "Instruction for the AI",
+      "modeInstructionDesc": "AI varies the message per lead, no spam feel",
+      "modeExact": "Exact message",
+      "modeExactDesc": "AI sends exactly this text, no variation",
+      "instructionLabel": "Tell the AI what to do",
+      "instructionPlaceholder": "Example: Greet the lead by name, thank them for interest in Course X, ask what their main goal is. Tone: consultative and direct. Max 2 sentences.",
+      "instructionHint": "Describe just the INTENT. The AI writes a different message for each lead using the name, campaign context and your training.",
+      "exactLabel": "Exact text",
+      "exactPlaceholder": "Use {name} to insert the lead's name",
+      "exactHint": "Use {name}, {company}, {campaign} as placeholders. Same message for everyone."
+    },
+    "followUps": {
+      "title": "Follow-up cadence",
+      "desc": "How the AI will reach out again if the lead doesn't reply",
+      "empty": "No follow-ups configured. The AI only sends the first message.",
+      "itemTitle": "Follow-up {n}",
+      "remove": "Remove",
+      "channelLabel": "Channel",
+      "delayLabel": "After how long",
+      "hour": "hour",
+      "hours": "hours",
+      "instructionLabel": "Instruction for the AI",
+      "instructionPlaceholder": "Example: Ask if the lead is still interested, offer to clear quick questions. Lighter tone, no pressure.",
+      "add": "Add follow-up",
+      "cap": "Maximum of 10 follow-ups"
     }
   },
   "channels": {

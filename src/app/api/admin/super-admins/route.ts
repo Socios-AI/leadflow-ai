@@ -9,6 +9,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/db/supabase-server";
+import { appUrlFromRequest } from "@/lib/app-url";
 import {
   requireHiperAdmin,
   AdminAuthError,
@@ -120,7 +121,7 @@ export async function POST(req: NextRequest) {
     });
     if (insErr) throw insErr;
 
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://app";
+    const appUrl = appUrlFromRequest(req);
     const message = buildInviteMessage({
       appUrl,
       companyName: "Marketing Digital AI",

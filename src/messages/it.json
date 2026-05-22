@@ -646,7 +646,12 @@
       "desc": "Selezionella per dove a IA andra se comunicar con os leads",
       "primary": "Canale principal",
       "secondary": "Canale secundário",
-      "none": "Nenhum"
+      "none": "Nenhum",
+      "channelsLabel": "Da dove parlera l'IA",
+      "willSend": "L'IA invia da questo canale",
+      "tapToAdd": "Clicca per includere",
+      "atLeastOne": "Mantieni almeno un canale",
+      "hint": "L'IA invia il primo messaggio e i follow-up da TUTTI i canali selezionati. Scegli quanti vuoi."
     },
     "step5transfer": {
       "title": "Transferência per humano",
@@ -677,6 +682,35 @@
       "lpFollowup": "Configura la tua landing page per enviar os dadei de ognistro via POST per a URL acima. A IA fará follow-up per email e/o WhatsApp.",
       "metaTitle": "Meta Lead Ads (Facebook/Instagram)",
       "metaDesc": "Integrazione nativa em breve. Enquanto isso, configure il tuo formulário della Meta per enviar os leads via Zapier, Make o outro webhook apontandel per a URL acima."
+    },
+    "firstMessage": {
+      "title": "Primo messaggio",
+      "desc": "Come l'IA deve avvicinare il lead nella prima interazione",
+      "modeInstruction": "Istruzione per l'IA",
+      "modeInstructionDesc": "L'IA varia il messaggio per ogni lead, no spam",
+      "modeExact": "Messaggio esatto",
+      "modeExactDesc": "L'IA invia esattamente questo testo, senza variare",
+      "instructionLabel": "Dille all'IA cosa fare",
+      "instructionPlaceholder": "Esempio: Saluta il lead per nome, ringrazia per l'interesse nel Corso X, chiedi il suo obiettivo. Tono consulenziale e diretto. Massimo 2 frasi.",
+      "instructionHint": "Descrivi solo l'INTENTO. L'IA scrive un messaggio diverso per ogni lead.",
+      "exactLabel": "Testo esatto",
+      "exactPlaceholder": "Usa {nome} per inserire il nome del lead",
+      "exactHint": "Usa {nome}, {azienda}, {campagna} come placeholder. Stesso messaggio per tutti."
+    },
+    "followUps": {
+      "title": "Cadenza dei follow-up",
+      "desc": "Come l'IA torna a parlare se il lead non risponde",
+      "empty": "Nessun follow-up configurato. L'IA invia solo il primo messaggio.",
+      "itemTitle": "Follow-up {n}",
+      "remove": "Rimuovi",
+      "channelLabel": "Canale",
+      "delayLabel": "Dopo quanto tempo",
+      "hour": "ora",
+      "hours": "ore",
+      "instructionLabel": "Istruzione per l'IA",
+      "instructionPlaceholder": "Esempio: Chiedi al lead se e ancora interessato, offri di rispondere a domande. Tono piu leggero, senza pressione.",
+      "add": "Aggiungi follow-up",
+      "cap": "Massimo di 10 follow-up"
     }
   },
   "channels": {

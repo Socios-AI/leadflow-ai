@@ -103,6 +103,24 @@ export class AIEngine {
     const cfg = await loadConfig(params.accountId);
     if (!cfg) return fallbackGreeting(params.leadName);
 
+    // EXACT-MESSAGE MODE: the operator typed the literal text the AI must
+    // send. We do placeholder substitution ({nome}, {empresa}, {campanha},
+    // and the english equivalents) and skip the LLM entirely. Same message
+    // for every lead, predictable and zero variation.
+    const variability = personaField<string>(
+      cfg.persona,
+      "pipelineFirstMessageVariability",
+      "instruction"
+    );
+    const literalInstruction = personaField<string>(
+      cfg.persona,
+      "pipelineFirstMessageInstruction",
+      ""
+    );
+    if (variability === "exact" && literalInstruction.trim()) {
+      return renderExactMessage(literalInstruction, params);
+    }
+
     const businessContext = await loadBusinessContext(
       params.accountId,
       params.leadMetadata
@@ -118,6 +136,7 @@ export class AIEngine {
       params.campaignInfo || "",
       params.leadName || "",
       params.leadSource,
+      literalInstruction,
     ]
       .filter(Boolean)
       .join(" ");
@@ -140,6 +159,60 @@ export class AIEngine {
       { role: "user", content: userTurn },
     ]);
 
+    return reply?.trim() || fallbackGreeting(params.leadName);
+  }
+
+  // ════════════════════════════════════════════════════
+  // FOLLOW-UP MESSAGE (called by the follow-up worker)
+  // The operator can type either an exact message or an instruction; the
+  // engine renders one or the other and respects all the same voice rules
+  // as the first contact.
+  // ════════════════════════════════════════════════════
+  static async generateFollowUp(params: FirstContactParams & {
+    instruction?: string;
+    attemptIndex?: number;
+  }): Promise<string> {
+    const cfg = await loadConfig(params.accountId);
+    if (!cfg) return fallbackGreeting(params.leadName);
+
+    // Per-follow-up instruction overrides the first-message one. Same
+    // exact/instruction semantics: if it looks like a templated literal
+    // (contains placeholders or is unusually long), render verbatim.
+    const inst = (params.instruction || "").trim();
+    if (inst && /^\s*[A-Z]/i.test(inst) && /\{(?:nome|name|empresa|company|campanha|campaign)\}/i.test(inst)) {
+      return renderExactMessage(inst, params);
+    }
+
+    const businessContext = await loadBusinessContext(
+      params.accountId,
+      params.leadMetadata
+    );
+    const language = resolveLanguage({
+      personaLanguage: personaField(cfg.persona, "language", "auto") as string,
+      campaignLanguage: params.campaignLanguage,
+      campaignCountry: params.campaignCountry,
+    });
+
+    const knowledgeBlock = await buildKnowledgeBlock(
+      params.accountId,
+      [params.campaignInfo || "", inst].filter(Boolean).join(" "),
+      { budgetChars: 6000, maxChunks: 5 }
+    );
+
+    const systemPrompt = buildFollowUpSystemPrompt(
+      cfg,
+      params,
+      businessContext,
+      language,
+      knowledgeBlock,
+      inst,
+      params.attemptIndex ?? 0
+    );
+    const userTurn = buildFollowUpUserTurn(params, params.attemptIndex ?? 0);
+
+    const reply = await callLLM(cfg, systemPrompt, [
+      { role: "user", content: userTurn },
+    ]);
     return reply?.trim() || fallbackGreeting(params.leadName);
   }
 
@@ -593,11 +666,22 @@ function buildFirstContactSystemPrompt(
   language: ResolvedLanguage,
   knowledgeBlock: string = ""
 ): string {
-  const firstMessageInstruction = personaField(
+  // 1) Pipeline-level operator instruction takes priority (the user wrote
+  //    this in /pipeline → "First message" → instruction mode).
+  // 2) Fall back to the legacy persona.firstMessageInstruction field.
+  // 3) Fall back to a sensible default that varies wording per lead.
+  const pipelineInstruction = personaField(
+    cfg.persona,
+    "pipelineFirstMessageInstruction",
+    ""
+  );
+  const legacyInstruction = personaField(
     cfg.persona,
     "firstMessageInstruction",
     "Apresente-se de forma curta e humana, confirme o interesse do lead e faça UMA pergunta aberta para começar a qualificação."
   );
+  const operatorInstruction =
+    String(pipelineInstruction).trim() || String(legacyInstruction).trim();
 
   return `${commonPreamble(cfg, params.channel, language)}
 ${businessContext ? renderBusinessContext(businessContext) : ""}
@@ -608,9 +692,82 @@ CONTEXTO DESTE LEAD:
 ${params.campaignInfo ? `- Campanha: ${params.campaignInfo}` : ""}
 ${params.campaignCountry ? `- País da campanha: ${params.campaignCountry}` : ""}
 
+INSTRUCAO DO OPERADOR PARA ESTA PRIMEIRA MENSAGEM:
+${operatorInstruction}
+
 SUA TAREFA AGORA:
-Escrever a PRIMEIRA mensagem para este lead, separada em balões com |||. ${firstMessageInstruction}
-NUNCA use template genérico ("Olá! Como posso te ajudar?" é proibido). Cada mensagem deve soar única.`;
+Escreva a PRIMEIRA mensagem para este lead, separada em balões com |||.
+SIGA A INSTRUCAO ACIMA, varie a redacao a cada lead usando o nome e o contexto disponiveis.
+NUNCA use template generico ("Ola! Como posso te ajudar?" e proibido). Cada mensagem deve soar unica.`;
+}
+
+function buildFollowUpSystemPrompt(
+  cfg: LoadedConfig,
+  params: FirstContactParams,
+  businessContext: BusinessContext | null,
+  language: ResolvedLanguage,
+  knowledgeBlock: string,
+  instruction: string,
+  attemptIndex: number
+): string {
+  const fallback =
+    "Reabra o assunto com leveza, sem cobrar. Lembre o lead do que foi prometido na primeira interacao e faca uma pergunta nova que avance a qualificacao.";
+  const op = instruction.trim() || fallback;
+  return `${commonPreamble(cfg, params.channel, language)}
+${businessContext ? renderBusinessContext(businessContext) : ""}
+${knowledgeBlock}
+CONTEXTO DESTE LEAD:
+- Nome: ${params.leadName || "ainda nao sabemos"}
+- Origem: ${params.leadSource}
+${params.campaignInfo ? `- Campanha: ${params.campaignInfo}` : ""}
+
+VOCE JA TENTOU FALAR COM ESTE LEAD ${attemptIndex} VEZES e ele(a) nao respondeu ainda.
+Quanto maior o numero da tentativa, mais leve e curta a abordagem.
+NUNCA repita textualmente o que voce ja enviou. Mude a estrutura, a abertura e a pergunta.
+
+INSTRUCAO DO OPERADOR PARA ESTE FOLLOW-UP:
+${op}
+
+SUA TAREFA AGORA:
+Escreva o follow-up para este lead, separado em baloes com |||. Varia o texto a cada envio.
+Nao se desculpe por ter mandado mensagem antes. Nao force resposta.`;
+}
+
+function buildFollowUpUserTurn(
+  params: FirstContactParams,
+  attemptIndex: number
+): string {
+  const name = params.leadName ? ` ${params.leadName}` : "";
+  return `Hora de retomar o contato com${name}. Tentativa numero ${attemptIndex + 1}. Escreva o follow-up agora no canal ${params.channel}.`;
+}
+
+/**
+ * Render an "exact" first message: the operator typed the literal text and
+ * we just substitute the supported placeholders. Lead name fallback is
+ * intentional, "amigo" never goes out unless explicitly opted in.
+ */
+function renderExactMessage(template: string, params: FirstContactParams): string {
+  const name = params.leadName || "";
+  const company = (params.leadMetadata?.companyName as string) || "";
+  const campaign = params.campaignInfo || "";
+  const replacements: Record<string, string> = {
+    "{nome}": name,
+    "{name}": name,
+    "{empresa}": company,
+    "{company}": company,
+    "{campanha}": campaign,
+    "{campaign}": campaign,
+  };
+  let out = template;
+  for (const [k, v] of Object.entries(replacements)) {
+    out = out.split(k).join(v);
+  }
+  // Collapse double spaces left by empty substitutions, but preserve line breaks.
+  return out
+    .split("\n")
+    .map((l) => l.replace(/  +/g, " ").trim())
+    .join("\n")
+    .trim();
 }
 
 function buildResponseSystemPrompt(

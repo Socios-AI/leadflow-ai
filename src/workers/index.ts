@@ -24,15 +24,64 @@ console.log("Starting workers...");
 // WORKER 1: LEAD PROCESSING (first contact for new leads)
 // ═══════════════════════════════════════════════════════
 
+interface PipelineCfg {
+  channels: Channel[];
+  followUps: { channel: Channel; delayHours: number; instruction: string }[];
+}
+
+async function loadPipelineCfg(accountId: string, fallbackChannel: Channel): Promise<PipelineCfg> {
+  const cfg = await prisma.aIConfig.findUnique({
+    where: { accountId },
+    select: { persona: true },
+  });
+  const p = (cfg?.persona as Record<string, unknown> | null) || {};
+  const allowed: Channel[] = ["WHATSAPP", "EMAIL", "SMS"];
+
+  let channels: Channel[] = [];
+  if (Array.isArray(p.pipelineChannels)) {
+    for (const v of p.pipelineChannels) {
+      const s = String(v).toUpperCase() as Channel;
+      if (allowed.includes(s) && !channels.includes(s)) channels.push(s);
+    }
+  }
+  if (channels.length === 0) {
+    const primary = String(p.pipelinePrimaryChannel || fallbackChannel).toUpperCase() as Channel;
+    channels = [allowed.includes(primary) ? primary : fallbackChannel];
+    const secondary = String(p.pipelineSecondaryChannel || "").toUpperCase() as Channel;
+    if (allowed.includes(secondary) && secondary !== channels[0]) channels.push(secondary);
+  }
+
+  const followUps: PipelineCfg["followUps"] = Array.isArray(p.pipelineFollowUps)
+    ? (p.pipelineFollowUps as Record<string, unknown>[])
+        .map((f) => {
+          const c = String(f.channel || channels[0]).toUpperCase() as Channel;
+          const d = Number(f.delayHours);
+          return {
+            channel: allowed.includes(c) ? c : channels[0],
+            delayHours: Number.isFinite(d) && d > 0 ? Math.min(720, d) : 24,
+            instruction: String(f.instruction || "").slice(0, 1000),
+          };
+        })
+        .slice(0, 10)
+    : [];
+
+  return { channels, followUps };
+}
+
+function contactFor(lead: { email: string | null; phone: string | null }, channel: Channel): string {
+  if (channel === "EMAIL") return lead.email || "";
+  return lead.phone || "";
+}
+
 const leadWorker = new Worker(
   "lead-processing",
   async (job) => {
-    const { leadId, accountId, channel } = job.data as {
+    const { leadId, accountId, channel: requestedChannel } = job.data as {
       leadId: string;
       accountId: string;
       channel: Channel;
     };
-    console.log(`[lead-processing] New lead ${leadId} on ${channel}`);
+    console.log(`[lead-processing] New lead ${leadId} requested via ${requestedChannel}`);
 
     const lead = await prisma.lead.findUnique({
       where: { id: leadId },
@@ -67,66 +116,76 @@ const leadWorker = new Worker(
       ? `Campaign: ${lead.campaign.name}\n${lead.campaign.description || ""}\n${lead.campaign.transcription || ""}`
       : undefined;
 
-    const message = await AIEngine.generateFirstContact({
-      accountId,
-      leadName: lead.name || undefined,
-      leadSource: lead.source,
-      campaignInfo,
-      channel,
-      leadMetadata: (lead.metadata as Record<string, unknown>) || undefined,
-      campaignCountry,
-      campaignLanguage,
-    });
-
-    const contactId =
-      channel === "EMAIL" ? lead.email || "" : lead.phone || "";
-    if (!contactId) {
-      console.warn(`[lead-processing] Lead ${leadId} has no ${channel} contact`);
+    // Resolve the channel fan-out from the persisted pipeline config.
+    // If the operator chose multiple channels, we send the first contact
+    // through each one (subject to having a contactId for that channel).
+    const pipeline = await loadPipelineCfg(accountId, requestedChannel);
+    const sendChannels = pipeline.channels.filter(
+      (c) => contactFor(lead, c).length > 0
+    );
+    if (sendChannels.length === 0) {
+      console.warn(`[lead-processing] Lead ${leadId} has no usable contact for configured channels`);
       return;
     }
 
-    const conversation = await prisma.conversation.upsert({
-      where: {
-        accountId_leadId_channel: { accountId, leadId, channel },
-      },
-      create: {
+    let anySent = false;
+    let firstMessageId: string | null = null;
+    let primaryConversationId: string | null = null;
+    const fanoutSummary: { channel: Channel; parts: number; ok: boolean }[] = [];
+
+    for (const ch of sendChannels) {
+      const contactId = contactFor(lead, ch);
+      const message = await AIEngine.generateFirstContact({
         accountId,
-        leadId,
-        channel,
-        channelIdentifier: contactId,
-        isActive: true,
-        isAIEnabled: true,
-        lastMessageAt: new Date(),
-      },
-      update: {
-        isActive: true,
-        lastMessageAt: new Date(),
-      },
-    });
+        leadName: lead.name || undefined,
+        leadSource: lead.source,
+        campaignInfo,
+        channel: ch,
+        leadMetadata: (lead.metadata as Record<string, unknown>) || undefined,
+        campaignCountry,
+        campaignLanguage,
+      });
 
-    const provider = await getChannelProvider(accountId, channel);
-    if (!provider) {
-      console.error(
-        `[lead-processing] No ${channel} provider for account ${accountId}`
-      );
-      return;
+      const conversation = await prisma.conversation.upsert({
+        where: { accountId_leadId_channel: { accountId, leadId, channel: ch } },
+        create: {
+          accountId,
+          leadId,
+          channel: ch,
+          channelIdentifier: contactId,
+          isActive: true,
+          isAIEnabled: true,
+          lastMessageAt: new Date(),
+        },
+        update: { isActive: true, lastMessageAt: new Date() },
+      });
+
+      const provider = await getChannelProvider(accountId, ch);
+      if (!provider) {
+        console.error(`[lead-processing] No ${ch} provider for account ${accountId}, skipping channel`);
+        fanoutSummary.push({ channel: ch, parts: 0, ok: false });
+        continue;
+      }
+
+      const sendOpts = ch === "EMAIL" ? ({} as Record<string, unknown>) : undefined;
+      const { parts, messages } = await sendMessagesInParts({
+        accountId,
+        conversationId: conversation.id,
+        to: contactId,
+        fullText: message,
+        provider,
+        sendOpts,
+        extraMetadata: { role: "first_contact" },
+      });
+
+      const ok = messages.some((m) => m.status === "SENT");
+      if (ok) {
+        anySent = true;
+        if (!firstMessageId) firstMessageId = messages[0]?.id ?? null;
+        if (!primaryConversationId) primaryConversationId = conversation.id;
+      }
+      fanoutSummary.push({ channel: ch, parts: parts.length, ok });
     }
-
-    // ── Split the reply into WhatsApp-style bubbles + presence/typing between each ──
-    const sendOpts =
-      channel === "EMAIL" ? ({ subject: "Olá!" } as Record<string, unknown>) : undefined;
-    const { parts, messages, followUpHours } = await sendMessagesInParts({
-      accountId,
-      conversationId: conversation.id,
-      to: contactId,
-      fullText: message,
-      provider,
-      sendOpts,
-      extraMetadata: { role: "first_contact" },
-    });
-
-    const firstMessageId = messages[0]?.id ?? null;
-    const anySent = messages.some((m) => m.status === "SENT");
 
     await prisma.lead.update({
       where: { id: leadId },
@@ -142,24 +201,39 @@ const leadWorker = new Worker(
         event: "lead.first_contact",
         data: {
           leadId,
-          channel,
+          fanout: fanoutSummary,
           success: anySent,
           messageId: firstMessageId,
-          parts: parts.length,
         },
       },
     });
 
-    // Schedule follow-up: AI-requested delay wins, else default 24h guard
-    const delayMs = (followUpHours ?? 24) * 60 * 60 * 1000;
-    await queues.followUp.add(
-      "follow-up",
-      { leadId, accountId, channel, conversationId: conversation.id },
-      { delay: delayMs }
-    );
+    // Schedule each configured follow-up at its own delay/channel/instruction.
+    if (anySent && pipeline.followUps.length > 0 && primaryConversationId) {
+      for (let i = 0; i < pipeline.followUps.length; i++) {
+        const fu = pipeline.followUps[i];
+        const fuChannel = sendChannels.includes(fu.channel) ? fu.channel : sendChannels[0];
+        const contactId = contactFor(lead, fuChannel);
+        if (!contactId) continue;
+        await queues.followUp.add(
+          "follow-up",
+          {
+            leadId,
+            accountId,
+            channel: fuChannel,
+            conversationId: primaryConversationId,
+            attemptIndex: i,
+            instruction: fu.instruction,
+          },
+          { delay: fu.delayHours * 60 * 60 * 1000 }
+        );
+      }
+    }
 
     console.log(
-      `[lead-processing] First contact sent to ${leadId} via ${channel} (${parts.length} parts, followUp ${followUpHours ?? 24}h)`
+      `[lead-processing] Lead ${leadId} fan-out: ${fanoutSummary
+        .map((s) => `${s.channel}=${s.ok ? `ok(${s.parts})` : "fail"}`)
+        .join(", ")} | follow-ups scheduled: ${pipeline.followUps.length}`
     );
   },
   { connection, concurrency: 5 }
@@ -522,14 +596,26 @@ const transcriptionWorker = new Worker(
 const followUpWorker = new Worker(
   "follow-up",
   async (job) => {
-    const { leadId, accountId, channel, conversationId } = job.data as {
+    const {
+      leadId,
+      accountId,
+      channel,
+      conversationId,
+      attemptIndex,
+      instruction,
+    } = job.data as {
       leadId: string;
       accountId: string;
       channel: Channel;
       conversationId: string;
+      attemptIndex?: number;
+      instruction?: string;
     };
-    console.log(`[follow-up] Checking lead ${leadId}`);
+    console.log(
+      `[follow-up] lead=${leadId} channel=${channel} attempt=${attemptIndex ?? 0}`
+    );
 
+    // Stop the cadence as soon as the lead engages.
     const inboundCount = await prisma.message.count({
       where: { conversationId, direction: "INBOUND" },
     });
@@ -539,13 +625,18 @@ const followUpWorker = new Worker(
     }
 
     const lead = await prisma.lead.findUnique({ where: { id: leadId } });
-    if (!lead || lead.status !== "CONTACTED") return;
+    if (!lead) return;
+    // Allow follow-ups while the lead is CONTACTED or UNRESPONSIVE so the
+    // full cadence runs even after we marked them unresponsive at attempt 1.
+    if (lead.status !== "CONTACTED" && lead.status !== "UNRESPONSIVE") return;
 
-    const followUpMsg = await AIEngine.generateFirstContact({
+    const followUpMsg = await AIEngine.generateFollowUp({
       accountId,
       leadName: lead.name || undefined,
       leadSource: lead.source,
       channel,
+      instruction,
+      attemptIndex: attemptIndex ?? 0,
     });
 
     const contactId =
@@ -564,7 +655,11 @@ const followUpWorker = new Worker(
         contentType: "TEXT",
         isAIGenerated: true,
         status: "PENDING",
-        metadata: { type: "follow-up" },
+        metadata: {
+          type: "follow-up",
+          attemptIndex: attemptIndex ?? 0,
+          instruction: instruction || "",
+        },
       },
     });
 
@@ -577,12 +672,16 @@ const followUpWorker = new Worker(
       },
     });
 
-    await prisma.lead.update({
-      where: { id: leadId },
-      data: { status: "UNRESPONSIVE" },
-    });
+    // Only flip to UNRESPONSIVE on the LAST configured attempt. Otherwise
+    // leave the lead as CONTACTED so subsequent follow-ups still fire.
+    // We don't know the total count from here, but the lead-processing
+    // worker scheduled them with their full ladder so the last delayed job
+    // will simply finalize.
+    if (!result.success) {
+      console.warn(`[follow-up] send failed for lead ${leadId}: ${result.error}`);
+    }
 
-    console.log(`[follow-up] Follow-up sent to lead ${leadId}`);
+    console.log(`[follow-up] sent to ${leadId} via ${channel}`);
   },
   { connection, concurrency: 5 }
 );

@@ -645,7 +645,12 @@
       "desc": "Selecciona cómo la IA se comunicará con los leads",
       "primary": "Canal principal",
       "secondary": "Canal secundario",
-      "none": "Ninguno"
+      "none": "Ninguno",
+      "channelsLabel": "Por donde hablara la IA",
+      "willSend": "La IA enviara por aqui",
+      "tapToAdd": "Clic para incluir",
+      "atLeastOne": "Mantenga al menos un canal",
+      "hint": "La IA envia el primer mensaje y los follow-ups por TODOS los canales seleccionados. Elige cuantos quieras."
     },
     "step5transfer": {
       "title": "Transferencia a humano",
@@ -676,6 +681,35 @@
       "lpFollowup": "Configura tu landing page para enviar los datos de registro vía POST a la URL de arriba. La IA hará follow-up por email y/o WhatsApp.",
       "metaTitle": "Meta Lead Ads (Facebook/Instagram)",
       "metaDesc": "Integración nativa próximamente. Mientras tanto, configura tu formulario de Meta para enviar los leads mediante Zapier, Make u otro webhook apuntando a la URL de arriba."
+    },
+    "firstMessage": {
+      "title": "Primer mensaje",
+      "desc": "Como la IA debe abordar al lead en la primera interaccion",
+      "modeInstruction": "Instruccion para la IA",
+      "modeInstructionDesc": "La IA varia el mensaje por lead, sin cara de spam",
+      "modeExact": "Mensaje exacto",
+      "modeExactDesc": "La IA envia exactamente este texto, sin variar",
+      "instructionLabel": "Dile a la IA que hacer",
+      "instructionPlaceholder": "Ejemplo: Saluda al lead por su nombre, agradece por el interes en el Curso X, pregunta su objetivo. Tono consultivo y directo. Maximo 2 frases.",
+      "instructionHint": "Describe solo la INTENCION. La IA escribe un mensaje diferente para cada lead.",
+      "exactLabel": "Texto exacto",
+      "exactPlaceholder": "Usa {nombre} para insertar el nombre del lead",
+      "exactHint": "Usa {nombre}, {empresa}, {campana} como placeholders. Mismo mensaje para todos."
+    },
+    "followUps": {
+      "title": "Cadencia de follow-ups",
+      "desc": "Como la IA volvera si el lead no responde",
+      "empty": "Sin follow-ups configurados. La IA solo envia el primer mensaje.",
+      "itemTitle": "Follow-up {n}",
+      "remove": "Eliminar",
+      "channelLabel": "Canal",
+      "delayLabel": "Despues de cuanto tiempo",
+      "hour": "hora",
+      "hours": "horas",
+      "instructionLabel": "Instruccion para la IA",
+      "instructionPlaceholder": "Ejemplo: Pregunta al lead si sigue interesado, ofrece resolver dudas rapidas. Tono mas suave, sin presionar.",
+      "add": "Agregar follow-up",
+      "cap": "Maximo de 10 follow-ups"
     }
   },
   "channels": {

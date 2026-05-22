@@ -34,19 +34,28 @@ import { cn } from "@/lib/utils";
 // TYPES
 // ══════════════════════════════════════════════════════════════
 
+type Channel = "WHATSAPP" | "EMAIL" | "SMS";
+
+interface FollowUp {
+  id: string;
+  channel: Channel;
+  delayHours: number;
+  instruction: string;
+}
+
 interface PipelineConfig {
   template: string;
   goal: string;
   firstContact: string;
-  primaryChannel: string;
-  secondaryChannel: string;
+  // Multi-channel: AI sends through every channel listed, in order.
+  channels: Channel[];
+  firstMessageInstruction: string;
+  firstMessageVariability: "instruction" | "exact";
+  followUps: FollowUp[];
   transferPhone: string;
   transferMessage: string;
   calendarEnabled: boolean;
   calendarEmail: string;
-  followUpEnabled: boolean;
-  followUpAttempts: number;
-  followUpInterval: number;
   humanApproval: boolean;
   webhookId: string;
 }
@@ -55,18 +64,29 @@ const DEFAULT_CONFIG: PipelineConfig = {
   template: "",
   goal: "",
   firstContact: "immediate",
-  primaryChannel: "WHATSAPP",
-  secondaryChannel: "",
+  channels: ["WHATSAPP"],
+  firstMessageInstruction: "",
+  firstMessageVariability: "instruction",
+  followUps: [
+    {
+      id: "fu-default-1",
+      channel: "WHATSAPP",
+      delayHours: 24,
+      instruction:
+        "Lembre o lead do que foi enviado antes, sem repetir o texto. Chame pelo nome. Faca uma pergunta nova que avance o entendimento da necessidade dele.",
+    },
+  ],
   transferPhone: "",
   transferMessage: "",
   calendarEnabled: false,
   calendarEmail: "",
-  followUpEnabled: true,
-  followUpAttempts: 3,
-  followUpInterval: 24,
   humanApproval: false,
   webhookId: "",
 };
+
+function newFollowUpId(): string {
+  return `fu-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+}
 
 type TemplateId =
   | "form_lp"
@@ -186,8 +206,7 @@ export default function PipelinePage() {
       // Downstream reset
       goal: "",
       firstContact: "immediate",
-      primaryChannel: "WHATSAPP",
-      secondaryChannel: "",
+      channels: ["WHATSAPP"],
       transferPhone: "",
       transferMessage: "",
       calendarEnabled: false,
@@ -542,7 +561,7 @@ export default function PipelinePage() {
             </StepCard>
           )}
 
-          {/* STEP: CHANNEL */}
+          {/* STEP: CHANNELS (multi-select) */}
           {config.template && config.goal && (
             <StepCard
               id="step-channel"
@@ -550,84 +569,288 @@ export default function PipelinePage() {
               title={t("step4.title")}
               desc={t("step4.desc")}
             >
-              <div className="space-y-5">
-                <div>
-                  <label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground mb-2.5 block">
-                    {t("step4.primary")}
-                  </label>
-                  <div className="grid grid-cols-3 gap-2.5">
-                    {CHANNELS.map((ch) => {
-                      const sel = config.primaryChannel === ch.id;
-                      return (
+              <div>
+                <label className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground mb-2.5 block">
+                  {t("step4.channelsLabel")}
+                </label>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                  {CHANNELS.map((ch) => {
+                    const sel = config.channels.includes(ch.id);
+                    const onlyOne = config.channels.length === 1 && sel;
+                    return (
+                      <button
+                        key={ch.id}
+                        onClick={() => {
+                          setConfig((p) => {
+                            if (sel) {
+                              // never empty
+                              if (p.channels.length <= 1) return p;
+                              return {
+                                ...p,
+                                channels: p.channels.filter((c) => c !== ch.id),
+                              };
+                            }
+                            return { ...p, channels: [...p.channels, ch.id] };
+                          });
+                        }}
+                        data-selected={sel}
+                        title={onlyOne ? t("step4.atLeastOne") : ""}
+                        className="selectable-card flex items-center gap-3"
+                      >
+                        <div
+                          className={cn(
+                            "w-9 h-9 rounded-xl grid place-items-center shrink-0 shadow-sm ring-1 ring-white/10",
+                            ch.bg
+                          )}
+                        >
+                          <ch.icon className="w-4 h-4 text-white" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-[13px] font-semibold text-foreground leading-none">
+                            {ch.label}
+                          </p>
+                          <p className="text-[10.5px] text-muted-foreground mt-1 leading-none">
+                            {sel ? t("step4.willSend") : t("step4.tapToAdd")}
+                          </p>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="text-[11.5px] text-muted-foreground/80 mt-3 leading-relaxed">
+                  {t("step4.hint")}
+                </p>
+              </div>
+            </StepCard>
+          )}
+
+          {/* STEP: FIRST MESSAGE (instruction or exact) */}
+          {config.template && config.goal && (
+            <StepCard
+              id="step-first-message"
+              step={isProactive ? 5 : 4}
+              title={t("firstMessage.title")}
+              desc={t("firstMessage.desc")}
+            >
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    onClick={() =>
+                      setConfig((p) => ({ ...p, firstMessageVariability: "instruction" }))
+                    }
+                    data-selected={config.firstMessageVariability === "instruction"}
+                    className="selectable-card"
+                  >
+                    <p className="text-[13px] font-semibold text-foreground">
+                      {t("firstMessage.modeInstruction")}
+                    </p>
+                    <p className="text-[11.5px] text-muted-foreground mt-1 leading-relaxed">
+                      {t("firstMessage.modeInstructionDesc")}
+                    </p>
+                  </button>
+                  <button
+                    onClick={() =>
+                      setConfig((p) => ({ ...p, firstMessageVariability: "exact" }))
+                    }
+                    data-selected={config.firstMessageVariability === "exact"}
+                    className="selectable-card"
+                  >
+                    <p className="text-[13px] font-semibold text-foreground">
+                      {t("firstMessage.modeExact")}
+                    </p>
+                    <p className="text-[11.5px] text-muted-foreground mt-1 leading-relaxed">
+                      {t("firstMessage.modeExactDesc")}
+                    </p>
+                  </button>
+                </div>
+                <Field
+                  label={
+                    config.firstMessageVariability === "exact"
+                      ? t("firstMessage.exactLabel")
+                      : t("firstMessage.instructionLabel")
+                  }
+                >
+                  <textarea
+                    value={config.firstMessageInstruction}
+                    onChange={(e) =>
+                      setConfig((p) => ({
+                        ...p,
+                        firstMessageInstruction: e.target.value.slice(0, 2000),
+                      }))
+                    }
+                    rows={5}
+                    placeholder={
+                      config.firstMessageVariability === "exact"
+                        ? t("firstMessage.exactPlaceholder")
+                        : t("firstMessage.instructionPlaceholder")
+                    }
+                    className="w-full px-3.5 py-3 rounded-xl bg-muted border border-transparent text-[13px] text-foreground placeholder:text-muted-foreground/50 resize-y focus:outline-none focus:border-ring/40 focus:bg-background focus:shadow-[0_0_0_4px_hsl(var(--ring)/0.1)] leading-relaxed font-dm-sans transition-all"
+                  />
+                </Field>
+                <p className="text-[11.5px] text-muted-foreground/80 leading-relaxed">
+                  {config.firstMessageVariability === "exact"
+                    ? t("firstMessage.exactHint")
+                    : t("firstMessage.instructionHint")}
+                </p>
+              </div>
+            </StepCard>
+          )}
+
+          {/* STEP: FOLLOW-UP CADENCE */}
+          {config.template && config.goal && (
+            <StepCard
+              id="step-followups"
+              step={isProactive ? 6 : 5}
+              title={t("followUps.title")}
+              desc={t("followUps.desc")}
+            >
+              <div className="space-y-3">
+                {config.followUps.length === 0 ? (
+                  <div className="rounded-xl border border-dashed border-border bg-muted/20 p-6 text-center">
+                    <p className="text-[12.5px] text-muted-foreground">
+                      {t("followUps.empty")}
+                    </p>
+                  </div>
+                ) : (
+                  config.followUps.map((fu, idx) => (
+                    <div
+                      key={fu.id}
+                      className="rounded-xl border border-border bg-card p-4 space-y-3 shadow-elevated"
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-2.5">
+                          <span className="w-7 h-7 rounded-lg bg-primary/15 text-primary grid place-items-center text-[11px] font-bold ring-1 ring-primary/25">
+                            {idx + 1}
+                          </span>
+                          <span className="text-[13px] font-semibold text-foreground">
+                            {t("followUps.itemTitle", { n: idx + 1 })}
+                          </span>
+                        </div>
                         <button
-                          key={ch.id}
                           onClick={() =>
                             setConfig((p) => ({
                               ...p,
-                              primaryChannel: ch.id,
-                              secondaryChannel:
-                                p.secondaryChannel === ch.id
-                                  ? ""
-                                  : p.secondaryChannel,
+                              followUps: p.followUps.filter((f) => f.id !== fu.id),
                             }))
                           }
-                          data-selected={sel}
-                          className="selectable-card flex items-center gap-3"
+                          className="text-[11px] text-muted-foreground hover:text-destructive transition-colors cursor-pointer"
                         >
-                          <div
-                            className={cn(
-                              "w-9 h-9 rounded-xl grid place-items-center shrink-0 shadow-sm ring-1 ring-white/10",
-                              ch.bg
-                            )}
-                          >
-                            <ch.icon className="w-4 h-4 text-white" />
+                          {t("followUps.remove")}
+                        </button>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-3">
+                        <div>
+                          <label className="text-[10.5px] font-semibold uppercase tracking-[0.12em] text-muted-foreground mb-1.5 block">
+                            {t("followUps.channelLabel")}
+                          </label>
+                          <div className="flex gap-1.5 flex-wrap">
+                            {CHANNELS.map((ch) => {
+                              const sel = fu.channel === ch.id;
+                              return (
+                                <button
+                                  key={ch.id}
+                                  onClick={() =>
+                                    setConfig((p) => ({
+                                      ...p,
+                                      followUps: p.followUps.map((f) =>
+                                        f.id === fu.id ? { ...f, channel: ch.id } : f
+                                      ),
+                                    }))
+                                  }
+                                  data-selected={sel}
+                                  className="selectable-card flex items-center gap-2 px-3 py-2 text-[12px] font-semibold"
+                                >
+                                  <ch.icon className="w-3.5 h-3.5" />
+                                  {ch.label}
+                                </button>
+                              );
+                            })}
                           </div>
-                          <span className="text-[13px] font-semibold text-foreground">
-                            {ch.label}
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                <div>
-                  <label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground mb-2.5 block">
-                    {t("step4.secondary")}{" "}
-                    <span className="normal-case tracking-normal font-normal text-muted-foreground/70">
-                     , {tc("optional")}
-                    </span>
-                  </label>
-                  <div className="grid grid-cols-4 gap-2.5">
-                    <button
-                      onClick={() =>
-                        setConfig((p) => ({ ...p, secondaryChannel: "" }))
-                      }
-                      data-selected={config.secondaryChannel === ""}
-                      className="selectable-card text-center text-[12.5px] font-semibold"
-                    >
-                      {t("step4.none")}
-                    </button>
-                    {CHANNELS.filter(
-                      (c) => c.id !== config.primaryChannel
-                    ).map((ch) => {
-                      const sel = config.secondaryChannel === ch.id;
-                      return (
-                        <button
-                          key={ch.id}
-                          onClick={() =>
-                            setConfig((p) => ({ ...p, secondaryChannel: ch.id }))
+                        </div>
+                        <div>
+                          <label className="text-[10.5px] font-semibold uppercase tracking-[0.12em] text-muted-foreground mb-1.5 block">
+                            {t("followUps.delayLabel")}
+                          </label>
+                          <div className="flex items-center gap-1.5">
+                            <input
+                              type="number"
+                              min={1}
+                              max={720}
+                              value={fu.delayHours}
+                              onChange={(e) => {
+                                const n = Math.max(
+                                  1,
+                                  Math.min(720, Number(e.target.value) || 1)
+                                );
+                                setConfig((p) => ({
+                                  ...p,
+                                  followUps: p.followUps.map((f) =>
+                                    f.id === fu.id ? { ...f, delayHours: n } : f
+                                  ),
+                                }));
+                              }}
+                              className="w-20 h-10 px-3 rounded-xl bg-muted border border-transparent text-[13px] text-foreground tabular-nums focus:outline-none focus:border-ring/40 focus:bg-background"
+                            />
+                            <span className="text-[12px] text-muted-foreground">
+                              {fu.delayHours === 1
+                                ? t("followUps.hour")
+                                : t("followUps.hours")}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                      <div>
+                        <label className="text-[10.5px] font-semibold uppercase tracking-[0.12em] text-muted-foreground mb-1.5 block">
+                          {t("followUps.instructionLabel")}
+                        </label>
+                        <textarea
+                          value={fu.instruction}
+                          onChange={(e) =>
+                            setConfig((p) => ({
+                              ...p,
+                              followUps: p.followUps.map((f) =>
+                                f.id === fu.id
+                                  ? { ...f, instruction: e.target.value.slice(0, 1000) }
+                                  : f
+                              ),
+                            }))
                           }
-                          data-selected={sel}
-                          className="selectable-card flex items-center justify-center gap-2 text-[12.5px] font-semibold"
-                        >
-                          <ch.icon className="w-4 h-4 opacity-80" />
-                          {ch.label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
+                          rows={3}
+                          placeholder={t("followUps.instructionPlaceholder")}
+                          className="w-full px-3.5 py-2.5 rounded-xl bg-muted border border-transparent text-[12.5px] text-foreground placeholder:text-muted-foreground/50 resize-y focus:outline-none focus:border-ring/40 focus:bg-background leading-relaxed font-dm-sans"
+                        />
+                      </div>
+                    </div>
+                  ))
+                )}
+                <button
+                  onClick={() =>
+                    setConfig((p) => ({
+                      ...p,
+                      followUps: [
+                        ...p.followUps,
+                        {
+                          id: newFollowUpId(),
+                          channel: p.channels[0] || "WHATSAPP",
+                          delayHours:
+                            p.followUps.length > 0
+                              ? p.followUps[p.followUps.length - 1].delayHours
+                              : 24,
+                          instruction: "",
+                        },
+                      ],
+                    }))
+                  }
+                  disabled={config.followUps.length >= 10}
+                  className="w-full h-11 rounded-xl border border-dashed border-border bg-muted/20 hover:bg-muted/40 hover:border-primary/40 text-[12.5px] font-semibold text-muted-foreground hover:text-foreground transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  + {t("followUps.add")}
+                </button>
+                {config.followUps.length >= 10 && (
+                  <p className="text-[10.5px] text-muted-foreground/60 text-center">
+                    {t("followUps.cap")}
+                  </p>
+                )}
               </div>
             </StepCard>
           )}
@@ -636,7 +859,7 @@ export default function PipelinePage() {
           {needsTransfer && (
             <StepCard
               id="step-transfer"
-              step={isProactive ? 5 : 4}
+              step={isProactive ? 7 : 6}
               title={t("step5transfer.title")}
               desc={t("step5transfer.desc")}
             >
@@ -673,7 +896,7 @@ export default function PipelinePage() {
           {needsCalendar && (
             <StepCard
               id="step-calendar"
-              step={isProactive ? 5 : 4}
+              step={isProactive ? 7 : 6}
               title={t("step5calendar.title")}
               desc={t("step5calendar.desc")}
             >
@@ -730,11 +953,11 @@ export default function PipelinePage() {
               step={
                 isProactive
                   ? needsTransfer || needsCalendar
-                    ? 6
-                    : 5
+                    ? 8
+                    : 7
                   : needsTransfer || needsCalendar
-                    ? 5
-                    : 4
+                    ? 7
+                    : 6
               }
               title={t("webhook.title")}
               desc={t("webhook.desc")}
@@ -808,56 +1031,8 @@ export default function PipelinePage() {
 
           {showAdvanced && (
             <section className="rounded-2xl border border-border bg-card p-5 space-y-4">
-              <div className="flex items-center justify-between p-3.5 rounded-xl border border-border bg-muted/40">
-                <div>
-                  <p className="text-[13px] font-medium text-foreground">
-                    {t("advanced.followUp")}
-                  </p>
-                  <p className="text-[11.5px] text-muted-foreground mt-0.5">
-                    {t("advanced.followUpDesc")}
-                  </p>
-                </div>
-                <Toggle
-                  checked={config.followUpEnabled}
-                  onChange={(v) =>
-                    setConfig((p) => ({ ...p, followUpEnabled: v }))
-                  }
-                />
-              </div>
-              {config.followUpEnabled && (
-                <div className="grid grid-cols-2 gap-3 ml-3 pl-3 border-l-2 border-border">
-                  <Field label={t("advanced.attempts")}>
-                    <input
-                      type="number"
-                      min={1}
-                      max={10}
-                      value={config.followUpAttempts}
-                      onChange={(e) =>
-                        setConfig((p) => ({
-                          ...p,
-                          followUpAttempts: parseInt(e.target.value) || 3,
-                        }))
-                      }
-                      className="w-full h-10 px-3.5 rounded-lg bg-muted border border-transparent text-[13px] text-foreground focus:outline-none focus:border-ring/30"
-                    />
-                  </Field>
-                  <Field label={`${t("advanced.interval")} (h)`}>
-                    <input
-                      type="number"
-                      min={1}
-                      max={168}
-                      value={config.followUpInterval}
-                      onChange={(e) =>
-                        setConfig((p) => ({
-                          ...p,
-                          followUpInterval: parseInt(e.target.value) || 24,
-                        }))
-                      }
-                      className="w-full h-10 px-3.5 rounded-lg bg-muted border border-transparent text-[13px] text-foreground focus:outline-none focus:border-ring/30"
-                    />
-                  </Field>
-                </div>
-              )}
+              {/* Follow-up cadence moved to its own dedicated step above.
+                  This advanced area now hosts only orthogonal flags. */}
               <div className="flex items-center justify-between p-3.5 rounded-xl border border-border bg-muted/40">
                 <div>
                   <p className="text-[13px] font-medium text-foreground">

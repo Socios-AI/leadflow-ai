@@ -15,6 +15,7 @@ import {
   generatePassword,
   buildTeamInviteMessage,
 } from "@/lib/admin/platform";
+import { appUrlFromRequest } from "@/lib/app-url";
 import { logger } from "@/lib/logger";
 
 const log = logger.child({ module: "settings/members" });
@@ -171,8 +172,10 @@ export async function POST(req: NextRequest) {
     });
     if (memErr) throw memErr;
 
-    // 4. Build invite message (only for brand-new users)
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://app";
+    // 4. Build invite message (only for brand-new users).
+    // Pull the URL from the request so the invite link always matches the
+    // hostname the admin is actually using.
+    const appUrl = appUrlFromRequest(req);
     const message =
       password &&
       buildTeamInviteMessage({
