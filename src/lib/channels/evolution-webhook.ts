@@ -1,24 +1,20 @@
 // src/lib/channels/evolution-webhook.ts
 //
 // Auto-configure the Evolution API webhook for a given instance.
-// Evolution 2.x exposes POST /webhook/set/{instanceName} with this body:
 //
-//   {
-//     "webhook": {
-//       "enabled": true,
-//       "url": "https://<app>/api/webhooks/evolution",
-//       "headers": { "x-webhook-secret": "<optional>" },
-//       "byEvents": false,    // send all events on one URL
-//       "base64": false,      // we transcribe audio ourselves
-//       "events": ["MESSAGES_UPSERT", "CONNECTION_UPDATE", "QRCODE_UPDATED"]
-//     }
-//   }
+// Evolution API has shifted endpoint shapes across releases and forks, so
+// we probe a handful of well-known paths and stop at the first one that
+// the server accepts. We log the winning attempt so the operator can see
+// which path their server speaks.
 //
-// Without this, the AI never sees inbound WhatsApp messages, the lead
-// thinks no one is replying, the operator thinks the platform is broken.
-// We call this right after creating an instance and also expose it as a
-// `configureWebhook` action so the dashboard can backfill instances that
-// were created before this code existed.
+// Known variants we try, in order:
+//   1) POST /webhook/set/{instance}   body { webhook: { enabled, url, ... } }
+//   2) POST /webhook/set/{instance}   body flat { enabled, url, ... }
+//   3) PUT  /webhook/set/{instance}   body { webhook: { enabled, url, ... } }
+//   4) POST /instance/setWebhook/{instance}   body flat (v1.x legacy)
+//   5) POST /webhook/{instance}        body flat (some forks)
+//
+// All variants get the apikey header. We accept any 2xx response as success.
 
 import { logger } from "@/lib/logger";
 
@@ -29,8 +25,6 @@ export interface ConfigureWebhookInput {
   apiKey: string;
   instanceName: string;
   webhookUrl: string;
-  /** Optional per-tenant secret. When present, Evolution sends it as
-   * `x-webhook-secret` so /api/webhooks/evolution can reject impostors. */
   webhookSecret?: string;
 }
 
@@ -38,89 +32,125 @@ export interface ConfigureWebhookResult {
   ok: boolean;
   status: number;
   detail?: string;
+  /** Endpoint variant that succeeded, for ops visibility */
+  variant?: string;
 }
 
-const EVENTS = [
-  "MESSAGES_UPSERT",
-  "CONNECTION_UPDATE",
-  "QRCODE_UPDATED",
-];
+const EVENTS = ["MESSAGES_UPSERT", "CONNECTION_UPDATE", "QRCODE_UPDATED"];
+
+interface Attempt {
+  method: "POST" | "PUT";
+  path: string; // already starting with /
+  body: unknown;
+  label: string;
+}
+
+function buildAttempts(input: ConfigureWebhookInput): Attempt[] {
+  const inst = encodeURIComponent(input.instanceName);
+  const headers = input.webhookSecret
+    ? { "x-webhook-secret": input.webhookSecret }
+    : undefined;
+  const wrapped = {
+    webhook: {
+      enabled: true,
+      url: input.webhookUrl,
+      headers,
+      byEvents: false,
+      base64: false,
+      events: EVENTS,
+      // Some forks read these capitalized variants on the same payload
+      webhookByEvents: false,
+      webhookBase64: false,
+    },
+  };
+  const flat = {
+    enabled: true,
+    url: input.webhookUrl,
+    headers,
+    byEvents: false,
+    base64: false,
+    events: EVENTS,
+    webhookByEvents: false,
+    webhookBase64: false,
+  };
+
+  return [
+    { method: "POST", path: `/webhook/set/${inst}`, body: wrapped, label: "v2_post_wrapped" },
+    { method: "POST", path: `/webhook/set/${inst}`, body: flat, label: "v2_post_flat" },
+    { method: "PUT", path: `/webhook/set/${inst}`, body: wrapped, label: "v2_put_wrapped" },
+    { method: "POST", path: `/instance/setWebhook/${inst}`, body: flat, label: "v1_legacy" },
+    { method: "POST", path: `/webhook/${inst}`, body: flat, label: "fork_short" },
+  ];
+}
 
 export async function configureEvolutionWebhook(
   input: ConfigureWebhookInput
 ): Promise<ConfigureWebhookResult> {
-  const { baseUrl, apiKey, instanceName, webhookUrl, webhookSecret } = input;
-  if (!baseUrl || !apiKey || !instanceName || !webhookUrl) {
+  if (!input.baseUrl || !input.apiKey || !input.instanceName || !input.webhookUrl) {
     return { ok: false, status: 0, detail: "missing_params" };
   }
 
-  const cleanBase = baseUrl.replace(/\/+$/, "");
-  const url = `${cleanBase}/webhook/set/${encodeURIComponent(instanceName)}`;
+  const cleanBase = input.baseUrl.replace(/\/+$/, "");
+  const attempts = buildAttempts(input);
 
-  const payload = {
-    webhook: {
-      enabled: true,
-      url: webhookUrl,
-      headers: webhookSecret ? { "x-webhook-secret": webhookSecret } : undefined,
-      byEvents: false,
-      base64: false,
-      events: EVENTS,
-    },
-  };
+  let lastStatus = 0;
+  let lastDetail = "";
 
-  try {
-    const res = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        apikey: apiKey,
-      },
-      body: JSON.stringify(payload),
-    });
-
-    if (res.ok) {
-      log.info("evolution webhook set", { instanceName, webhookUrl });
-      return { ok: true, status: res.status };
-    }
-
-    const text = await res.text().catch(() => "");
-    log.warn("evolution webhook set failed", {
-      instanceName,
-      status: res.status,
-      detail: text.slice(0, 200),
-    });
-
-    // Evolution 1.x used POST /webhook/instance, try that as a fallback so
-    // older self-hosted servers still receive the config. Same payload.
-    if (res.status === 404) {
-      const altUrl = `${cleanBase}/webhook/instance`;
-      const altRes = await fetch(altUrl, {
-        method: "POST",
+  for (const a of attempts) {
+    const url = `${cleanBase}${a.path}`;
+    try {
+      const res = await fetch(url, {
+        method: a.method,
         headers: {
           "Content-Type": "application/json",
-          apikey: apiKey,
+          apikey: input.apiKey,
         },
-        body: JSON.stringify({
-          instanceName,
-          ...payload.webhook,
-        }),
+        body: JSON.stringify(a.body),
       });
-      if (altRes.ok) {
-        log.info("evolution webhook set via legacy path", { instanceName });
-        return { ok: true, status: altRes.status };
-      }
-      const altText = await altRes.text().catch(() => "");
-      return {
-        ok: false,
-        status: altRes.status,
-        detail: altText.slice(0, 200) || `legacy_path_${altRes.status}`,
-      };
-    }
 
-    return { ok: false, status: res.status, detail: text.slice(0, 200) };
-  } catch (err) {
-    const detail = err instanceof Error ? err.message : String(err);
-    log.error("evolution webhook set crashed", { instanceName, detail });
-    return { ok: false, status: 0, detail };
+      if (res.ok) {
+        log.info("evolution webhook set", {
+          instanceName: input.instanceName,
+          variant: a.label,
+          url,
+          status: res.status,
+        });
+        return { ok: true, status: res.status, variant: a.label };
+      }
+
+      const text = await res.text().catch(() => "");
+      lastStatus = res.status;
+      lastDetail = text.slice(0, 300);
+      log.warn("evolution webhook variant failed", {
+        instanceName: input.instanceName,
+        variant: a.label,
+        status: res.status,
+        detail: lastDetail,
+      });
+
+      // 401/403 means auth is wrong, no point trying other paths.
+      if (res.status === 401 || res.status === 403) {
+        return {
+          ok: false,
+          status: res.status,
+          detail: `auth_failed: ${lastDetail}`,
+          variant: a.label,
+        };
+      }
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err);
+      lastDetail = detail;
+      log.warn("evolution webhook variant crashed", {
+        instanceName: input.instanceName,
+        variant: a.label,
+        detail,
+      });
+    }
   }
+
+  return {
+    ok: false,
+    status: lastStatus,
+    detail: lastDetail || "no_variant_accepted",
+  };
 }
