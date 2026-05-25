@@ -987,7 +987,10 @@
       "chars": "caracteres lidei per la IA",
       "reindex": "Reindexar",
       "reindexed": "Arquivo reindexado",
-      "reindexFailed": "Nal foi possivel ler o arquivo"
+      "reindexFailed": "Nal foi possivel ler o arquivo",
+      "previewTitle": "Testo che l'IA vede",
+      "previewEmpty": "Questo file non ha testo estraibile. I PDF scansionati necessitano di un livello di testo, oppure caricalo come immagine (PNG/JPG) cosi il sistema legge con OCR.",
+      "previewHint": "Questo e esattamente cio che l'IA legge da questo file durante le conversazioni. Se manca qualcosa di importante, modifica l'originale e ricarica."
     },
     "mediaTab": {
       "title": "Media che a IA pode enviar",
@@ -1135,6 +1138,43 @@
       "user_not_found": "Utente não encontrado.",
       "save": "Impossibile salvar. Tente de novo.",
       "network": "Errore de conexão. Riprova."
+    }
+  },
+  "help": {
+    "webhooks": {
+      "title": "Come collegare le tue fonti di lead",
+      "subtitle": "Incolla questa URL nello strumento che cattura i tuoi lead. Ogni lead inviato diventa un contatto nel sistema e l'IA inizia a gestirlo automaticamente.",
+      "universalUrlTitle": "URL universale per la cattura dei lead",
+      "universalUrlDesc": "Funziona con qualsiasi strumento che invii webhook (Meta Lead Ads, Google Ads, Typeform, Zapier, Make, e altri). Invia il JSON qui sotto, lo riceviamo.",
+      "loadingUrl": "Caricamento URL...",
+      "payloadTitle": "Formato JSON atteso",
+      "metaTitle": "Meta Lead Ads (Facebook / Instagram)",
+      "metaStep1": "In Meta Business Manager apri Tools, Lead Ads Forms.",
+      "metaStep2": "Crea o modifica il tuo modulo e copia il suo ID.",
+      "metaStep3": "Collega la tua Pagina e attiva il webhook puntando alla URL universale.",
+      "metaStep4": "Prova inviando un lead di test dal Graph API Explorer.",
+      "metaDocs": "Documentazione ufficiale Meta",
+      "typeformTitle": "Typeform",
+      "typeformStep1": "Nel tuo modulo clicca Connect, Webhooks.",
+      "typeformStep2": "Incolla la URL universale e attiva il webhook.",
+      "typeformStep3": "I campi name, email e phone vengono rilevati automaticamente.",
+      "typeformDocs": "Documentazione Typeform",
+      "zapierTitle": "Zapier / Make / n8n",
+      "zapierStep1": "Crea uno Zap (o scenario) con il Trigger del canale di cattura.",
+      "zapierStep2": "Aggiungi un'azione Webhooks by Zapier, POST.",
+      "zapierStep3": "Incolla la URL universale come destinazione.",
+      "zapierStep4": "Mappa i campi del lead al JSON sopra.",
+      "zapierDocs": "Documentazione Zapier",
+      "genericTitle": "API diretta (qualsiasi sistema)",
+      "genericStep1": "Esegui un POST sulla URL universale con Content-Type application/json.",
+      "genericStep2": "Invia il body nel formato JSON sopra.",
+      "genericStep3": "Ogni chiamata crea un lead e attiva il primo messaggio dell'IA automaticamente.",
+      "genericDocs": "Vedi integrazioni avanzate",
+      "testTitle": "Prova ora",
+      "testDesc": "Esegui questo comando nel terminale per simulare un lead in arrivo. In secondi lo vedrai nella pagina Lead.",
+      "testHint": "Se restituisce 201 Created, sta funzionando. Se 404, controlla l'accountId nella URL. Se 401, controlla che il canale di invio sia attivo.",
+      "backToPipeline": "Torna al funnel",
+      "openIntegrations": "Apri integrazioni"
     }
   }
 }

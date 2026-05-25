@@ -1055,7 +1055,7 @@ export default function PipelinePage() {
                   )}
                 </Field>
                 <Link
-                  href="/settings/integrations"
+                  href="/help/webhooks"
                   className="inline-flex items-center gap-1.5 text-[12px] text-primary hover:underline"
                 >
                   {t("webhook.openGuide")}

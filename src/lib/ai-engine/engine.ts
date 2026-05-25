@@ -444,7 +444,27 @@ async function loadConfig(accountId: string): Promise<LoadedConfig | null> {
     }
   }
 
-  const persona = (overlay?.persona ?? (row.persona as Record<string, unknown>)) || {};
+  // BUG FIX: when an assistant overlay exists, it used to completely
+  // replace the base persona, wiping out tenant-level pipeline settings
+  // (language lock, firstMessageInstruction, channels[], followUps[],
+  // webhookId, etc.) and silently reverting the AI to "auto" behavior.
+  //
+  // The right model: pipeline-owned and tenant-owned fields ALWAYS come
+  // from the base aiConfig.persona. The assistant overlay only contributes
+  // voice/persona-tone fields (aiName, aiRole, tone, ...). We merge with
+  // the base winning for anything that starts with "pipeline" or sits in
+  // a known tenant-owned key.
+  const basePersona = (row.persona as Record<string, unknown>) || {};
+  const overlayPersona = (overlay?.persona as Record<string, unknown> | null) || null;
+  const TENANT_OWNED_KEYS = new Set([
+    "language",
+    "escalationTriggers",
+    "conversionTriggers",
+    "debounceSeconds",
+  ]);
+  const persona: Record<string, unknown> = overlayPersona
+    ? { ...overlayPersona, ...pickTenantFields(basePersona, TENANT_OWNED_KEYS) }
+    : basePersona;
   const escalation = (overlay?.escalationConfig ?? (row.escalationConfig as Record<string, unknown>)) || {};
   const conversion = (overlay?.conversionConfig ?? (row.conversionConfig as Record<string, unknown>)) || {};
 
@@ -568,6 +588,26 @@ function personaField<T = string>(
 ): T {
   const v = persona[key];
   return (v === undefined || v === null || v === "" ? fallback : v) as T;
+}
+
+/**
+ * Extract every key whose name starts with `pipeline` (those are owned by
+ * the tenant pipeline UI) plus the explicit tenant-owned keys list. Used
+ * when merging an assistant persona overlay so pipeline settings never
+ * get clobbered by an inactive overlay value.
+ */
+function pickTenantFields(
+  base: Record<string, unknown>,
+  explicitKeys: Set<string>
+): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const k of Object.keys(base)) {
+    if (k.startsWith("pipeline") || explicitKeys.has(k)) {
+      const v = base[k];
+      if (v !== undefined && v !== null && v !== "") out[k] = v;
+    }
+  }
+  return out;
 }
 
 function commonPreamble(

@@ -986,7 +986,10 @@
       "chars": "characters read by the AI",
       "reindex": "Reindex",
       "reindexed": "File reindexed",
-      "reindexFailed": "Could not read the file"
+      "reindexFailed": "Could not read the file",
+      "previewTitle": "Text the AI sees",
+      "previewEmpty": "This file has no extractable text. Scanned PDFs need a text layer, or upload as an image (PNG/JPG) so the system can OCR it.",
+      "previewHint": "This is exactly the content the AI reads from this file during conversations. If something important is missing, edit the original and re-upload."
     },
     "mediaTab": {
       "title": "Media the AI can send",
@@ -1134,6 +1137,43 @@
       "user_not_found": "User not found.",
       "save": "Couldn't save. Try again.",
       "network": "Connection error. Try again."
+    }
+  },
+  "help": {
+    "webhooks": {
+      "title": "How to connect your lead sources",
+      "subtitle": "Paste this URL into the tool that captures your leads. Every lead sent becomes a contact in the system and the AI starts handling it automatically.",
+      "universalUrlTitle": "Universal lead capture URL",
+      "universalUrlDesc": "Works with any tool that fires webhooks (Meta Lead Ads, Google Ads, Typeform, Zapier, Make, Unbounce, and more). Send the JSON below, we ingest it.",
+      "loadingUrl": "Loading URL...",
+      "payloadTitle": "Expected JSON payload",
+      "metaTitle": "Meta Lead Ads (Facebook / Instagram)",
+      "metaStep1": "In Meta Business Manager open Tools, Lead Ads Forms.",
+      "metaStep2": "Create or edit your form and copy its ID.",
+      "metaStep3": "Connect your Page and enable the webhook pointing at the universal URL.",
+      "metaStep4": "Test by sending a sample lead through Graph API Explorer.",
+      "metaDocs": "Official Meta docs",
+      "typeformTitle": "Typeform",
+      "typeformStep1": "In your form click Connect, Webhooks.",
+      "typeformStep2": "Paste the universal URL and enable the webhook.",
+      "typeformStep3": "Fields name, email and phone are detected automatically.",
+      "typeformDocs": "Typeform docs",
+      "zapierTitle": "Zapier / Make / n8n",
+      "zapierStep1": "Create a Zap (or scenario) with the lead-capture trigger.",
+      "zapierStep2": "Add a Webhooks by Zapier, POST action.",
+      "zapierStep3": "Paste the universal URL as destination.",
+      "zapierStep4": "Map the lead fields to the JSON shape above.",
+      "zapierDocs": "Zapier docs",
+      "genericTitle": "Direct API (any system)",
+      "genericStep1": "POST to the universal URL with Content-Type application/json.",
+      "genericStep2": "Send the body in the JSON shape above.",
+      "genericStep3": "Each call creates a lead and triggers the AI's first message automatically.",
+      "genericDocs": "See advanced integrations",
+      "testTitle": "Test it now",
+      "testDesc": "Run this command in your terminal to simulate a lead arriving. In seconds you'll see it show up on the Leads page.",
+      "testHint": "If you get 201 Created, it's working. If 404, check the accountId in the URL. If 401, check your sending channel is active.",
+      "backToPipeline": "Back to funnel",
+      "openIntegrations": "Open integrations"
     }
   }
 }

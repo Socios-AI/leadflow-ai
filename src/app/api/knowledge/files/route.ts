@@ -21,7 +21,11 @@ import { logger } from "@/lib/logger";
 import { extractTextFromFile } from "@/lib/knowledge/extract";
 
 const log = logger.child({ module: "api/knowledge-files" });
-const MAX_FILE_BYTES = 50 * 1024 * 1024;
+// Per-file ceiling. The platform itself is "unlimited" in number of files
+// the tenant can upload (we don't cap rows or storage from the app side),
+// but each individual file is bounded so a stray 500MB upload doesn't
+// thrash the storage bucket or Vision OCR.
+const MAX_FILE_BYTES = 100 * 1024 * 1024;
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -88,7 +92,7 @@ export async function POST(req: NextRequest) {
       {
         error: "FILE_TOO_LARGE",
         sizeMB: Math.round((file.size / 1024 / 1024) * 10) / 10,
-        limitMB: 50,
+        limitMB: 100,
       },
       { status: 413 }
     );

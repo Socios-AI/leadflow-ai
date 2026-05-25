@@ -8,7 +8,7 @@ import {
   Building, Mic, MicOff, ChevronDown,
   Sliders, Bot, BookOpen, Paperclip, Plus, Pencil, Trash2, Check,
   X, Upload, FileText, Image as ImageIcon, Video, FileAudio,
-  File as FileIcon, Power, AlertCircle, CheckCircle2,
+  File as FileIcon, Power, AlertCircle, CheckCircle2, Eye,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -732,6 +732,10 @@ function KnowledgeFilesTab({ onToast }: { onToast: (msg: string, ok: boolean) =>
   const [loading, setLoading] = useState(true);
   const [uploadOpen, setUploadOpen] = useState(false);
   const [reindexingId, setReindexingId] = useState<string | null>(null);
+  // Preview state: shows the AI-visible extracted text for one file at a time.
+  const [previewing, setPreviewing] = useState<KnowledgeFileEntry | null>(null);
+  const [previewText, setPreviewText] = useState<string>("");
+  const [previewLoading, setPreviewLoading] = useState(false);
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -768,6 +772,21 @@ function KnowledgeFilesTab({ onToast }: { onToast: (msg: string, ok: boolean) =>
       }
     } finally {
       setReindexingId(null);
+    }
+  }
+
+  async function openPreview(f: KnowledgeFileEntry) {
+    setPreviewing(f);
+    setPreviewText("");
+    setPreviewLoading(true);
+    try {
+      const res = await fetch(`/api/knowledge/files/${f.id}`);
+      if (res.ok) {
+        const data = await res.json();
+        setPreviewText(data.extractedText || "");
+      }
+    } finally {
+      setPreviewLoading(false);
     }
   }
 
@@ -818,6 +837,17 @@ function KnowledgeFilesTab({ onToast }: { onToast: (msg: string, ok: boolean) =>
                     </div>
                   </div>
                   <div className="flex items-center gap-1 shrink-0">
+                    {f.indexed && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        title={t("previewTitle")}
+                        onClick={() => openPreview(f)}
+                        className="text-muted-foreground hover:text-foreground"
+                      >
+                        <Eye className="w-3.5 h-3.5" />
+                      </Button>
+                    )}
                     {!f.indexed && (
                       <Button
                         variant="ghost"
@@ -852,6 +882,38 @@ function KnowledgeFilesTab({ onToast }: { onToast: (msg: string, ok: boolean) =>
           onSaved={() => { setUploadOpen(false); onToast(t("saved"), true); reload(); }}
           onError={(msg) => onToast(msg || t("error"), false)}
         />
+      )}
+      {previewing && (
+        <ModalShell
+          onClose={() => setPreviewing(null)}
+          title={`${t("previewTitle")}: ${previewing.title}`}
+        >
+          <div className="space-y-3">
+            <div className="flex items-center gap-2 text-[11px] text-muted-foreground font-mono">
+              <span>{previewing.mimeType}</span>
+              <span>·</span>
+              <span>{formatSize(previewing.sizeBytes)}</span>
+              <span>·</span>
+              <span>{previewText.length.toLocaleString()} {t("chars")}</span>
+            </div>
+            {previewLoading ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+              </div>
+            ) : previewText ? (
+              <pre className="max-h-[60vh] overflow-y-auto whitespace-pre-wrap text-[12.5px] leading-relaxed bg-muted/40 border border-border/40 rounded-xl p-4 font-mono text-foreground">
+                {previewText}
+              </pre>
+            ) : (
+              <div className="rounded-xl border border-amber-500/30 bg-amber-500/[0.06] p-4 text-[12.5px] text-amber-500">
+                {t("previewEmpty")}
+              </div>
+            )}
+            <p className="text-[11px] text-muted-foreground leading-relaxed">
+              {t("previewHint")}
+            </p>
+          </div>
+        </ModalShell>
       )}
     </div>
   );
