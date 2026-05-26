@@ -15,7 +15,11 @@
 //  5. Trim whitespace, drop empty chunks.
 
 const SHORT_THRESHOLD = 120;
-const MAX_CHUNKS = 4;
+// Up to 5 bubbles. The first-contact prompt explicitly tells the AI to use
+// one bubble per structural part of the operator's instruction, and a rich
+// instruction (validation + hook + value + proof + question) hits 5. The old
+// cap of 4 silently merged the last two, blurring the operator's intent.
+const MAX_CHUNKS = 5;
 const MIN_CHUNK_LEN = 40;
 
 export const EXPLICIT_SEPARATOR = "|||";
