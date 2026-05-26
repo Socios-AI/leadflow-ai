@@ -90,6 +90,12 @@ export class WhatsAppProvider implements ChannelProvider {
     if (!number) {
       return { success: false, error: "invalid_phone_format" };
     }
+    if (!this.config.instanceName) {
+      return { success: false, error: "missing_instance_name_in_channel_config" };
+    }
+    if (!this.baseUrl) {
+      return { success: false, error: "missing_evolution_api_url" };
+    }
     try {
       await this.sendPresence(number, content.length);
 
@@ -101,26 +107,20 @@ export class WhatsAppProvider implements ChannelProvider {
       });
 
       const raw = await res.text();
-      let data: { key?: { id?: string }; message?: unknown } = {};
+      let data: Record<string, unknown> = {};
       try {
         data = raw ? JSON.parse(raw) : {};
       } catch {
         // not JSON, keep raw in error
       }
       if (!res.ok) {
-        // Evolution sometimes wraps the real reason as
-        // `{ response: { message: ["..."] } }`. Flatten so the operator
-        // sees something useful in metadata.lastSendError.
-        const m = data?.message;
-        const flat =
-          typeof m === "string"
-            ? m
-            : Array.isArray(m)
-              ? (m as unknown[]).join("; ")
-              : raw.slice(0, 240) || `HTTP ${res.status}`;
-        return { success: false, error: flat };
+        return {
+          success: false,
+          error: `HTTP ${res.status} on ${url}: ${flattenEvolutionError(data, raw)}`,
+        };
       }
-      return { success: true, externalId: data?.key?.id };
+      const key = (data as { key?: { id?: string } }).key;
+      return { success: true, externalId: key?.id };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       return { success: false, error: message };
@@ -162,23 +162,20 @@ export class WhatsAppProvider implements ChannelProvider {
       });
 
       const raw = await res.text();
-      let data: { key?: { id?: string }; message?: unknown } = {};
+      let data: Record<string, unknown> = {};
       try {
         data = raw ? JSON.parse(raw) : {};
       } catch {
         // not JSON
       }
       if (!res.ok) {
-        const m = data?.message;
-        const flat =
-          typeof m === "string"
-            ? m
-            : Array.isArray(m)
-              ? (m as unknown[]).join("; ")
-              : raw.slice(0, 240) || `HTTP ${res.status}`;
-        return { success: false, error: flat };
+        return {
+          success: false,
+          error: `HTTP ${res.status} on ${url}: ${flattenEvolutionError(data, raw)}`,
+        };
       }
-      return { success: true, externalId: data?.key?.id };
+      const key = (data as { key?: { id?: string } }).key;
+      return { success: true, externalId: key?.id };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       return { success: false, error: message };
@@ -224,4 +221,35 @@ export class WhatsAppProvider implements ChannelProvider {
       mimetype: data.mimetype || "audio/ogg",
     };
   }
+}
+
+/**
+ * Evolution returns errors in several shapes depending on version and the
+ * specific failure path. Reduce all of them to a single human-readable
+ * string for metadata.lastSendError.
+ *
+ * Shapes seen in the wild:
+ *   { message: "string" }
+ *   { message: ["string", "string"] }
+ *   { response: { message: ["string"] } }
+ *   { error: "Bad Request", message: "..." }
+ *   plain HTML / raw text from the proxy
+ */
+function flattenEvolutionError(
+  data: Record<string, unknown>,
+  raw: string
+): string {
+  const candidates: unknown[] = [
+    data.message,
+    (data.response as { message?: unknown } | undefined)?.message,
+    data.error,
+  ];
+  for (const c of candidates) {
+    if (typeof c === "string" && c.trim()) return c.trim();
+    if (Array.isArray(c) && c.length) {
+      return c.map((x) => (typeof x === "string" ? x : JSON.stringify(x))).join("; ");
+    }
+    if (c && typeof c === "object") return JSON.stringify(c).slice(0, 240);
+  }
+  return raw ? raw.slice(0, 240) : "no_body";
 }

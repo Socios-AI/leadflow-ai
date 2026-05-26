@@ -134,14 +134,35 @@ export async function sendMessagesInParts(
       };
     }
 
-    // 3. Update status
+    // 3. Update status. When the send fails, persist the real provider
+    //    error to metadata.lastSendError so the operator can diagnose
+    //    instead of staring at a silent FAILED row.
+    const failureMeta = result.success
+      ? {}
+      : { lastSendError: result.error || "unknown_send_error", failedAt: new Date().toISOString() };
+
     await prisma.message.update({
       where: { id: dbMsg.id },
       data: {
         status: result.success ? "SENT" : "FAILED",
         externalId: result.externalId || null,
+        metadata: {
+          ...(input.extraMetadata || {}),
+          partIndex: i,
+          totalParts: parts.length,
+          ...failureMeta,
+        },
       },
     });
+
+    if (!result.success) {
+      log.warn("text part send failed", {
+        conversationId: input.conversationId,
+        partIndex: i,
+        totalParts: parts.length,
+        error: result.error,
+      });
+    }
 
     messages.push({
       id: dbMsg.id,
