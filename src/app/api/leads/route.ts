@@ -22,8 +22,44 @@ export async function GET() {
       },
     });
 
+    // Build a set of conversationIds whose first_contact send FAILED and
+    // never had a SENT sibling. Used by the UI to show the retry button.
+    const allConvIds = leads.flatMap((l) => l.conversations.map((c) => c.id));
+    const failedConvSet = new Set<string>();
+    if (allConvIds.length > 0) {
+      const [failedRows, sentRows] = await Promise.all([
+        prisma.message.findMany({
+          where: {
+            accountId: session.accountId,
+            conversationId: { in: allConvIds },
+            direction: "OUTBOUND",
+            status: "FAILED",
+            metadata: { path: ["role"], equals: "first_contact" },
+          },
+          select: { conversationId: true },
+          distinct: ["conversationId"],
+        }),
+        prisma.message.findMany({
+          where: {
+            accountId: session.accountId,
+            conversationId: { in: allConvIds },
+            direction: "OUTBOUND",
+            status: "SENT",
+            metadata: { path: ["role"], equals: "first_contact" },
+          },
+          select: { conversationId: true },
+          distinct: ["conversationId"],
+        }),
+      ]);
+      const sentSet = new Set(sentRows.map((r) => r.conversationId));
+      for (const r of failedRows) {
+        if (!sentSet.has(r.conversationId)) failedConvSet.add(r.conversationId);
+      }
+    }
+
     return NextResponse.json(leads.map((l) => {
       const conv = l.conversations[0];
+      const firstContactFailed = conv ? failedConvSet.has(conv.id) : false;
       return {
         id: l.id,
         name: l.name,
@@ -41,6 +77,7 @@ export async function GET() {
         channel: conv?.channel || null,
         hasActiveConversation: conv?.isActive || false,
         isAIActive: conv?.isAIEnabled || false,
+        firstContactFailed,
       };
     }));
   } catch (error: unknown) {

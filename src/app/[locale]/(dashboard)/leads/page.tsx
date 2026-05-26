@@ -1,12 +1,12 @@
 // src/app/[locale]/(dashboard)/leads/page.tsx
 "use client";
 
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { useTranslations, useLocale } from "next-intl";
 import {
   Search, Users, Brain, Phone, Mail, X, Download,
   Loader2, ChevronRight, Clock, Target, Headphones,
-  TrendingUp, Hash, Copy, Check,
+  TrendingUp, Hash, Copy, Check, RefreshCw, AlertTriangle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -16,6 +16,7 @@ interface Lead {
   status: string; source: string; countryCode: string; score: number; tags: string[];
   campaignName: string | null; createdAt: string; lastContactAt: string | null;
   conversationId: string | null; channel: string | null; hasActiveConversation: boolean; isAIActive: boolean;
+  firstContactFailed?: boolean;
 }
 
 /* ═══ STATUS COLORS (mapped to the new .pill-* utilities in globals.css) ═══ */
@@ -67,14 +68,80 @@ export default function LeadsPage() {
   const [sourceFilter, setSourceFilter] = useState("ALL");
   const [detail, setDetail] = useState<Lead | null>(null);
   const [copiedId, setCopiedId] = useState(false);
+  const [retryingId, setRetryingId] = useState<string | null>(null);
+  const [retryingBulk, setRetryingBulk] = useState(false);
+  const [retryToast, setRetryToast] = useState<string | null>(null);
+
+  const reloadLeads = useCallback(async () => {
+    try {
+      const r = await fetch("/api/leads");
+      const d = r.ok ? await r.json() : [];
+      setLeads(Array.isArray(d) ? d : []);
+    } catch {
+      // silent
+    }
+  }, []);
 
   useEffect(() => {
-    fetch("/api/leads")
-      .then(r => r.ok ? r.json() : [])
-      .then(d => setLeads(Array.isArray(d) ? d : []))
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, []);
+    reloadLeads().finally(() => setLoading(false));
+  }, [reloadLeads]);
+
+  const failedCount = useMemo(
+    () => leads.filter((l) => l.firstContactFailed).length,
+    [leads]
+  );
+
+  async function retryOne(lead: Lead) {
+    if (!confirm(t("retryOneConfirm", { name: lead.name || tc("noName") }))) return;
+    setRetryingId(lead.id);
+    setRetryToast(null);
+    try {
+      const r = await fetch(`/api/leads/${lead.id}/retry-first-contact`, {
+        method: "POST",
+      });
+      const d = await r.json().catch(() => ({}));
+      if (r.ok) {
+        setRetryToast(t("retryOneOk"));
+        await reloadLeads();
+        setDetail((cur) =>
+          cur && cur.id === lead.id ? { ...cur, firstContactFailed: false } : cur
+        );
+      } else if (r.status === 409) {
+        setRetryToast(t("retryAlreadySent"));
+      } else {
+        setRetryToast(d.error || t("retryError"));
+      }
+    } catch {
+      setRetryToast(t("retryError"));
+    } finally {
+      setRetryingId(null);
+      setTimeout(() => setRetryToast(null), 5000);
+    }
+  }
+
+  async function retryAllFailed() {
+    if (failedCount === 0) return;
+    if (!confirm(t("retryAllConfirm", { count: failedCount }))) return;
+    setRetryingBulk(true);
+    setRetryToast(null);
+    try {
+      const r = await fetch("/api/leads/retry-failed-first-contacts", {
+        method: "POST",
+      });
+      const d = await r.json().catch(() => ({}));
+      if (r.ok) {
+        setRetryToast(t("retryAllOk", { count: d.retried ?? 0 }));
+        await reloadLeads();
+      } else {
+        setRetryToast(d.error || t("retryError"));
+      }
+    } catch {
+      setRetryToast(t("retryError"));
+    } finally {
+      setRetryingBulk(false);
+      setTimeout(() => setRetryToast(null), 6000);
+    }
+  }
 
   const filtered = useMemo(() => {
     return leads.filter(l => {
@@ -117,11 +184,33 @@ export default function LeadsPage() {
             </h1>
             <p className="text-[13px] text-muted-foreground mt-1 font-dm-sans">{t("subtitle")}</p>
           </div>
-          <button className="inline-flex items-center gap-2 h-10 px-4 rounded-xl text-[12.5px] font-medium text-muted-foreground bg-muted/60 border border-border hover:bg-muted hover:text-foreground transition-all cursor-pointer">
-            <Download className="w-3.5 h-3.5" />
-            {t("exportCSV")}
-          </button>
+          <div className="flex items-center gap-2 flex-wrap">
+            {failedCount > 0 && (
+              <button
+                onClick={retryAllFailed}
+                disabled={retryingBulk}
+                className="inline-flex items-center gap-2 h-10 px-4 rounded-xl text-[12.5px] font-medium text-amber-500 bg-amber-500/10 border border-amber-500/30 hover:bg-amber-500/15 transition-all cursor-pointer disabled:opacity-60"
+              >
+                {retryingBulk ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <RefreshCw className="w-3.5 h-3.5" />
+                )}
+                {t("retryAllButton", { count: failedCount })}
+              </button>
+            )}
+            <button className="inline-flex items-center gap-2 h-10 px-4 rounded-xl text-[12.5px] font-medium text-muted-foreground bg-muted/60 border border-border hover:bg-muted hover:text-foreground transition-all cursor-pointer">
+              <Download className="w-3.5 h-3.5" />
+              {t("exportCSV")}
+            </button>
+          </div>
         </div>
+
+        {retryToast && (
+          <div className="px-4 py-2.5 rounded-xl bg-primary/10 border border-primary/20 text-[12.5px] text-foreground font-dm-sans">
+            {retryToast}
+          </div>
+        )}
 
         {/* Stats */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
@@ -253,11 +342,19 @@ export default function LeadsPage() {
                       <p className="text-[12.5px] text-foreground truncate">{lead.campaignName || ","}</p>
                       <p className="text-[10.5px] text-muted-foreground mt-0.5">{tsr(lead.source)}</p>
                     </div>
-                    <div>
+                    <div className="flex items-center gap-1.5">
                       <span className={cn("pill", pill)}>
                         <span className={cn("w-1.5 h-1.5 rounded-full", dot)} />
                         {ts(lead.status)}
                       </span>
+                      {lead.firstContactFailed && (
+                        <span
+                          title={t("firstContactFailedTip")}
+                          className="inline-flex items-center justify-center w-5 h-5 rounded-md bg-amber-500/15 text-amber-500"
+                        >
+                          <AlertTriangle className="w-3 h-3" />
+                        </span>
+                      )}
                     </div>
                     <div className="hidden lg:flex items-center gap-1 text-[11.5px] text-muted-foreground">
                       <Clock className="w-3 h-3 opacity-60" />{ago(lead.lastContactAt || lead.createdAt)}
@@ -422,6 +519,27 @@ export default function LeadsPage() {
                 </div>
                 {copiedId ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5 text-muted-foreground/50 group-hover:text-foreground transition-colors" />}
               </button>
+
+              {detail.firstContactFailed && (
+                <div className="space-y-2">
+                  <div className="px-3 py-2.5 rounded-xl bg-amber-500/[0.06] border border-amber-500/20 text-[11.5px] text-amber-500 font-dm-sans flex items-start gap-2">
+                    <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                    <span>{t("firstContactFailedDesc")}</span>
+                  </div>
+                  <button
+                    onClick={() => retryOne(detail)}
+                    disabled={retryingId === detail.id}
+                    className="w-full flex items-center justify-center gap-2 h-11 rounded-xl border border-amber-500/40 text-amber-500 text-[13px] font-semibold hover:bg-amber-500/10 transition-colors disabled:opacity-60"
+                  >
+                    {retryingId === detail.id ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <RefreshCw className="w-4 h-4" />
+                    )}
+                    {t("retryFirstContact")}
+                  </button>
+                </div>
+              )}
 
               {detail.conversationId && (
                 <a
