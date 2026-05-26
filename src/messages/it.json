@@ -767,7 +767,12 @@
       "webhookRecreated": "L'istanza e stata ricreata. Scansiona il QR Code qui sotto per ricollegare.",
       "funnelOnlyTitle": "Rispondi solo ai lead del funnel",
       "funnelOnlyOnDesc": "L'IA risponde solo a chi e gia registrato come lead (arrivato dal webhook, da un'importazione o creato manualmente). I messaggi da numeri sconosciuti restano in casella ma l'IA non risponde.",
-      "funnelOnlyOffDesc": "L'IA risponde a qualsiasi numero che scrive su questo WhatsApp, anche senza un lead esistente."
+      "funnelOnlyOffDesc": "L'IA risponde a qualsiasi numero che scrive su questo WhatsApp, anche senza un lead esistente.",
+      "restart": "Riavvia",
+      "restartConfirm": "Riavviare la sessione WhatsApp su Evolution? Mantiene l'accoppiamento, riapre solo la connessione. Usalo quando gli invii falliscono con 'Connection Closed'.",
+      "restartOk": "Sessione riavviata. Prova a inviare di nuovo.",
+      "restartError": "Riavvio non riuscito. Se persiste, clicca Riconnetti e scansiona di nuovo il QR.",
+      "restartHint": "Se i messaggi falliscono anche se il numero risulta connesso, clicca Riavvia. Riapre la connessione senza riscansionare il QR."
     },
     "email": {
       "title": "Email",

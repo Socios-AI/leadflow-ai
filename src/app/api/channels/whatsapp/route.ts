@@ -168,6 +168,39 @@ export async function POST(req: NextRequest) {
     });
     const cfg = (channel?.config as WaConfig | null) || {};
 
+    // ═══ RESTART BAILEYS ═══
+    // Forces Evolution to re-establish the WhatsApp socket without
+    // dropping the paired session. Use when sends fail with "Connection
+    // Closed" or messages are stuck. Probes PUT then POST since
+    // Evolution forks disagree on the verb.
+    if (action === "restart") {
+      const targetInstance = cfg.instanceName || instName;
+      const url = `${baseUrl}/instance/restart/${targetInstance}`;
+      const tried: { method: string; status: number; body?: string }[] = [];
+      let ok = false;
+      for (const method of ["PUT", "POST"] as const) {
+        try {
+          const r = await fetch(url, {
+            method,
+            headers: { "Content-Type": "application/json", apikey: apiKey },
+          });
+          const body = await r.text().catch(() => "");
+          tried.push({ method, status: r.status, body: body.slice(0, 200) });
+          if (r.ok) {
+            ok = true;
+            break;
+          }
+        } catch (err) {
+          tried.push({
+            method,
+            status: 0,
+            body: err instanceof Error ? err.message : String(err),
+          });
+        }
+      }
+      return NextResponse.json({ ok, instanceName: targetInstance, tried }, { status: ok ? 200 : 502 });
+    }
+
     // ═══ UPDATE FUNNEL-ONLY FLAG ═══
     if (action === "setRespondToFunnelLeadsOnly") {
       const value = body.value !== false;

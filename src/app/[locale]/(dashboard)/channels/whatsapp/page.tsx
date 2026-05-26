@@ -6,7 +6,7 @@ import { useTranslations, useLocale } from "next-intl";
 import Link from "next/link";
 import {
   Phone, Loader2, QrCode, Unplug, ArrowLeft, RefreshCw,
-  Wifi, WifiOff, Smartphone, Shield, Zap, Clock, Filter,
+  Wifi, WifiOff, Smartphone, Shield, Zap, Clock, Filter, Power,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -40,6 +40,8 @@ export default function WhatsAppChannelPage() {
   const [webhookInstance, setWebhookInstance] = useState<string | null>(null);
   const [funnelOnly, setFunnelOnly] = useState(true);
   const [funnelOnlySaving, setFunnelOnlySaving] = useState(false);
+  const [restarting, setRestarting] = useState(false);
+  const [restartToast, setRestartToast] = useState<string | null>(null);
   const pollRef = useRef<NodeJS.Timeout | null>(null);
 
   const loadStatus = useCallback(async () => {
@@ -110,6 +112,26 @@ export default function WhatsAppChannelPage() {
       setWebhookToast(t("webhookReconfigureError"));
     } finally {
       setReconfiguring(false);
+    }
+  }
+
+  async function handleRestart() {
+    if (!confirm(t("restartConfirm"))) return;
+    setRestarting(true);
+    setRestartToast(null);
+    try {
+      const r = await fetch("/api/channels/whatsapp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "restart" }),
+      });
+      const d = await r.json().catch(() => ({}));
+      setRestartToast(r.ok && d.ok ? t("restartOk") : t("restartError"));
+    } catch {
+      setRestartToast(t("restartError"));
+    } finally {
+      setRestarting(false);
+      setTimeout(() => setRestartToast(null), 5000);
     }
   }
 
@@ -184,12 +206,21 @@ export default function WhatsAppChannelPage() {
               </p>
             )}
           </div>
-          <div className="flex gap-2">
-            <button onClick={handleConnect} className="flex-1 h-10 rounded-xl border border-border text-[13px] font-medium text-muted-foreground hover:bg-muted cursor-pointer transition-colors flex items-center justify-center gap-2"><RefreshCw className="w-4 h-4" />{t("reconnect")}</button>
-            <button onClick={handleDisconnect} disabled={disconnecting} className="flex-1 h-10 rounded-xl border border-red-500/20 text-[13px] font-medium text-red-400 hover:bg-red-500/5 cursor-pointer transition-colors flex items-center justify-center gap-2 disabled:opacity-50">
-              {disconnecting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Unplug className="w-4 h-4" />}{t("disconnect")}
+          <div className="grid grid-cols-3 gap-2">
+            <button onClick={handleConnect} className="h-10 rounded-xl border border-border text-[12.5px] font-medium text-muted-foreground hover:bg-muted cursor-pointer transition-colors flex items-center justify-center gap-1.5"><RefreshCw className="w-3.5 h-3.5" />{t("reconnect")}</button>
+            <button onClick={handleRestart} disabled={restarting} className="h-10 rounded-xl border border-amber-500/30 text-[12.5px] font-medium text-amber-500 hover:bg-amber-500/10 cursor-pointer transition-colors flex items-center justify-center gap-1.5 disabled:opacity-50">
+              {restarting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Power className="w-3.5 h-3.5" />}{t("restart")}
+            </button>
+            <button onClick={handleDisconnect} disabled={disconnecting} className="h-10 rounded-xl border border-red-500/20 text-[12.5px] font-medium text-red-400 hover:bg-red-500/5 cursor-pointer transition-colors flex items-center justify-center gap-1.5 disabled:opacity-50">
+              {disconnecting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Unplug className="w-3.5 h-3.5" />}{t("disconnect")}
             </button>
           </div>
+          {restartToast && (
+            <p className="text-[11.5px] text-foreground text-center">{restartToast}</p>
+          )}
+          <p className="text-[11px] text-muted-foreground/70 text-center leading-relaxed">
+            {t("restartHint")}
+          </p>
         </div>
       )}
 

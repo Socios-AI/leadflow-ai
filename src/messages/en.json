@@ -766,7 +766,12 @@
       "webhookRecreated": "Instance was recreated. Scan the QR Code below to pair again.",
       "funnelOnlyTitle": "Only reply to funnel leads",
       "funnelOnlyOnDesc": "The AI only replies to people already registered as leads (came from a webhook, import or added manually). Messages from unknown numbers are saved to the inbox but the AI stays silent.",
-      "funnelOnlyOffDesc": "The AI replies to any number that messages this WhatsApp, even when there is no lead record."
+      "funnelOnlyOffDesc": "The AI replies to any number that messages this WhatsApp, even when there is no lead record.",
+      "restart": "Restart",
+      "restartConfirm": "Restart the WhatsApp session on Evolution? Keeps the pairing, only reopens the connection. Use this when sends are failing with 'Connection Closed'.",
+      "restartOk": "Session restarted. Try sending a message again.",
+      "restartError": "Could not restart. If it persists, click Reconnect and scan the QR again.",
+      "restartHint": "If messages are failing even though the number is connected, click Restart. It reopens the WhatsApp connection without re-scanning the QR."
     },
     "email": {
       "title": "Email",

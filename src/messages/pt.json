@@ -766,7 +766,12 @@
       "webhookRecreated": "A instancia foi recriada. Escaneie o QR Code abaixo para conectar.",
       "funnelOnlyTitle": "Responder apenas leads do funil",
       "funnelOnlyOnDesc": "A IA so responde quem ja esta cadastrado como lead (veio do webhook, importacao ou criado manualmente). Mensagens de numeros desconhecidos sao salvas no inbox, mas a IA nao responde.",
-      "funnelOnlyOffDesc": "A IA responde qualquer numero que mandar mensagem para este WhatsApp, mesmo sem cadastro previo."
+      "funnelOnlyOffDesc": "A IA responde qualquer numero que mandar mensagem para este WhatsApp, mesmo sem cadastro previo.",
+      "restart": "Reiniciar",
+      "restartConfirm": "Reiniciar a sessao do WhatsApp na Evolution? Mantem o pareamento, so reabre a conexao com o WhatsApp. Use quando os envios estiverem falhando com 'Connection Closed'.",
+      "restartOk": "Sessao reiniciada. Tente reenviar uma mensagem.",
+      "restartError": "Nao foi possivel reiniciar. Se persistir, clique em Reconectar e escaneie o QR de novo.",
+      "restartHint": "Se as mensagens estiverem falhando mesmo com o numero conectado, clique em Reiniciar. Isso reabre a conexao com o WhatsApp sem precisar escanear o QR de novo."
     },
     "email": {
       "title": "E-mail",

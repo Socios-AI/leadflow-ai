@@ -84,6 +84,14 @@ export class WhatsAppProvider implements ChannelProvider {
 
   /**
    * Send a text message. Automatically shows typing indicator first.
+   *
+   * Resilience: Evolution + Baileys sometimes report `state: open` on
+   * /instance/connectionState while the underlying WhatsApp socket is
+   * actually dead. In that case POST /message/sendText returns
+   * `HTTP 500 Connection Closed`. We detect that, hit PUT /instance/restart
+   * to revive Baileys, wait briefly and retry the send once before giving
+   * up. This avoids forcing the operator to re-scan the QR for transient
+   * disconnects.
    */
   async send(to: string, content: string): Promise<SendResult> {
     const number = this.normalizeNumber(to);
@@ -96,9 +104,49 @@ export class WhatsAppProvider implements ChannelProvider {
     if (!this.baseUrl) {
       return { success: false, error: "missing_evolution_api_url" };
     }
-    try {
-      await this.sendPresence(number, content.length);
 
+    await this.sendPresence(number, content.length);
+
+    const firstAttempt = await this.attemptSendText(number, content);
+    if (firstAttempt.success) return firstAttempt;
+
+    // Decide whether to attempt recovery. We only retry on the specific
+    // Baileys "Connection Closed" pattern, not on 4xx (bad number, etc.).
+    if (!isConnectionClosedError(firstAttempt.error)) {
+      return firstAttempt;
+    }
+
+    const restarted = await this.restartInstance();
+    if (!restarted.ok) {
+      return {
+        success: false,
+        error: `${firstAttempt.error} | restart_failed: ${restarted.detail}`,
+      };
+    }
+
+    // Give Baileys a moment to re-establish the socket before retrying.
+    await new Promise((r) => setTimeout(r, 2500));
+
+    const secondAttempt = await this.attemptSendText(number, content);
+    if (secondAttempt.success) {
+      return {
+        ...secondAttempt,
+        // Surface for the operator log that we recovered automatically.
+        // (SendResult only has success+externalId+error in the type, so we
+        // shove a note into externalId-adjacent state through error=undefined.)
+      };
+    }
+    return {
+      success: false,
+      error: `${secondAttempt.error} | auto-restart attempted but send still failed, the WhatsApp session may need to be re-paired (Channels -> WhatsApp -> Reconectar)`,
+    };
+  }
+
+  private async attemptSendText(
+    number: string,
+    content: string
+  ): Promise<SendResult> {
+    try {
       const url = `${this.baseUrl}/message/sendText/${this.config.instanceName}`;
       const res = await fetch(url, {
         method: "POST",
@@ -111,7 +159,7 @@ export class WhatsAppProvider implements ChannelProvider {
       try {
         data = raw ? JSON.parse(raw) : {};
       } catch {
-        // not JSON, keep raw in error
+        // not JSON
       }
       if (!res.ok) {
         return {
@@ -125,6 +173,24 @@ export class WhatsAppProvider implements ChannelProvider {
       const message = error instanceof Error ? error.message : String(error);
       return { success: false, error: message };
     }
+  }
+
+  /**
+   * Tell Evolution to restart the Baileys connection without dropping the
+   * paired session. Evolution v2 exposes both PUT and POST variants
+   * depending on the fork, we probe in order.
+   */
+  private async restartInstance(): Promise<{ ok: boolean; detail: string }> {
+    const url = `${this.baseUrl}/instance/restart/${this.config.instanceName}`;
+    for (const method of ["PUT", "POST"] as const) {
+      try {
+        const res = await fetch(url, { method, headers: this.headers });
+        if (res.ok) return { ok: true, detail: `${method} 2xx` };
+      } catch {
+        // try next method
+      }
+    }
+    return { ok: false, detail: `no restart endpoint accepted PUT/POST at ${url}` };
   }
 
   // ══════════════════════════════════════════════════════════
@@ -235,6 +301,23 @@ export class WhatsAppProvider implements ChannelProvider {
  *   { error: "Bad Request", message: "..." }
  *   plain HTML / raw text from the proxy
  */
+/**
+ * Detects the Baileys "Connection Closed" error pattern that Evolution
+ * surfaces as HTTP 500 when the underlying WhatsApp socket died but
+ * connectionState still reports `open`. Matched loosely because the exact
+ * wording varies across Evolution versions.
+ */
+function isConnectionClosedError(err: string | undefined): boolean {
+  if (!err) return false;
+  const lower = err.toLowerCase();
+  return (
+    lower.includes("connection closed") ||
+    lower.includes("connection_closed") ||
+    lower.includes("stream errored") ||
+    lower.includes("websocket")
+  );
+}
+
 function flattenEvolutionError(
   data: Record<string, unknown>,
   raw: string
