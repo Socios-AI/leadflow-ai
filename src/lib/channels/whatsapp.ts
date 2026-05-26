@@ -21,6 +21,16 @@ export class WhatsAppProvider implements ChannelProvider {
     };
   }
 
+  /**
+   * Evolution API rejects phone numbers with the leading `+`. The lead
+   * record stores phones in E.164 (`+5511...`) for portability, so we
+   * normalize at the edge right before the HTTP call. Also strips spaces
+   * and dashes that some forms allow through.
+   */
+  private normalizeNumber(to: string): string {
+    return String(to || "").replace(/[\s\-\(\)]+/g, "").replace(/^\+/, "");
+  }
+
   // ══════════════════════════════════════════════════════════
   // PRESENCE (typing indicator)
   // ══════════════════════════════════════════════════════════
@@ -54,7 +64,7 @@ export class WhatsAppProvider implements ChannelProvider {
         method: "POST",
         headers: this.headers,
         body: JSON.stringify({
-          number: to,
+          number: this.normalizeNumber(to),
           delay,
           presence: "composing",
         }),
@@ -76,25 +86,44 @@ export class WhatsAppProvider implements ChannelProvider {
    * Send a text message. Automatically shows typing indicator first.
    */
   async send(to: string, content: string): Promise<SendResult> {
+    const number = this.normalizeNumber(to);
+    if (!number) {
+      return { success: false, error: "invalid_phone_format" };
+    }
     try {
-      // Show typing before sending
-      await this.sendPresence(to, content.length);
+      await this.sendPresence(number, content.length);
 
       const url = `${this.baseUrl}/message/sendText/${this.config.instanceName}`;
       const res = await fetch(url, {
         method: "POST",
         headers: this.headers,
-        body: JSON.stringify({ number: to, text: content }),
+        body: JSON.stringify({ number, text: content }),
       });
 
-      const data = await res.json();
-      if (!res.ok) {
-        return { success: false, error: data?.message || `HTTP ${res.status}` };
+      const raw = await res.text();
+      let data: { key?: { id?: string }; message?: unknown } = {};
+      try {
+        data = raw ? JSON.parse(raw) : {};
+      } catch {
+        // not JSON, keep raw in error
       }
-
+      if (!res.ok) {
+        // Evolution sometimes wraps the real reason as
+        // `{ response: { message: ["..."] } }`. Flatten so the operator
+        // sees something useful in metadata.lastSendError.
+        const m = data?.message;
+        const flat =
+          typeof m === "string"
+            ? m
+            : Array.isArray(m)
+              ? (m as unknown[]).join("; ")
+              : raw.slice(0, 240) || `HTTP ${res.status}`;
+        return { success: false, error: flat };
+      }
       return { success: true, externalId: data?.key?.id };
-    } catch (error: any) {
-      return { success: false, error: error.message };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return { success: false, error: message };
     }
   }
 
@@ -113,29 +142,46 @@ export class WhatsAppProvider implements ChannelProvider {
       mediatype?: "image" | "video" | "document";
     }
   ): Promise<SendResult> {
+    const number = this.normalizeNumber(to);
+    if (!number) {
+      return { success: false, error: "invalid_phone_format" };
+    }
     try {
-      await this.sendPresence(to, 50);
+      await this.sendPresence(number, 50);
 
       const url = `${this.baseUrl}/message/sendMedia/${this.config.instanceName}`;
       const res = await fetch(url, {
         method: "POST",
         headers: this.headers,
         body: JSON.stringify({
-          number: to,
+          number,
           mediatype: opts?.mediatype || "image",
           media: mediaUrl,
           caption: opts?.caption || "",
         }),
       });
 
-      const data = await res.json();
-      if (!res.ok) {
-        return { success: false, error: data?.message || `HTTP ${res.status}` };
+      const raw = await res.text();
+      let data: { key?: { id?: string }; message?: unknown } = {};
+      try {
+        data = raw ? JSON.parse(raw) : {};
+      } catch {
+        // not JSON
       }
-
+      if (!res.ok) {
+        const m = data?.message;
+        const flat =
+          typeof m === "string"
+            ? m
+            : Array.isArray(m)
+              ? (m as unknown[]).join("; ")
+              : raw.slice(0, 240) || `HTTP ${res.status}`;
+        return { success: false, error: flat };
+      }
       return { success: true, externalId: data?.key?.id };
-    } catch (error: any) {
-      return { success: false, error: error.message };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return { success: false, error: message };
     }
   }
 

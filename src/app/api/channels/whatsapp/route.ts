@@ -38,6 +38,10 @@ interface WaConfig {
   webhookConfigured?: boolean;
   webhookConfiguredAt?: string | null;
   webhookSecret?: string;
+  // When true (default), the AI only engages leads that already exist in
+  // the funnel (came from a webhook, manual import, CSV, etc.). When false
+  // the AI answers any stranger that messages the connected number.
+  respondToFunnelLeadsOnly?: boolean;
 }
 
 /**
@@ -110,6 +114,7 @@ export async function GET(req: NextRequest) {
             lastActivity: null,
             webhookConfigured: cfg.webhookConfigured || false,
             webhookUrl: webhookUrlFor(req),
+            respondToFunnelLeadsOnly: cfg.respondToFunnelLeadsOnly !== false,
           });
         }
       } catch {
@@ -124,6 +129,7 @@ export async function GET(req: NextRequest) {
       webhookConfigured: cfg.webhookConfigured || false,
       webhookConfiguredAt: cfg.webhookConfiguredAt || null,
       webhookUrl: webhookUrlFor(req),
+      respondToFunnelLeadsOnly: cfg.respondToFunnelLeadsOnly !== false,
     });
   } catch {
     return NextResponse.json({
@@ -132,6 +138,7 @@ export async function GET(req: NextRequest) {
       lastActivity: null,
       webhookConfigured: false,
       webhookUrl: webhookUrlFor(req),
+      respondToFunnelLeadsOnly: true,
     });
   }
 }
@@ -160,6 +167,27 @@ export async function POST(req: NextRequest) {
       where: { accountId_type: { accountId: session.accountId, type: "WHATSAPP" } },
     });
     const cfg = (channel?.config as WaConfig | null) || {};
+
+    // ═══ UPDATE FUNNEL-ONLY FLAG ═══
+    if (action === "setRespondToFunnelLeadsOnly") {
+      const value = body.value !== false;
+      await prisma.channel.upsert({
+        where: { accountId_type: { accountId: session.accountId, type: "WHATSAPP" } },
+        create: {
+          accountId: session.accountId,
+          type: "WHATSAPP",
+          isEnabled: true,
+          config: { instanceName: instName, respondToFunnelLeadsOnly: value },
+        },
+        update: {
+          config: { ...cfg, respondToFunnelLeadsOnly: value },
+        },
+      });
+      return NextResponse.json({
+        success: true,
+        respondToFunnelLeadsOnly: value,
+      });
+    }
 
     // ═══ CONFIGURE WEBHOOK (backfill for existing instances) ═══
     if (action === "configureWebhook") {

@@ -753,7 +753,10 @@
       "webhookReconfigured": "Webhook configurado",
       "webhookReconfigureError": "No se pudo configurar el webhook en Evolution",
       "webhookAttemptsTitle": "Ver intentos (instancia: {instance})",
-      "webhookRecreated": "La instancia fue recreada. Escanea el QR Code abajo para reconectar."
+      "webhookRecreated": "La instancia fue recreada. Escanea el QR Code abajo para reconectar.",
+      "funnelOnlyTitle": "Responder solo a leads del embudo",
+      "funnelOnlyOnDesc": "La IA solo responde a quien ya esta registrado como lead (vino del webhook, importacion o creado manualmente). Los mensajes de numeros desconocidos se guardan en la bandeja, pero la IA no responde.",
+      "funnelOnlyOffDesc": "La IA responde a cualquier numero que escriba a este WhatsApp, aunque no exista registro previo."
     },
     "email": {
       "title": "Email",

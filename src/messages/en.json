@@ -753,7 +753,10 @@
       "webhookReconfigured": "Webhook configured",
       "webhookReconfigureError": "Could not configure the webhook on Evolution",
       "webhookAttemptsTitle": "View attempts (instance: {instance})",
-      "webhookRecreated": "Instance was recreated. Scan the QR Code below to pair again."
+      "webhookRecreated": "Instance was recreated. Scan the QR Code below to pair again.",
+      "funnelOnlyTitle": "Only reply to funnel leads",
+      "funnelOnlyOnDesc": "The AI only replies to people already registered as leads (came from a webhook, import or added manually). Messages from unknown numbers are saved to the inbox but the AI stays silent.",
+      "funnelOnlyOffDesc": "The AI replies to any number that messages this WhatsApp, even when there is no lead record."
     },
     "email": {
       "title": "Email",

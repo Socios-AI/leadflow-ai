@@ -68,17 +68,58 @@ export async function handleWhatsAppInbound(
   const externalMsgId = data.key?.id;
   const instanceName = body.instance || data.instance || "";
 
-  // 3. Resolve account via instance
-  const accountId = await resolveAccountByInstance(instanceName);
-  if (!accountId) return { status: "ignored", reason: "no_channel" };
+  // 3. Resolve account via instance, and load the channel config so we can
+  //    honor the "only respond to funnel leads" gate without a second query.
+  const channelRow = await resolveChannelByInstance(instanceName);
+  if (!channelRow) return { status: "ignored", reason: "no_channel" };
+  const accountId = channelRow.accountId;
+  const channelCfg = (channelRow.config as ChannelConfig | null) || {};
+  // Default ON: the AI must only engage with leads that came from a
+  // configured funnel/webhook. Operators can opt out per channel.
+  const respondToFunnelOnly = channelCfg.respondToFunnelLeadsOnly !== false;
 
   // 4. Find or create lead (reactive onboarding)
-  const lead = await findOrCreateLead(accountId, phone, data.pushName);
+  const { lead, created: leadJustCreated } = await findOrCreateLead(
+    accountId,
+    phone,
+    data.pushName
+  );
 
   // 5. Find or create conversation
   const conversation = await findOrCreateConversation(accountId, lead.id, phone);
 
-  // 6. AI disabled → save inbound raw and stop
+  // 6. Funnel-only gate, when ON we still record the inbound so the
+  //    operator can see "this stranger messaged us" in the inbox, but we
+  //    do NOT engage the AI. Pre-existing leads came in via a configured
+  //    source (webhook, manual import, CSV), so the AI engages them. A
+  //    brand-new lead from a raw WhatsApp ping is treated as a stranger
+  //    and left for human triage.
+  if (leadJustCreated && respondToFunnelOnly) {
+    const content = extractContent(data);
+    await prisma.message.create({
+      data: {
+        accountId,
+        conversationId: conversation.id,
+        direction: "INBOUND",
+        content: content.text || `[${content.type}]`,
+        contentType: content.type,
+        externalId: externalMsgId,
+      },
+    });
+    await prisma.conversation.update({
+      where: { id: conversation.id },
+      data: { lastMessageAt: new Date() },
+    });
+    return {
+      status: "saved",
+      reason: "lead_not_from_funnel",
+      accountId,
+      leadId: lead.id,
+      conversationId: conversation.id,
+    };
+  }
+
+  // 7. AI disabled → save inbound raw and stop
   if (!conversation.isAIEnabled) {
     const content = extractContent(data);
     await prisma.message.create({
@@ -173,9 +214,20 @@ export async function handleWhatsAppInbound(
 // Helpers
 // ═══════════════════════════════════════════════════════
 
-async function resolveAccountByInstance(
+interface ChannelConfig {
+  instanceName?: string;
+  respondToFunnelLeadsOnly?: boolean;
+  [key: string]: unknown;
+}
+
+type ChannelRow = {
+  accountId: string;
+  config: unknown;
+};
+
+async function resolveChannelByInstance(
   instanceName: string
-): Promise<string | null> {
+): Promise<ChannelRow | null> {
   if (instanceName) {
     const ch = await prisma.channel.findFirst({
       where: {
@@ -183,15 +235,15 @@ async function resolveAccountByInstance(
         isEnabled: true,
         config: { path: ["instanceName"], equals: instanceName },
       },
-      select: { accountId: true },
+      select: { accountId: true, config: true },
     });
-    if (ch) return ch.accountId;
+    if (ch) return ch;
   }
   const fallback = await prisma.channel.findFirst({
     where: { type: "WHATSAPP", isEnabled: true },
-    select: { accountId: true },
+    select: { accountId: true, config: true },
   });
-  return fallback?.accountId || null;
+  return fallback;
 }
 
 async function findOrCreateLead(
@@ -207,9 +259,9 @@ async function findOrCreateLead(
       phone: { endsWith: lastTen },
     },
   });
-  if (existing) return existing;
+  if (existing) return { lead: existing, created: false };
 
-  return prisma.lead.create({
+  const lead = await prisma.lead.create({
     data: {
       accountId,
       phone: `+${rawPhone}`,
@@ -219,6 +271,7 @@ async function findOrCreateLead(
       score: 0,
     },
   });
+  return { lead, created: true };
 }
 
 async function findOrCreateConversation(

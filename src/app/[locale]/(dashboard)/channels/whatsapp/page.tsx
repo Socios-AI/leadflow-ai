@@ -6,7 +6,7 @@ import { useTranslations, useLocale } from "next-intl";
 import Link from "next/link";
 import {
   Phone, Loader2, QrCode, Unplug, ArrowLeft, RefreshCw,
-  Wifi, WifiOff, Smartphone, Shield, Zap, Clock,
+  Wifi, WifiOff, Smartphone, Shield, Zap, Clock, Filter,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -38,6 +38,8 @@ export default function WhatsAppChannelPage() {
     | null
   >(null);
   const [webhookInstance, setWebhookInstance] = useState<string | null>(null);
+  const [funnelOnly, setFunnelOnly] = useState(true);
+  const [funnelOnlySaving, setFunnelOnlySaving] = useState(false);
   const pollRef = useRef<NodeJS.Timeout | null>(null);
 
   const loadStatus = useCallback(async () => {
@@ -46,6 +48,7 @@ export default function WhatsAppChannelPage() {
       const d = await r.json();
       setWebhookConfigured(!!d.webhookConfigured);
       setWebhookUrl(d.webhookUrl || "");
+      setFunnelOnly(d.respondToFunnelLeadsOnly !== false);
       if (d.connected) { setStatus("connected"); setPhoneNumber(d.phoneNumber); setLastActivity(d.lastActivity); setQrCode(null); stopPolling(); }
       else if (status === "loading") setStatus("disconnected");
     } catch {}
@@ -107,6 +110,27 @@ export default function WhatsAppChannelPage() {
       setWebhookToast(t("webhookReconfigureError"));
     } finally {
       setReconfiguring(false);
+    }
+  }
+
+  async function toggleFunnelOnly(next: boolean) {
+    // Optimistic flip, the API call confirms (or rolls back on failure).
+    setFunnelOnly(next);
+    setFunnelOnlySaving(true);
+    try {
+      const r = await fetch("/api/channels/whatsapp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "setRespondToFunnelLeadsOnly",
+          value: next,
+        }),
+      });
+      if (!r.ok) setFunnelOnly(!next);
+    } catch {
+      setFunnelOnly(!next);
+    } finally {
+      setFunnelOnlySaving(false);
     }
   }
 
@@ -277,6 +301,43 @@ export default function WhatsAppChannelPage() {
           </div>
         </div>
       )}
+
+      {/* Funnel-only gate. Default ON: the AI only engages leads that came
+          in via webhook/funnel. Off lets the AI answer anyone who messages
+          the connected number. */}
+      <div className="rounded-2xl border border-border bg-card p-4">
+        <div className="flex items-start gap-3">
+          <div className="w-9 h-9 rounded-xl bg-primary/12 text-primary grid place-items-center shrink-0">
+            <Filter className="w-4 h-4" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-[13px] font-semibold text-foreground">
+              {t("funnelOnlyTitle")}
+            </p>
+            <p className="text-[11.5px] text-muted-foreground mt-1 leading-relaxed">
+              {funnelOnly ? t("funnelOnlyOnDesc") : t("funnelOnlyOffDesc")}
+            </p>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={funnelOnly}
+            disabled={funnelOnlySaving}
+            onClick={() => toggleFunnelOnly(!funnelOnly)}
+            className={cn(
+              "relative h-6 w-11 rounded-full transition-colors shrink-0 disabled:opacity-50",
+              funnelOnly ? "bg-primary" : "bg-muted"
+            )}
+          >
+            <span
+              className={cn(
+                "absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform",
+                funnelOnly ? "translate-x-5" : "translate-x-0"
+              )}
+            />
+          </button>
+        </div>
+      </div>
 
       <div className="space-y-2">
         {[
