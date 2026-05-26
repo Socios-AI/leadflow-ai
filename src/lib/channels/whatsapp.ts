@@ -105,6 +105,20 @@ export class WhatsAppProvider implements ChannelProvider {
       return { success: false, error: "missing_evolution_api_url" };
     }
 
+    // PRE-FLIGHT: verify the destination number is actually on WhatsApp.
+    // Baileys returns the same opaque "Connection Closed" error for both
+    // "instance is dead" AND "destination has no WhatsApp account", which
+    // made the failure mode indistinguishable from a real connectivity
+    // problem. Catching it here gives the operator a clear "not_on_whatsapp"
+    // signal so they can clean up the lead instead of restarting the
+    // instance over and over.
+    const check = await this.checkNumber(number);
+    if (check.knownInvalid) {
+      return { success: false, error: "not_on_whatsapp" };
+    }
+    // check.unknown === true means the validator endpoint itself errored,
+    // proceed with the send and let normal error handling kick in.
+
     await this.sendPresence(number, content.length);
 
     const firstAttempt = await this.attemptSendText(number, content);
@@ -128,18 +142,49 @@ export class WhatsAppProvider implements ChannelProvider {
     await new Promise((r) => setTimeout(r, 2500));
 
     const secondAttempt = await this.attemptSendText(number, content);
-    if (secondAttempt.success) {
-      return {
-        ...secondAttempt,
-        // Surface for the operator log that we recovered automatically.
-        // (SendResult only has success+externalId+error in the type, so we
-        // shove a note into externalId-adjacent state through error=undefined.)
-      };
-    }
+    if (secondAttempt.success) return secondAttempt;
+
     return {
       success: false,
       error: `${secondAttempt.error} | auto-restart attempted but send still failed, the WhatsApp session may need to be re-paired (Channels -> WhatsApp -> Reconectar)`,
     };
+  }
+
+  /**
+   * Asks Evolution whether the destination number has a WhatsApp account.
+   * Uses POST /chat/whatsappNumbers/{instance} (Evolution v2).
+   *
+   * Returns:
+   *  - knownInvalid=true when Evolution explicitly says the number has no
+   *    WhatsApp account (the only safe condition to short-circuit on).
+   *  - unknown=true when the check itself failed (endpoint missing on the
+   *    fork, timeout, etc.). In that case we still attempt the send.
+   */
+  private async checkNumber(
+    number: string
+  ): Promise<{ knownInvalid: boolean; unknown: boolean }> {
+    const url = `${this.baseUrl}/chat/whatsappNumbers/${this.config.instanceName}`;
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: this.headers,
+        body: JSON.stringify({ numbers: [number] }),
+      });
+      if (!res.ok) return { knownInvalid: false, unknown: true };
+      const data = (await res.json().catch(() => null)) as
+        | { exists?: boolean; number?: string; jid?: string }[]
+        | { numbers?: { exists?: boolean }[] }
+        | null;
+      if (!data) return { knownInvalid: false, unknown: true };
+      const list = Array.isArray(data) ? data : data.numbers || [];
+      const entry = Array.isArray(list) ? list[0] : undefined;
+      if (entry && typeof entry === "object" && "exists" in entry) {
+        return { knownInvalid: entry.exists === false, unknown: false };
+      }
+      return { knownInvalid: false, unknown: true };
+    } catch {
+      return { knownInvalid: false, unknown: true };
+    }
   }
 
   private async attemptSendText(

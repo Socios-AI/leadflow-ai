@@ -428,6 +428,10 @@
     "retryError": "Could not resend, try again in a moment.",
     "firstContactFailedTip": "The AI's first message failed to send",
     "firstContactFailedDesc": "The AI's first message did not reach this lead. Click below to delete the previous attempt and try again.",
+    "noWhatsappTip": "This number does not have WhatsApp",
+    "noWhatsappDesc": "This number is not registered on WhatsApp, so the message could not be delivered. Resending will not help. Consider reaching this lead via email or SMS if those channels are enabled.",
+    "instanceOfflineTip": "Your WhatsApp instance is offline",
+    "instanceOfflineDesc": "The WhatsApp connection dropped even after an auto-restart. Go to Channels -> WhatsApp, click Restart and, if that does not work, Reconnect to scan the QR again. Then come back and resend.",
     "time": {
       "now": "now",
       "min": "min",

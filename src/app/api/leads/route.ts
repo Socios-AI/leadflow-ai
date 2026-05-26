@@ -24,8 +24,11 @@ export async function GET() {
 
     // Build a set of conversationIds whose first_contact send FAILED and
     // never had a SENT sibling. Used by the UI to show the retry button.
+    // We also grab the most recent failure reason so the UI can show
+    // "Sem WhatsApp" instead of a generic FAILED for invalid numbers.
     const allConvIds = leads.flatMap((l) => l.conversations.map((c) => c.id));
     const failedConvSet = new Set<string>();
+    const failReasonByConv = new Map<string, string>();
     if (allConvIds.length > 0) {
       const [failedRows, sentRows] = await Promise.all([
         prisma.message.findMany({
@@ -36,8 +39,8 @@ export async function GET() {
             status: "FAILED",
             metadata: { path: ["role"], equals: "first_contact" },
           },
-          select: { conversationId: true },
-          distinct: ["conversationId"],
+          select: { conversationId: true, metadata: true, createdAt: true },
+          orderBy: { createdAt: "desc" },
         }),
         prisma.message.findMany({
           where: {
@@ -53,13 +56,24 @@ export async function GET() {
       ]);
       const sentSet = new Set(sentRows.map((r) => r.conversationId));
       for (const r of failedRows) {
-        if (!sentSet.has(r.conversationId)) failedConvSet.add(r.conversationId);
+        if (sentSet.has(r.conversationId)) continue;
+        failedConvSet.add(r.conversationId);
+        if (!failReasonByConv.has(r.conversationId)) {
+          const meta = (r.metadata as Record<string, unknown> | null) || {};
+          const err = typeof meta.lastSendError === "string" ? meta.lastSendError : "";
+          let reason = "unknown";
+          if (err === "not_on_whatsapp") reason = "no_whatsapp";
+          else if (err.toLowerCase().includes("connection closed")) reason = "instance_offline";
+          else if (err) reason = "other";
+          failReasonByConv.set(r.conversationId, reason);
+        }
       }
     }
 
     return NextResponse.json(leads.map((l) => {
       const conv = l.conversations[0];
       const firstContactFailed = conv ? failedConvSet.has(conv.id) : false;
+      const firstContactFailReason = conv ? failReasonByConv.get(conv.id) || null : null;
       return {
         id: l.id,
         name: l.name,
@@ -78,6 +92,7 @@ export async function GET() {
         hasActiveConversation: conv?.isActive || false,
         isAIActive: conv?.isAIEnabled || false,
         firstContactFailed,
+        firstContactFailReason,
       };
     }));
   } catch (error: unknown) {

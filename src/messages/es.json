@@ -428,6 +428,10 @@
     "retryError": "No se pudo reenviar, intenta de nuevo en unos instantes.",
     "firstContactFailedTip": "El primer mensaje de la IA fallo al enviarse",
     "firstContactFailedDesc": "El primer mensaje de la IA no llego a este lead. Haz clic abajo para borrar el intento anterior y reintentar.",
+    "noWhatsappTip": "Este numero no tiene WhatsApp",
+    "noWhatsappDesc": "Este numero no esta registrado en WhatsApp, por eso el mensaje no se pudo entregar. Reenviar no servira. Considera contactar a este lead por email o SMS si tienes esos canales activos.",
+    "instanceOfflineTip": "Tu instancia de WhatsApp esta offline",
+    "instanceOfflineDesc": "La conexion con WhatsApp se cayo incluso despues del auto-reinicio. Ve a Channels -> WhatsApp, haz clic en Reiniciar y, si no funciona, en Reconectar para escanear el QR de nuevo. Despues vuelve aqui y reenvia.",
     "time": {
       "now": "ahora",
       "min": "min",
