@@ -22,13 +22,35 @@ function escapeHtml(s: string): string {
     .replace(/"/g, "&quot;");
 }
 
+/**
+ * Returns the platform-managed email domain (defaults to mkt.sociosai.com
+ * if the env var is unset, so dev environments still produce a sane from).
+ */
+export function platformEmailDomain(): string {
+  return (process.env.PLATFORM_EMAIL_DOMAIN || "mkt.sociosai.com")
+    .replace(/^https?:\/\//, "")
+    .replace(/\/+$/, "")
+    .toLowerCase();
+}
+
 export class EmailProvider implements ChannelProvider {
   constructor(
     private config: {
-      provider: "platform" | "custom";
+      /**
+       * "platform" = uses our Resend account + mkt.sociosai.com domain.
+       *   The tenant just picks an `alias` (localpart).
+       * "custom"   = tenant brings their own Resend key + verified domain.
+       */
+      mode: "platform" | "custom";
+      /** Platform mode only: localpart for the sender (e.g. "vendas"). */
+      alias?: string;
+      /** Custom mode only: Resend API key starting with re_... */
       resendApiKey?: string;
+      /** Custom mode only: verified Resend domain. */
       domain?: string;
+      /** Display name shown to the recipient (both modes). */
       fromName?: string;
+      /** Custom mode only: full from address. Platform mode derives it. */
       fromEmail?: string;
     }
   ) {}
@@ -46,17 +68,26 @@ export class EmailProvider implements ChannelProvider {
       return { success: false, error: "empty_body" };
     }
 
-    const apiKey =
-      this.config.provider === "platform"
-        ? process.env.RESEND_API_KEY
-        : this.config.resendApiKey;
-    if (!apiKey) return { success: false, error: "missing_api_key" };
+    let apiKey: string | undefined;
+    let fromEmail: string | undefined;
 
-    // Use the configured from-email when available; fall back only as a
-    // last resort. The channel save route already enforces a valid from.
-    const fromEmail =
-      this.config.fromEmail ||
-      `noreply@${this.config.domain || "resend.dev"}`;
+    if (this.config.mode === "platform") {
+      apiKey = process.env.PLATFORM_RESEND_API_KEY || process.env.RESEND_API_KEY;
+      const alias = (this.config.alias || "").trim().toLowerCase();
+      if (!alias) {
+        return { success: false, error: "missing_platform_alias" };
+      }
+      fromEmail = `${alias}@${platformEmailDomain()}`;
+    } else {
+      apiKey = this.config.resendApiKey;
+      fromEmail =
+        this.config.fromEmail ||
+        (this.config.domain ? `noreply@${this.config.domain}` : undefined);
+    }
+
+    if (!apiKey) return { success: false, error: "missing_api_key" };
+    if (!fromEmail) return { success: false, error: "missing_from_address" };
+
     const from = `${this.config.fromName || "MKT Digital"} <${fromEmail}>`;
 
     const subject = (opts?.subject || deriveSubject(content)).slice(0, 200);

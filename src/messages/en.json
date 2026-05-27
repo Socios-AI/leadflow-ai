@@ -875,7 +875,22 @@
       "inboundSecretHint": "When set, we require the x-webhook-secret header to match this value.",
       "rotateSecretConfirm": "Generate a new secret? The current one stops working immediately.",
       "secretRotated": "Secret updated",
-      "error": "Something went wrong"
+      "error": "Something went wrong",
+      "modePlatformTitle": "Use platform domain",
+      "modePlatformSubtitle": "Ready to use, no Resend account or DNS setup needed.",
+      "modeCustomTitle": "Use my own domain",
+      "modeCustomSubtitle": "Bring your own Resend account and verified domain.",
+      "platformDesc": "You send directly from {domain} using our Resend account. Pick a sender address below — it is what the lead will see in the email.",
+      "customDesc": "Paste your Resend API key (free up to 3,000 emails/month) and the domain you already verified there. You need to have added the DNS records at your provider.",
+      "aliasLabel": "Sender address (alias)",
+      "aliasHint": "Only lowercase letters, digits and hyphens. Start with a letter. Min 3, max 30 characters.",
+      "aliasRequired": "Pick a sender address.",
+      "aliasChecking": "Checking availability...",
+      "aliasAvailable": "Available: {addr}",
+      "aliasTaken": "That address is already in use by another account. Pick a different one.",
+      "aliasReserved": "That address is reserved by the platform. Pick a different one.",
+      "aliasInvalid": "Invalid format. Use lowercase letters, digits and hyphens, starting with a letter.",
+      "usePlatformInstead": "To use our domain, switch to the 'Use platform domain' tab."
     },
     "sms": {
       "title": "SMS",

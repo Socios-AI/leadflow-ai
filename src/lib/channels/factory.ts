@@ -29,14 +29,21 @@ export async function getChannelProvider(
         evolutionApiKey: cfg.evolutionApiKey || process.env.EVOLUTION_API_KEY!,
       });
 
-    case "EMAIL":
+    case "EMAIL": {
+      // Resolve the mode. Legacy configs may use `provider` instead of
+      // `mode`, default everything to platform if neither is set.
+      const rawMode = cfg.mode || cfg.provider;
+      const mode: "platform" | "custom" =
+        rawMode === "custom" ? "custom" : "platform";
       return new EmailProvider({
-        provider: cfg.provider || "platform",
+        mode,
+        alias: cfg.alias,
         resendApiKey: cfg.resendApiKey,
         domain: cfg.domain,
         fromName: cfg.fromName,
         fromEmail: cfg.fromEmail,
       });
+    }
 
     case "SMS":
       return new SMSProvider({

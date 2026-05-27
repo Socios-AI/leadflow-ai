@@ -7,10 +7,16 @@ import Link from "next/link";
 import {
   Mail, Loader2, CheckCircle, ArrowLeft, Eye, EyeOff,
   Send, AlertCircle, ExternalLink, X, Wifi, WifiOff, Copy, Check, Inbox, RefreshCw,
+  Globe, Server,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
+type Mode = "platform" | "custom";
+
 interface EmailConfig {
+  mode: Mode;
+  alias: string;
+  platformDomain: string;
   resendApiKey: string;
   fromName: string;
   fromEmail: string;
@@ -35,6 +41,9 @@ export default function EmailChannelPage() {
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
   const [copied, setCopied] = useState(false);
   const [config, setConfig] = useState<EmailConfig>({
+    mode: "platform",
+    alias: "",
+    platformDomain: "mkt.sociosai.com",
     resendApiKey: "",
     fromName: "",
     fromEmail: "",
@@ -45,6 +54,12 @@ export default function EmailChannelPage() {
     inboundSecret: "",
     inboundWebhookUrl: "",
   });
+  // Real-time alias check state. ok=null means "haven't checked yet".
+  const [aliasCheck, setAliasCheck] = useState<{
+    ok: boolean | null;
+    reason?: string;
+    checking: boolean;
+  }>({ ok: null, checking: false });
 
   const showToast = (msg: string, ok: boolean) => {
     setToast({ msg, ok });
@@ -69,9 +84,26 @@ export default function EmailChannelPage() {
   }, [loadConfig]);
 
   async function handleSave() {
-    if (!config.resendApiKey || !config.fromEmail || !config.fromName) {
+    // Per-mode validation, so the error message is specific to what's missing.
+    if (!config.fromName) {
       showToast(t("fillRequired"), false);
       return;
+    }
+    if (config.mode === "platform") {
+      if (!config.alias) {
+        showToast(t("aliasRequired"), false);
+        return;
+      }
+      if (aliasCheck.ok === false) {
+        // Block save if the alias is invalid/taken/reserved.
+        showToast(t(aliasCheck.reason === "taken" ? "aliasTaken" : "aliasInvalid"), false);
+        return;
+      }
+    } else {
+      if (!config.resendApiKey || !config.fromEmail) {
+        showToast(t("fillRequired"), false);
+        return;
+      }
     }
     setSaving(true);
     try {
@@ -80,15 +112,54 @@ export default function EmailChannelPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "save", ...config }),
       });
+      const d = await r.json().catch(() => ({}));
       if (r.ok) {
         showToast(t("emailSaved"), true);
         setConfig((prev) => ({ ...prev, enabled: true }));
-      } else showToast(t("saveError"), false);
+      } else {
+        // Surface specific API errors when they map to a user-fixable issue.
+        const errKey =
+          d.error === "alias_taken" ? "aliasTaken" :
+          d.error === "invalid_alias_format" ? "aliasInvalid" :
+          d.error === "alias_reserved" ? "aliasReserved" :
+          d.error === "use_platform_mode_for_our_domain" ? "usePlatformInstead" :
+          "saveError";
+        showToast(t(errKey), false);
+      }
     } catch {
       showToast(t("connectionError"), false);
     }
     setSaving(false);
   }
+
+  /**
+   * Debounced alias availability check. Runs while the user types so we
+   * can show "available" / "taken" / "reserved" without making them hit
+   * Save first.
+   */
+  useEffect(() => {
+    if (config.mode !== "platform") return;
+    const alias = config.alias.trim().toLowerCase();
+    if (!alias) {
+      setAliasCheck({ ok: null, checking: false });
+      return;
+    }
+    setAliasCheck((s) => ({ ...s, checking: true }));
+    const id = setTimeout(async () => {
+      try {
+        const r = await fetch("/api/channels/email", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "check_alias", alias }),
+        });
+        const d = await r.json();
+        setAliasCheck({ ok: !!d.ok, reason: d.reason, checking: false });
+      } catch {
+        setAliasCheck({ ok: null, checking: false });
+      }
+    }, 350);
+    return () => clearTimeout(id);
+  }, [config.alias, config.mode]);
 
   async function handleTest() {
     if (!testEmail.trim()) {
@@ -235,34 +306,30 @@ export default function EmailChannelPage() {
         </div>
       </div>
 
-      <div className="rounded-2xl border border-border bg-card">
-        <div className="px-5 py-4 border-b border-border/50">
-          <h2 className="font-space-grotesk text-[14px] font-semibold text-foreground">
-            {t("resendConfig")}
-          </h2>
-          <p className="text-[11px] text-muted-foreground font-dm-sans mt-0.5">
-            {t("resendConfigDesc")}
-          </p>
+      {/* Mode tabs: platform domain (free, instant) vs own domain (advanced) */}
+      <div className="rounded-2xl border border-border bg-card overflow-hidden">
+        <div className="grid grid-cols-2 border-b border-border/50">
+          <ModeTab
+            active={config.mode === "platform"}
+            icon={Globe}
+            title={t("modePlatformTitle")}
+            subtitle={t("modePlatformSubtitle")}
+            onClick={() => setConfig((c) => ({ ...c, mode: "platform" }))}
+          />
+          <ModeTab
+            active={config.mode === "custom"}
+            icon={Server}
+            title={t("modeCustomTitle")}
+            subtitle={t("modeCustomSubtitle")}
+            onClick={() => setConfig((c) => ({ ...c, mode: "custom" }))}
+          />
         </div>
-        <div className="px-5 py-5 space-y-4">
-          <Field label={t("apiKey")} required>
-            <div className="relative">
-              <input
-                type={showKey ? "text" : "password"}
-                value={config.resendApiKey}
-                onChange={(e) => setConfig({ ...config, resendApiKey: e.target.value })}
-                placeholder="re_xxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-                className="field pr-10"
-              />
-              <button
-                onClick={() => setShowKey(!showKey)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground/40 hover:text-muted-foreground cursor-pointer"
-              >
-                {showKey ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-              </button>
-            </div>
-          </Field>
-          <div className="grid grid-cols-2 gap-3">
+
+        {config.mode === "platform" ? (
+          <div className="px-5 py-5 space-y-4">
+            <p className="text-[12px] text-muted-foreground leading-relaxed">
+              {t("platformDesc", { domain: config.platformDomain })}
+            </p>
             <Field label={t("senderName")} required>
               <input
                 value={config.fromName}
@@ -271,32 +338,122 @@ export default function EmailChannelPage() {
                 className="field"
               />
             </Field>
-            <Field label={t("senderEmail")} required>
+            <Field label={t("aliasLabel")} hint={t("aliasHint")} required>
+              <div className="flex items-stretch h-10 rounded-xl bg-muted border border-transparent focus-within:border-ring/30 overflow-hidden">
+                <input
+                  value={config.alias}
+                  onChange={(e) =>
+                    setConfig({ ...config, alias: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "") })
+                  }
+                  placeholder="vendas"
+                  className="flex-1 px-3 bg-transparent text-[13px] outline-none placeholder:text-muted-foreground/40 font-dm-sans"
+                  maxLength={30}
+                />
+                <span className="px-3 flex items-center text-[13px] text-muted-foreground border-l border-border/60 bg-card/40 font-mono">
+                  @{config.platformDomain}
+                </span>
+              </div>
+              {config.alias && (
+                <p
+                  className={cn(
+                    "text-[11px] mt-1.5 flex items-center gap-1.5",
+                    aliasCheck.checking
+                      ? "text-muted-foreground/60"
+                      : aliasCheck.ok === true
+                        ? "text-emerald-500"
+                        : aliasCheck.ok === false
+                          ? "text-rose-500"
+                          : "text-muted-foreground/60"
+                  )}
+                >
+                  {aliasCheck.checking ? (
+                    <>
+                      <Loader2 className="w-3 h-3 animate-spin" /> {t("aliasChecking")}
+                    </>
+                  ) : aliasCheck.ok === true ? (
+                    <>
+                      <Check className="w-3 h-3" /> {t("aliasAvailable", { addr: `${config.alias}@${config.platformDomain}` })}
+                    </>
+                  ) : aliasCheck.ok === false ? (
+                    <>
+                      <AlertCircle className="w-3 h-3" />
+                      {aliasCheck.reason === "taken"
+                        ? t("aliasTaken")
+                        : aliasCheck.reason === "reserved"
+                          ? t("aliasReserved")
+                          : t("aliasInvalid")}
+                    </>
+                  ) : null}
+                </p>
+              )}
+            </Field>
+            <button
+              onClick={handleSave}
+              disabled={saving || aliasCheck.checking || aliasCheck.ok === false}
+              className="w-full h-10 rounded-xl btn-brand text-[13px] font-semibold disabled:opacity-50 flex items-center justify-center gap-2 transition-transform active:scale-[0.99]"
+            >
+              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
+              {saving ? t("saving") : t("saveConfig")}
+            </button>
+          </div>
+        ) : (
+          <div className="px-5 py-5 space-y-4">
+            <p className="text-[12px] text-muted-foreground leading-relaxed">
+              {t("customDesc")}
+            </p>
+            <Field label={t("apiKey")} required>
+              <div className="relative">
+                <input
+                  type={showKey ? "text" : "password"}
+                  value={config.resendApiKey}
+                  onChange={(e) => setConfig({ ...config, resendApiKey: e.target.value })}
+                  placeholder="re_xxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                  className="field pr-10"
+                />
+                <button
+                  onClick={() => setShowKey(!showKey)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground/40 hover:text-muted-foreground cursor-pointer"
+                >
+                  {showKey ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                </button>
+              </div>
+            </Field>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label={t("senderName")} required>
+                <input
+                  value={config.fromName}
+                  onChange={(e) => setConfig({ ...config, fromName: e.target.value })}
+                  placeholder={t("senderNamePlaceholder")}
+                  className="field"
+                />
+              </Field>
+              <Field label={t("senderEmail")} required>
+                <input
+                  value={config.fromEmail}
+                  onChange={(e) => setConfig({ ...config, fromEmail: e.target.value })}
+                  placeholder="contato@dominio.com"
+                  className="field"
+                />
+              </Field>
+            </div>
+            <Field label={t("domain")} hint={t("domainHint")}>
               <input
-                value={config.fromEmail}
-                onChange={(e) => setConfig({ ...config, fromEmail: e.target.value })}
-                placeholder="contato@domain.com"
+                value={config.domain}
+                onChange={(e) => setConfig({ ...config, domain: e.target.value })}
+                placeholder="dominio.com"
                 className="field"
               />
             </Field>
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="w-full h-10 rounded-xl btn-brand text-[13px] font-semibold disabled:opacity-50 flex items-center justify-center gap-2 transition-transform active:scale-[0.99]"
+            >
+              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
+              {saving ? t("saving") : t("saveConfig")}
+            </button>
           </div>
-          <Field label={t("domain")} hint={t("domainHint")}>
-            <input
-              value={config.domain}
-              onChange={(e) => setConfig({ ...config, domain: e.target.value })}
-              placeholder="domain.com"
-              className="field"
-            />
-          </Field>
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            className="w-full h-10 rounded-xl btn-brand text-[13px] font-semibold disabled:opacity-50 flex items-center justify-center gap-2 transition-transform active:scale-[0.99]"
-          >
-            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
-            {saving ? t("saving") : t("saveConfig")}
-          </button>
-        </div>
+        )}
       </div>
 
       <div className="rounded-2xl border border-border bg-card">
@@ -471,6 +628,43 @@ export default function EmailChannelPage() {
         }
       `}</style>
     </div>
+  );
+}
+
+function ModeTab({
+  active,
+  icon: Icon,
+  title,
+  subtitle,
+  onClick,
+}: {
+  active: boolean;
+  icon: React.ComponentType<{ className?: string }>;
+  title: string;
+  subtitle: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "px-5 py-4 text-left transition-colors cursor-pointer",
+        active
+          ? "bg-primary/[0.06] border-b-2 border-primary"
+          : "bg-card hover:bg-muted/40 border-b-2 border-transparent"
+      )}
+    >
+      <div className="flex items-center gap-2">
+        <Icon className={cn("w-4 h-4", active ? "text-primary" : "text-muted-foreground/60")} />
+        <span className={cn("text-[13px] font-semibold", active ? "text-foreground" : "text-muted-foreground")}>
+          {title}
+        </span>
+      </div>
+      <p className="text-[11px] text-muted-foreground/70 mt-1 leading-snug">
+        {subtitle}
+      </p>
+    </button>
   );
 }
 

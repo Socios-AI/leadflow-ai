@@ -876,7 +876,22 @@
       "inboundSecretHint": "Quandel preenchido, exigimos o header x-webhook-secret igual a este valor.",
       "rotateSecretConfirm": "Gerar un novo segredo? O atual deixa de funcionar imediatamente.",
       "secretRotated": "Segredel atualizado",
-      "error": "Algo dio errado"
+      "error": "Algo dio errado",
+      "modePlatformTitle": "Usa il dominio della piattaforma",
+      "modePlatformSubtitle": "Pronto all'uso, senza account Resend o configurazione DNS.",
+      "modeCustomTitle": "Usa il mio dominio",
+      "modeCustomSubtitle": "Porta il tuo account Resend e il tuo dominio verificato.",
+      "platformDesc": "Invii direttamente da {domain} usando il nostro account Resend. Scegli un nome mittente qui sotto, e cio che il lead vedra nell'email.",
+      "customDesc": "Incolla la tua API Key Resend (gratis fino a 3.000 email/mese) e il dominio che hai gia verificato la. Devi aver aggiunto i record DNS presso il tuo provider.",
+      "aliasLabel": "Indirizzo mittente (alias)",
+      "aliasHint": "Solo lettere minuscole, numeri e trattino. Inizia con una lettera. Min 3, max 30 caratteri.",
+      "aliasRequired": "Scegli un indirizzo mittente.",
+      "aliasChecking": "Verifica disponibilita...",
+      "aliasAvailable": "Disponibile: {addr}",
+      "aliasTaken": "Quell'indirizzo e gia usato da un altro account. Scegline un altro.",
+      "aliasReserved": "Quell'indirizzo e riservato dalla piattaforma. Scegline un altro.",
+      "aliasInvalid": "Formato non valido. Usa lettere minuscole, numeri e trattini, partendo da una lettera.",
+      "usePlatformInstead": "Per usare il nostro dominio, passa alla scheda 'Usa il dominio della piattaforma'."
     },
     "sms": {
       "title": "SMS",
