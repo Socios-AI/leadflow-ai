@@ -35,6 +35,49 @@ const nextConfig: NextConfig = {
       "./node_modules/ffmpeg-static/ffmpeg.exe",
     ],
   },
+  // Drop heavy, build-time-only packages from the standalone trace. The
+  // trace step walks node_modules to figure out what to ship, and on a
+  // 4GB Coolify host it OOMs when everything below is included. None of
+  // these are needed by the runtime server.
+  outputFileTracingExcludes: {
+    "*": [
+      // SWC native binaries for other platforms (we only need linux-gnu)
+      "node_modules/@next/swc-darwin-arm64/**",
+      "node_modules/@next/swc-darwin-x64/**",
+      "node_modules/@next/swc-win32-arm64-msvc/**",
+      "node_modules/@next/swc-win32-ia32-msvc/**",
+      "node_modules/@next/swc-win32-x64-msvc/**",
+      "node_modules/@next/swc-linux-arm64-gnu/**",
+      "node_modules/@next/swc-linux-arm64-musl/**",
+      "node_modules/@next/swc-linux-x64-musl/**",
+      "node_modules/@swc/core-darwin-arm64/**",
+      "node_modules/@swc/core-darwin-x64/**",
+      "node_modules/@swc/core-win32-arm64-msvc/**",
+      "node_modules/@swc/core-win32-ia32-msvc/**",
+      "node_modules/@swc/core-win32-x64-msvc/**",
+      "node_modules/@swc/core-linux-arm64-gnu/**",
+      "node_modules/@swc/core-linux-arm64-musl/**",
+      "node_modules/@swc/core-linux-x64-musl/**",
+      // Dev/build-only toolchain
+      "node_modules/typescript/**",
+      "node_modules/@typescript-eslint/**",
+      "node_modules/eslint/**",
+      "node_modules/eslint-config-next/**",
+      "node_modules/@types/**",
+      "node_modules/prettier/**",
+      // Test infra that drifts into node_modules but never runs in prod
+      "node_modules/jest/**",
+      "node_modules/@jest/**",
+      "node_modules/vitest/**",
+      // Sharp ships a giant prebuilt cache for every libvips combo
+      "node_modules/sharp/build/**",
+      "node_modules/sharp/vendor/**",
+      // Canvas is optional, only pulled in via pdfjs and similar
+      "node_modules/canvas/**",
+      // Source maps add ~150MB to the trace work for no runtime value
+      "**/*.map",
+    ],
+  },
   images: {
     remotePatterns: [
       {
