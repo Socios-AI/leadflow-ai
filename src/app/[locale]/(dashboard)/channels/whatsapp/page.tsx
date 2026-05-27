@@ -51,12 +51,32 @@ export default function WhatsAppChannelPage() {
       setWebhookConfigured(!!d.webhookConfigured);
       setWebhookUrl(d.webhookUrl || "");
       setFunnelOnly(d.respondToFunnelLeadsOnly !== false);
-      if (d.connected) { setStatus("connected"); setPhoneNumber(d.phoneNumber); setLastActivity(d.lastActivity); setQrCode(null); stopPolling(); }
-      else if (status === "loading") setStatus("disconnected");
+      if (d.connected) {
+        setStatus("connected");
+        setPhoneNumber(d.phoneNumber);
+        setLastActivity(d.lastActivity);
+        setQrCode(null);
+        stopPolling();
+      } else if (status === "loading" || status === "connected") {
+        // promote loading -> disconnected, and demote a stale "connected"
+        // when Evolution now reports otherwise.
+        setStatus("disconnected");
+        setPhoneNumber(null);
+      }
     } catch {}
-  }, []);
+  }, [status]);
 
   useEffect(() => { loadStatus(); return () => stopPolling(); }, [loadStatus]);
+
+  // Background heartbeat: as long as we're not actively showing a QR or
+  // running a connect flow, re-check the live status every 6s so the UI
+  // catches when the operator re-pairs directly inside Evolution.
+  useEffect(() => {
+    if (status === "qr" || status === "connecting") return;
+    const id = setInterval(() => { loadStatus(); }, 6000);
+    return () => clearInterval(id);
+  }, [status, loadStatus]);
+
   function stopPolling() { if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; } }
 
   async function handleReconfigureWebhook() {

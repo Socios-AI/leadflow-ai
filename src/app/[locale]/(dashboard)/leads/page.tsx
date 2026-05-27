@@ -200,10 +200,13 @@ export default function LeadsPage() {
                 {t("retryAllButton", { count: failedCount })}
               </button>
             )}
-            <button className="inline-flex items-center gap-2 h-10 px-4 rounded-xl text-[12.5px] font-medium text-muted-foreground bg-muted/60 border border-border hover:bg-muted hover:text-foreground transition-all cursor-pointer">
+            <a
+              href="/api/leads/export"
+              className="inline-flex items-center gap-2 h-10 px-4 rounded-xl text-[12.5px] font-medium text-muted-foreground bg-muted/60 border border-border hover:bg-muted hover:text-foreground transition-all cursor-pointer"
+            >
               <Download className="w-3.5 h-3.5" />
               {t("exportCSV")}
-            </button>
+            </a>
           </div>
         </div>
 

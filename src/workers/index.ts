@@ -400,6 +400,22 @@ const aiWorker = new Worker(
       ? `Campaign: ${lead.campaign.name}\n${lead.campaign.transcription || ""}`
       : undefined;
 
+    // ── Show typing indicator immediately ──
+    // The AI generation takes 5-15s. Without this the lead stares at a
+    // silent screen between sending their message and seeing the reply
+    // bubbles appear. Fire-and-forget so generation isn't blocked.
+    if (channel === "WHATSAPP") {
+      const earlyProvider = await getChannelProvider(accountId, channel);
+      const earlyContact =
+        conversation.channelIdentifier || lead.phone || "";
+      if (earlyProvider && earlyContact && earlyProvider instanceof WhatsAppProvider) {
+        // Don't await: presence + 1.2s built-in delay would slow us down.
+        earlyProvider
+          .sendPresence(earlyContact, 200)
+          .catch(() => {/* presence is best-effort */});
+      }
+    }
+
     const aiResult = await AIEngine.generateResponse({
       accountId,
       leadName: lead.name || undefined,

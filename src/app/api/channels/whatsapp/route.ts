@@ -84,7 +84,7 @@ async function setWebhookForAccount(
   return { ok: false, detail: res.detail || `http_${res.status}` };
 }
 
-/** GET, current WhatsApp status */
+/** GET, current WhatsApp status (always cross-checked with Evolution live state) */
 export async function GET(req: NextRequest) {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -94,37 +94,73 @@ export async function GET(req: NextRequest) {
       where: { accountId_type: { accountId: session.accountId, type: "WHATSAPP" } },
     });
     const cfg = (channel?.config as WaConfig | null) || {};
+    const targetInstance = cfg.instanceName || instanceName(session.accountId);
 
-    if (cfg.connected && EVO_URL()) {
+    // ── Live cross-check with Evolution ──
+    // The old code only checked when the cached config said connected=true,
+    // so a successful manual re-pair on Evolution would never propagate
+    // back to this UI ("WhatsApp not connected" even though it was). Now
+    // we always ask Evolution for the truth and reconcile the DB cache in
+    // both directions.
+    let live: { connected: boolean; phone: string | null; available: boolean } = {
+      connected: !!cfg.connected,
+      phone: cfg.phoneNumber || null,
+      available: false,
+    };
+
+    if (EVO_URL()) {
       try {
         const r = await fetch(
-          `${EVO_URL()}/instance/connectionState/${instanceName(session.accountId)}`,
+          `${EVO_URL()}/instance/connectionState/${targetInstance}`,
           { headers: { apikey: EVO_KEY() } }
         );
-        const d = await r.json();
-        const stillConnected = d.instance?.state === "open";
-        if (!stillConnected && channel) {
-          await prisma.channel.update({
-            where: { id: channel.id },
-            data: { config: { ...cfg, connected: false } },
-          });
-          return NextResponse.json({
-            connected: false,
-            phoneNumber: null,
-            lastActivity: null,
-            webhookConfigured: cfg.webhookConfigured || false,
-            webhookUrl: webhookUrlFor(req),
-            respondToFunnelLeadsOnly: cfg.respondToFunnelLeadsOnly !== false,
-          });
+        if (r.ok) {
+          const d = await r.json();
+          const open = d?.instance?.state === "open";
+          live = { connected: open, phone: cfg.phoneNumber || null, available: true };
+
+          // When Evolution says open but we have no phone yet, fetch the
+          // instance to pull the paired number for the UI.
+          if (open && !live.phone) {
+            try {
+              const ir = await fetch(
+                `${EVO_URL()}/instance/fetchInstances?instanceName=${targetInstance}`,
+                { headers: { apikey: EVO_KEY() } }
+              );
+              if (ir.ok) {
+                const data = await ir.json();
+                const inst = Array.isArray(data) ? data[0] : data;
+                live.phone = inst?.instance?.wuid?.split("@")[0] || null;
+              }
+            } catch {
+              // phone is optional, ignore
+            }
+          }
         }
       } catch {
-        // best-effort
+        // Evolution unreachable, fall back to cached state, don't lie to the UI
       }
     }
 
+    // Reconcile the DB cache so callers (workers, factories) read fresh data.
+    if (live.available && channel && (live.connected !== !!cfg.connected || (live.connected && live.phone && live.phone !== cfg.phoneNumber))) {
+      await prisma.channel.update({
+        where: { id: channel.id },
+        data: {
+          config: {
+            ...cfg,
+            instanceName: targetInstance,
+            connected: live.connected,
+            phoneNumber: live.connected ? live.phone : null,
+            lastActivity: live.connected ? new Date().toISOString() : cfg.lastActivity,
+          },
+        },
+      });
+    }
+
     return NextResponse.json({
-      connected: cfg.connected || false,
-      phoneNumber: cfg.phoneNumber || null,
+      connected: live.connected,
+      phoneNumber: live.connected ? live.phone : null,
       lastActivity: cfg.lastActivity || null,
       webhookConfigured: cfg.webhookConfigured || false,
       webhookConfiguredAt: cfg.webhookConfiguredAt || null,

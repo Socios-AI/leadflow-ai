@@ -25,7 +25,10 @@ import { getRedis } from "./redis";
 import { queues } from "./queues";
 import prisma from "@/lib/db/prisma";
 
-const DEFAULT_DEBOUNCE_MS = 8000;
+// 5s feels much more "live" than the original 8s while still catching
+// the typical 2-3 burst messages a lead sends in quick succession.
+// Operators can still override via aiConfig.persona.debounceSeconds.
+const DEFAULT_DEBOUNCE_MS = 5000;
 const MIN_DEBOUNCE_MS = 2000;
 const MAX_DEBOUNCE_MS = 60_000;
 const DEBOUNCE_PREFIX = "debounce:msgs:";

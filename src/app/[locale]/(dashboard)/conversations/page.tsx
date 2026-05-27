@@ -94,10 +94,52 @@ export default function ConversationsPage() {
 
   useEffect(() => {
     if (!selId) { setMsgs([]); setDet(null); return; }
-    let x = false; setLoadChat(true);
-    fetch(`/api/conversations/${selId}/messages`).then(r => r.ok ? r.json() : null).then(d => { if (!x && d) { setDet(d.conversation); setMsgs(d.messages || []); } }).catch(() => {}).finally(() => { if (!x) setLoadChat(false); });
-    return () => { x = true; };
+    let cancelled = false;
+    setLoadChat(true);
+
+    // Initial load shows the spinner; subsequent polls are silent so the
+    // chat doesn't flicker. The interval (3.5s) is tight enough for the
+    // operator to see the AI's reply appear in near-real-time without
+    // hammering the API. The dependency on the conversation list (convs)
+    // is intentional: when the worker bumps lastMessageAt on a debounced
+    // reply, the list updates first, which retriggers a fresh fetch.
+    const fetchMessages = (silent: boolean) => {
+      if (!silent) setLoadChat(true);
+      return fetch(`/api/conversations/${selId}/messages`)
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d) => {
+          if (cancelled || !d) return;
+          setDet(d.conversation);
+          setMsgs(d.messages || []);
+        })
+        .catch(() => {})
+        .finally(() => {
+          if (!cancelled && !silent) setLoadChat(false);
+        });
+    };
+
+    fetchMessages(false);
+    const id = setInterval(() => fetchMessages(true), 3500);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
   }, [selId]);
+
+  // Also refresh the conversation LIST every 8s so new INBOUND messages
+  // bump unread counts and the lastMessageAt timestamps stay current.
+  useEffect(() => {
+    const id = setInterval(() => {
+      fetch("/api/conversations")
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d) => {
+          if (!d) return;
+          setConvs(Array.isArray(d) ? d : d?.conversations || []);
+        })
+        .catch(() => {});
+    }, 8000);
+    return () => clearInterval(id);
+  }, []);
 
   useEffect(() => { endR.current?.scrollIntoView({ behavior: "smooth" }); }, [msgs]);
 
