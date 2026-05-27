@@ -28,8 +28,6 @@ import { cn } from "@/lib/utils";
 interface Props {
   /** Pass true on first mount so the overlay opens automatically. */
   open: boolean;
-  /** True when the user is HIPER_ADMIN (changes copy slightly). */
-  isHiper: boolean;
   onDismiss: () => void;
 }
 
@@ -43,7 +41,7 @@ interface Slide {
   ctaHref?: string;
 }
 
-export function SuperAdminOnboarding({ open, isHiper, onDismiss }: Props) {
+export function SuperAdminOnboarding({ open, onDismiss }: Props) {
   const t = useTranslations("superAdminOnboarding");
   const locale = useLocale();
   const [idx, setIdx] = useState(0);
@@ -53,9 +51,9 @@ export function SuperAdminOnboarding({ open, isHiper, onDismiss }: Props) {
     {
       icon: Crown,
       tone: "bg-amber-500/15 text-amber-500 ring-amber-500/25",
-      titleKey: isHiper ? "s1TitleHiper" : "s1Title",
-      descKey: isHiper ? "s1DescHiper" : "s1Desc",
-      bulletsKey: isHiper ? "s1BulletsHiper" : "s1Bullets",
+      titleKey: "s1Title",
+      descKey: "s1Desc",
+      bulletsKey: "s1Bullets",
     },
     {
       icon: Shield,

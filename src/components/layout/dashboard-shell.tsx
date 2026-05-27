@@ -16,7 +16,7 @@ const FULL_BLEED_ROUTES = ['/conversations']
 interface DashboardShellProps {
   children: React.ReactNode
   /** Non-null when the SUPER_ADMIN walkthrough should appear on mount. */
-  adminOnboarding?: { isHiper: boolean } | null
+  adminOnboarding?: Record<string, never> | null
 }
 
 export function DashboardShell({ children, adminOnboarding }: DashboardShellProps) {
@@ -63,7 +63,6 @@ export function DashboardShell({ children, adminOnboarding }: DashboardShellProp
       {adminOnboarding && (
         <SuperAdminOnboarding
           open={adminOnbOpen}
-          isHiper={adminOnboarding.isHiper}
           onDismiss={() => setAdminOnbOpen(false)}
         />
       )}

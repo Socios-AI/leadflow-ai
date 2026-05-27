@@ -221,6 +221,26 @@ export async function getSession(): Promise<Session | null> {
       }
     }
 
+    // 3.6. The HIPER_ADMIN walkthrough is a SUPER_ADMIN-only experience.
+    //      If this user is HIPER_ADMIN and the onboarding flag isn't set
+    //      yet, set it now (belt-and-suspenders against a future regression
+    //      in the layout gate).
+    if (dbUser?.platform_role === "HIPER_ADMIN" && !superAdminOnboarded) {
+      const previousMeta =
+        (user.app_metadata as Record<string, unknown> | undefined) || {};
+      admin.auth.admin
+        .updateUserById(user.id, {
+          app_metadata: {
+            ...previousMeta,
+            super_admin_onboarded: true,
+            super_admin_onboarded_at: new Date().toISOString(),
+          },
+        })
+        .catch(() => {
+          // Non-fatal: at worst the owner sees the overlay once and dismisses.
+        });
+    }
+
     // 4. Find the user's first membership + account
     const { data: membership } = await admin
       .from("account_members")
