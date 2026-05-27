@@ -6,14 +6,21 @@ import { createClient } from "@supabase/supabase-js";
 
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
 
-// Super admin check — checks if current user's member role is OWNER in any account
-// OR if user email is in SUPER_ADMIN_EMAILS env var
+// Admin check unified on the platformRole field (single source of truth).
+// Also honors the legacy SUPER_ADMIN_EMAILS env var and the Supabase
+// is_super_admin flag for backwards compatibility with older deploys
+// that haven't been migrated yet.
 async function isSuperAdmin(userId: string): Promise<boolean> {
-  const emails = (process.env.SUPER_ADMIN_EMAILS || "").split(",").map(e => e.trim()).filter(Boolean);
   const user = await prisma.user.findUnique({ where: { id: userId } });
-  if (user && emails.includes(user.email)) return true;
-  // Fallback: check Supabase is_super_admin flag
-  if (user?.supabaseId) {
+  if (!user) return false;
+  if (user.platformRole === "SUPER_ADMIN" || user.platformRole === "HIPER_ADMIN") return true;
+
+  const legacyEmails = (process.env.SUPER_ADMIN_EMAILS || "")
+    .split(",")
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean);
+  if (legacyEmails.includes(user.email.toLowerCase())) return true;
+  if (user.supabaseId) {
     const { data } = await supabase.auth.admin.getUserById(user.supabaseId);
     if (data?.user?.app_metadata?.is_super_admin) return true;
   }

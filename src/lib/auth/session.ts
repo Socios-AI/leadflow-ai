@@ -54,6 +54,30 @@ interface DbMembershipRow {
   } | null;
 }
 
+/**
+ * Returns the lowercased emails configured in the BOOTSTRAP_HIPER_ADMINS
+ * env var. Used to auto-promote platform owners to HIPER_ADMIN the first
+ * time they log in (or after a wipe), without requiring a manual SQL
+ * migration. Comma-separated, whitespace-tolerant.
+ *
+ *   BOOTSTRAP_HIPER_ADMINS=owner@example.com, cofounder@example.com
+ *
+ * The promotion is idempotent: running it on an already-HIPER_ADMIN user
+ * is a no-op, and promoting a USER -> HIPER_ADMIN writes once and stops.
+ * SUPER_ADMINs in the list are also upgraded to HIPER_ADMIN, but a
+ * HIPER_ADMIN is never demoted by removing them from the list (intentional
+ * safety: don't lock the owner out of their own platform).
+ */
+function bootstrapHiperAdmins(): Set<string> {
+  const raw = process.env.BOOTSTRAP_HIPER_ADMINS || "";
+  return new Set(
+    raw
+      .split(",")
+      .map((s) => s.trim().toLowerCase())
+      .filter(Boolean)
+  );
+}
+
 export async function getSession(): Promise<Session | null> {
   try {
     const cookieStore = await cookies();
@@ -133,10 +157,17 @@ export async function getSession(): Promise<Session | null> {
         email.split("@")[0] ||
         "User";
 
+      // Bootstrap: if this email is on the HIPER_ADMIN list, provision
+      // them as one from the start (no need to log in twice).
+      const initialRole: PlatformRole = bootstrapHiperAdmins().has(email.toLowerCase())
+        ? "HIPER_ADMIN"
+        : "USER";
+
       const { account, user: created } = await provisionTenant({
         supabaseUserId: user.id,
         email,
         name,
+        platformRole: initialRole,
       });
       dbUser = created;
       // Skip lookup — we already know the membership we just created.
@@ -150,6 +181,27 @@ export async function getSession(): Promise<Session | null> {
         platformRole: dbUser.platform_role || "USER",
         onboardingCompleted: !!account.onboarding_completed_at,
       };
+    }
+
+    // 3.5. Bootstrap: if the user's email is configured in
+    //      BOOTSTRAP_HIPER_ADMINS, auto-promote (idempotent). This is how
+    //      the platform owner gets HIPER_ADMIN rights without manual SQL.
+    const bootstrapSet = bootstrapHiperAdmins();
+    if (
+      dbUser &&
+      bootstrapSet.has(dbUser.email.toLowerCase()) &&
+      dbUser.platform_role !== "HIPER_ADMIN"
+    ) {
+      const { error: promoErr } = await admin
+        .from("users")
+        .update({ platform_role: "HIPER_ADMIN" })
+        .eq("id", dbUser.id);
+      if (!promoErr) {
+        dbUser.platform_role = "HIPER_ADMIN";
+        log.info("bootstrap auto-promoted user to HIPER_ADMIN", { email: dbUser.email });
+      } else {
+        log.warn("bootstrap promotion failed", { email: dbUser.email, err: promoErr.message });
+      }
     }
 
     // 4. Find the user's first membership + account
@@ -213,6 +265,8 @@ interface ProvisionInput {
   email: string;
   name: string;
   existingUserId?: string;
+  /** Optional initial platform role (e.g. HIPER_ADMIN for bootstrap owners) */
+  platformRole?: PlatformRole;
 }
 
 interface ProvisionedTenant {
@@ -232,12 +286,14 @@ async function provisionTenant(input: ProvisionInput): Promise<ProvisionedTenant
   const now = new Date().toISOString();
 
   const userId = input.existingUserId || cuid();
+  const initialRole = input.platformRole || "USER";
   if (!input.existingUserId) {
     const { error: userErr } = await admin.from("users").insert({
       id: userId,
       supabase_id: input.supabaseUserId,
       email: input.email,
       name: input.name,
+      platform_role: initialRole,
     });
     if (userErr) throw new Error(`provision user failed: ${userErr.message}`);
   }
@@ -284,7 +340,7 @@ async function provisionTenant(input: ProvisionInput): Promise<ProvisionedTenant
       name: `${input.name}'s Workspace`,
       onboarding_completed_at: null,
     },
-    user: { id: userId, email: input.email, name: input.name },
+    user: { id: userId, email: input.email, name: input.name, platform_role: initialRole },
   };
 }
 
