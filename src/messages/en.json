@@ -450,6 +450,55 @@
       "day": "d"
     }
   },
+  "superAdminOnboarding": {
+    "skip": "Skip",
+    "back": "Back",
+    "next": "Next",
+    "finish": "Done",
+    "s1Title": "Welcome, you are a Super Admin",
+    "s1Desc": "You just got access to the platform's admin panel. As a Super Admin, you manage accounts (tenants) for your clients. Each account you create is a fully isolated workspace with its own AI, leads, channels and team.",
+    "s1Bullets": [
+      "No coding required. Every operation happens in the /admin panel.",
+      "Each client account you create gets isolated access to their own platform.",
+      "You only see and manage the accounts you created yourself."
+    ],
+    "s1TitleHiper": "Welcome, you are a Hiper Admin",
+    "s1DescHiper": "You are the platform owner. You have full access: you can promote/demote Super Admins, see ALL accounts created by ALL Super Admins, and configure everything. Let us walk you through it in 5 screens.",
+    "s1BulletsHiper": [
+      "Only you can promote users to Super Admin (exclusive tab).",
+      "You see every account + the creator who built it (creator metadata).",
+      "Super Admins only see the accounts they themselves created."
+    ],
+    "s2Title": "What you can do",
+    "s2Desc": "Your responsibilities as a platform admin:",
+    "s2Bullets": [
+      "Create accounts (tenants) for client companies in seconds.",
+      "Define name, slug, plan (Free, Pro, Enterprise) and max user count.",
+      "Generate credentials (email + temporary password) to send to the client.",
+      "Track which accounts have completed onboarding and how many users each has.",
+      "You do NOT see clients' conversations, leads or internal data — full privacy."
+    ],
+    "s3Title": "How to create the first client account",
+    "s3Desc": "Less than 1 minute, in 4 simple steps:",
+    "s3Steps": [
+      "Open the Admin tab in the sidebar, then click Tenants.",
+      "Click New Account in the top right.",
+      "Fill in the company name, owner email, plan and max users.",
+      "Click Create. Copy the credentials and send them to the client — they can log in right away."
+    ],
+    "s4Title": "What the client sees",
+    "s4Desc": "Each client account is an independent workspace with everything isolated:",
+    "s4Bullets": [
+      "Their own AI with separate training and knowledge base.",
+      "Their own leads, conversations and channels (WhatsApp, Email, SMS).",
+      "Their own team — the client can add their own collaborators.",
+      "The client never sees you, other clients, or the /admin area.",
+      "You keep control: reactivate, deactivate or adjust the plan at any time."
+    ],
+    "s5Title": "You are ready to start",
+    "s5Desc": "You have everything you need to register your first accounts. If you need help, the Help Center is always in the sidebar.",
+    "s5Cta": "Open the Admin panel now"
+  },
   "onboarding": {
     "brand": "Marketing Digital AI",
     "skip": "Skip for now",

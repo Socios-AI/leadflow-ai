@@ -36,6 +36,15 @@ export interface Session {
   platformRole: PlatformRole;
   /** Whether the account has finished the onboarding wizard. */
   onboardingCompleted: boolean;
+  /**
+   * Whether this user has dismissed the SUPER_ADMIN walkthrough.
+   * Persisted on the Supabase auth user's `app_metadata.super_admin_onboarded`
+   * (chosen instead of a new DB column to avoid a migration in production).
+   * Only meaningful when platformRole is SUPER_ADMIN or HIPER_ADMIN.
+   */
+  superAdminOnboarded: boolean;
+  /** Supabase auth user id, exposed so the client can hit auth-scoped APIs. */
+  supabaseUserId: string;
 }
 
 interface DbUserRow {
@@ -107,6 +116,12 @@ export async function getSession(): Promise<Session | null> {
       data: { user },
     } = await ssrClient.auth.getUser();
     if (!user) return null;
+
+    // Read the persisted SA-onboarding flag from Supabase auth metadata.
+    // Server-side write goes through supabase.auth.admin.updateUserById
+    // (see /api/admin/onboarding/complete).
+    const superAdminOnboarded =
+      (user.app_metadata as Record<string, unknown> | undefined)?.super_admin_onboarded === true;
 
     const admin = getSupabaseAdmin();
 
@@ -180,6 +195,8 @@ export async function getSession(): Promise<Session | null> {
         role: "OWNER",
         platformRole: dbUser.platform_role || "USER",
         onboardingCompleted: !!account.onboarding_completed_at,
+        superAdminOnboarded,
+        supabaseUserId: user.id,
       };
     }
 
@@ -232,6 +249,8 @@ export async function getSession(): Promise<Session | null> {
         role: "OWNER",
         platformRole: dbUser.platform_role || "USER",
         onboardingCompleted: !!account.onboarding_completed_at,
+        superAdminOnboarded,
+        supabaseUserId: user.id,
       };
     }
 
@@ -244,6 +263,8 @@ export async function getSession(): Promise<Session | null> {
       role: membership.role,
       platformRole: dbUser.platform_role || "USER",
       onboardingCompleted: !!membership.account.onboarding_completed_at,
+      superAdminOnboarded,
+      supabaseUserId: user.id,
     };
   } catch (err: unknown) {
     log.error("getSession failed", {

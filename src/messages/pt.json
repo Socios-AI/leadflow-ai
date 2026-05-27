@@ -450,6 +450,55 @@
       "day": "d"
     }
   },
+  "superAdminOnboarding": {
+    "skip": "Pular",
+    "back": "Voltar",
+    "next": "Continuar",
+    "finish": "Concluir",
+    "s1Title": "Bem-vindo, voce e Super Admin",
+    "s1Desc": "Voce acaba de ganhar acesso ao painel de administracao da plataforma. Como Super Admin, voce gerencia contas (tenants) dos seus clientes. Cada conta criada e um espaco completamente isolado, com IA propria, leads propios, canais proprios e equipe propria.",
+    "s1Bullets": [
+      "Voce nao precisa entender de programacao. Toda a operacao acontece no painel /admin.",
+      "Cada cliente que voce cadastrar recebe acesso isolado a propria plataforma.",
+      "Voce ve e gerencia apenas as contas que voce mesmo criou."
+    ],
+    "s1TitleHiper": "Bem-vindo, voce e Hiper Admin",
+    "s1DescHiper": "Voce e o dono da plataforma. Tem acesso total: pode promover/demover Super Admins, ver TODAS as contas criadas por TODOS os Super Admins, e configurar tudo. Vamos te mostrar o essencial em 5 telas.",
+    "s1BulletsHiper": [
+      "So voce pode promover usuarios a Super Admin (aba exclusiva).",
+      "Voce ve todas as contas + quem criou cada uma (metadado de creator).",
+      "Os Super Admins enxergam apenas as contas que eles proprios criaram."
+    ],
+    "s2Title": "O que voce pode fazer",
+    "s2Desc": "Suas atribuicoes como administrador da plataforma:",
+    "s2Bullets": [
+      "Criar contas (tenants) para empresas clientes em segundos.",
+      "Definir nome, slug, plano (Free, Pro, Enterprise) e quantidade maxima de usuarios.",
+      "Gerar credenciais (email + senha temporaria) que voce envia ao cliente.",
+      "Acompanhar quais contas ja foram ativadas (onboarding completo) e quantos usuarios cada uma tem.",
+      "Voce NAO ve as conversas, leads ou dados internos dos clientes, e privacidade total."
+    ],
+    "s3Title": "Como criar a primeira conta de cliente",
+    "s3Desc": "Em menos de 1 minuto, com 4 passos simples:",
+    "s3Steps": [
+      "Abra a aba Admin no menu lateral, depois clique em Tenants.",
+      "Clique em Nova Conta no canto superior direito.",
+      "Preencha nome da empresa, email do dono, plano e maximo de usuarios.",
+      "Clique em Criar. Copie as credenciais e envie ao cliente, ele ja consegue fazer login."
+    ],
+    "s4Title": "O que o cliente enxerga",
+    "s4Desc": "Cada conta cliente e um workspace independente, com tudo isolado:",
+    "s4Bullets": [
+      "IA propria, com treinamento e base de conhecimento separados.",
+      "Leads, conversas e canais (WhatsApp, Email, SMS) totalmente isolados.",
+      "Equipe propria, o cliente pode adicionar os colaboradores dele.",
+      "O cliente nunca ve voce, outros clientes ou a area /admin.",
+      "Voce mantem o controle: pode reativar, desativar ou ajustar o plano a qualquer momento."
+    ],
+    "s5Title": "Pronto pra comecar",
+    "s5Desc": "Voce ja tem tudo que precisa pra cadastrar suas primeiras contas. Se ficar com duvida, a Central de Ajuda esta sempre no menu lateral.",
+    "s5Cta": "Abrir o painel de Admin agora"
+  },
   "onboarding": {
     "brand": "Marketing Digital AI",
     "skip": "Pular por agora",

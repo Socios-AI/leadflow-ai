@@ -24,5 +24,23 @@ export default async function DashboardLayout({
     redirect(`/${locale}/onboarding`);
   }
 
-  return <DashboardShell>{children}</DashboardShell>;
+  // Trigger the SUPER_ADMIN walkthrough overlay on first dashboard load
+  // for any admin role that hasn't dismissed it yet. Persists across
+  // browsers via Supabase app_metadata.
+  const showAdminOnboarding =
+    (session.platformRole === "SUPER_ADMIN" ||
+      session.platformRole === "HIPER_ADMIN") &&
+    !session.superAdminOnboarded;
+
+  return (
+    <DashboardShell
+      adminOnboarding={
+        showAdminOnboarding
+          ? { isHiper: session.platformRole === "HIPER_ADMIN" }
+          : null
+      }
+    >
+      {children}
+    </DashboardShell>
+  );
 }

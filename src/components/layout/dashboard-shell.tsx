@@ -7,14 +7,22 @@ import { Menu } from 'lucide-react'
 import Image from 'next/image'
 import { Sidebar } from '@/components/layout/sidebar'
 import { Header } from '@/components/layout/header'
+import { SuperAdminOnboarding } from '@/components/onboarding/super-admin-onboarding'
 import { cn } from '@/lib/utils'
 
 // Apenas rotas que precisam ocupar 100% da altura SEM scroll (ex: CRM split-pane)
 const FULL_BLEED_ROUTES = ['/conversations']
 
-export function DashboardShell({ children }: { children: React.ReactNode }) {
+interface DashboardShellProps {
+  children: React.ReactNode
+  /** Non-null when the SUPER_ADMIN walkthrough should appear on mount. */
+  adminOnboarding?: { isHiper: boolean } | null
+}
+
+export function DashboardShell({ children, adminOnboarding }: DashboardShellProps) {
   const [collapsed, setCollapsed] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
+  const [adminOnbOpen, setAdminOnbOpen] = useState(!!adminOnboarding)
   const pathname = usePathname()
   const isFullBleed = FULL_BLEED_ROUTES.some(r => pathname?.includes(r))
 
@@ -51,6 +59,14 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
           </main>
         )}
       </div>
+
+      {adminOnboarding && (
+        <SuperAdminOnboarding
+          open={adminOnbOpen}
+          isHiper={adminOnboarding.isHiper}
+          onDismiss={() => setAdminOnbOpen(false)}
+        />
+      )}
     </div>
   )
 }
