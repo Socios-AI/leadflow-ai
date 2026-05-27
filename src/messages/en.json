@@ -312,6 +312,17 @@
     "tryOtherTerm": "Try a different term",
     "msgLabel": "messages",
     "aiBadge": "AI",
+    "failTitle": "Message not sent",
+    "failNoWhatsapp": "this number does not have WhatsApp",
+    "failNoWhatsappHint": "The lead's number is not registered on WhatsApp. Resending will not help. Reach this lead via email or SMS if those channels are enabled.",
+    "failInstanceOffline": "WhatsApp disconnected",
+    "failInstanceOfflineHint": "The WhatsApp connection dropped. Go to Channels -> WhatsApp and click Restart. If that does not fix it, click Reconnect and scan the QR again.",
+    "failInvalidPhone": "invalid phone number",
+    "failChannelMisconfigured": "channel not configured",
+    "failChannelMisconfiguredHint": "The channel is missing data (instance or Evolution URL). Go to Channels -> WhatsApp and redo the connection.",
+    "failAuth": "authentication rejected",
+    "failAuthHint": "Evolution refused the API key. Check the key on the server (EVOLUTION_API_KEY env var).",
+    "failGeneric": "send failure",
     "time": {
       "now": "now",
       "min": "min",
@@ -1054,6 +1065,7 @@
     "connections": "Connections",
     "aiAssistant": "AI Assistant",
     "account": "Account",
+    "help": "Help",
     "signOut": "Sign out",
     "sectionOperation": "Operations",
     "sectionChannels": "Channels",
@@ -1162,6 +1174,216 @@
     }
   },
   "help": {
+    "hub": {
+      "title": "Help center",
+      "subtitle": "Everything you need to put your AI to work on autopilot.",
+      "startHereTitle": "Start here",
+      "startHereDesc": "First time on the platform? Follow the full setup guide. In 20-30 minutes your AI is trained, connected and replying to leads.",
+      "startHereCta": "Open the full setup guide",
+      "setupTitle": "Full setup guide",
+      "setupDesc": "Training, knowledge base, channels, funnel. Everything you must configure before the first lead arrives.",
+      "trainingTitle": "Train the AI",
+      "trainingDesc": "Set tone and persona, define triggers, upload the knowledge base the AI will reference.",
+      "channelsTitle": "Connect channels",
+      "channelsDesc": "WhatsApp via Evolution API, Email via Resend, SMS via Twilio. Step by step for each.",
+      "funnelTitle": "Configure the sales funnel",
+      "funnelDesc": "First message, follow-up cadence, transfer rules and calendar integration.",
+      "webhooksTitle": "Connect lead sources",
+      "webhooksDesc": "Meta Lead Ads, Typeform, Zapier, Make, n8n or direct API. How to push leads into the platform."
+    },
+    "setup": {
+      "title": "Full setup guide",
+      "subtitle": "End-to-end walkthrough to make your AI ready to sell.",
+      "indexTitle": "Index",
+      "step1ShortTitle": "Train the AI and upload the knowledge base",
+      "step2ShortTitle": "Connect channels (WhatsApp, Email, SMS)",
+      "step3ShortTitle": "Configure the sales funnel",
+      "step4ShortTitle": "What to do when something goes wrong",
+      "step1Title": "Train the AI and upload the knowledge base",
+      "step1Intro": "Before any lead arrives, the AI needs to know WHO it is, what your company sells and the rules of the game. Without that it sends generic messages that do not convert.",
+      "s1Sub1Title": "1.1 AI identity (name, role and tone)",
+      "s1Sub1P1": "In AI Assistant you set the agent's name, its role and its tone of voice. These three fields drive every message it sends and directly shape how the lead perceives you.",
+      "s1Sub1Bullets": [
+        "Name: use a real human name (e.g. Carlos, Maria, Luna), never 'Virtual Assistant' or 'AI Bot'. The lead feels they are talking to a person.",
+        "Role: 'Sales consultant', 'Product specialist', 'Customer success'. Match the style of your business.",
+        "Tone: professional, friendly, casual or formal. Premium B2B should skip emojis. Younger B2C may allow them.",
+        "Language: lock to EN, PT, ES or IT if you sell in a single market. Auto mode replies in the lead's language, useful for multilingual markets."
+      ],
+      "s1Sub1Tip": "Selling across multiple countries? Create one Assistant per market with the language locked instead of leaving it on Auto. Copy reads more natural and objections drop.",
+      "s1Sub2Title": "1.2 Text training (the AI's brain)",
+      "s1Sub2P1": "In the 'AI Training' field, write in plain language the context the AI must master: product description, differentiators, target audience, common objections, pricing band, guarantee policy, etc. The more specific, the better.",
+      "s1Sub2Steps": [
+        "Open AI Assistant from the sidebar.",
+        "In 'AI Training', describe your company in 4 to 8 paragraphs. Focus on: what you sell, to whom, the outcome the customer gets, and what makes you different.",
+        "Include the top three selling arguments (proof, authority, urgency).",
+        "List common objections and the right response to each. E.g. 'If the lead says it is expensive, show the ROI within X days.'",
+        "Define what the AI must NEVER do (e.g. never invent pricing, never promise deadlines, never speak about competitors)."
+      ],
+      "s1Sub2Warn": "Do not write 'sell aggressively' or 'be pushy'. Language models read that the wrong way. Instead describe the concrete BEHAVIOR you want (e.g. 'always end with a qualifying question').",
+      "s1Sub3Title": "1.3 Knowledge base (PDFs, spreadsheets, images)",
+      "s1Sub3P1": "Anything you upload to the knowledge base is indexed and made available to the AI when it composes a reply. Accepts PDF, DOCX, XLSX, PPTX, TXT and images (PNG/JPG/WebP, with automatic OCR via GPT-4o-mini).",
+      "s1Sub3Bullets": [
+        "Product catalog with SKU, price and technical description.",
+        "Commission table or B2B special terms.",
+        "Return, refund and warranty policy.",
+        "Full FAQ of objections and answers.",
+        "Real screenshots of sales conversations that closed deals (trains tone).",
+        "Customer success stories and testimonials (AI quotes when relevant)."
+      ],
+      "s1Sub3P2": "Per-file size cap: 100 MB. File count: unlimited. Scanned PDFs without a text layer are NOT readable, convert to text first.",
+      "s1Sub3Steps": [
+        "In AI Assistant, scroll to 'Knowledge base'.",
+        "Click 'Add file' and pick the PDF, spreadsheet or image.",
+        "Give it a clear title and pick a category (catalog, FAQ, policy, etc.).",
+        "Wait for the green 'Indexed' badge. An amber warning means the format is supported but extraction failed (scanned PDF, corrupted file).",
+        "To check what was extracted, click the eye icon. If it looks empty or garbled, re-upload in a better format."
+      ],
+      "s1Sub3Tip": "Build a single file called 'SALES_BIBLE.md' containing everything: product, differentiators, FAQ, scripts. The AI uses it as a central reference and stays more consistent.",
+      "s1ChecklistTitle": "Step 1 checklist",
+      "s1Checklist": [
+        "AI name, role and tone set",
+        "Language locked (if you sell in one country only)",
+        "Text training with 4+ detailed paragraphs",
+        "List of common objections with correct responses",
+        "Knowledge base with at least one catalog or FAQ file"
+      ],
+      "s1Cta": "Open AI Assistant now",
+      "step2Title": "Connect the channels the AI will use",
+      "step2Intro": "Without a connected channel the AI has nowhere to send messages. WhatsApp is the most critical (90% of ad leads). Email and SMS are great as fallbacks.",
+      "s2Sub1Title": "2.1 WhatsApp (Evolution API + Baileys)",
+      "s2Sub1P1": "We use Evolution API under the hood, which connects to WhatsApp via Baileys (same tech as WhatsApp Web). You scan a QR Code with your phone and the AI starts sending and receiving messages.",
+      "s2Sub1Steps": [
+        "Go to Channels > WhatsApp in the sidebar.",
+        "Click 'Connect WhatsApp'. Wait for the QR Code to appear (about 5 seconds).",
+        "On your phone open WhatsApp > Settings > Linked devices > Link a device.",
+        "Scan the QR Code. The badge turns green showing 'Connected +number'.",
+        "Confirm 'Webhook active' is also shown (it is what tells Evolution to notify us when the lead replies)."
+      ],
+      "s2Sub1Tip": "Use a dedicated WhatsApp number for the AI, not your personal one. Personal numbers risk being banned because of multiple concurrent sessions, and you don't want to lose your main number.",
+      "s2Sub1WhenFailsTitle": "If sending fails:",
+      "s2Sub1WhenFails": [
+        "'No WhatsApp' (red): the lead's number is not on WhatsApp. Resending will not help, reach them via email or SMS.",
+        "'Connection Closed' / 'Instance offline' (amber): the connection dropped. Click Restart on the WhatsApp card. If that doesn't fix it, Reconnect and scan the QR again.",
+        "If the error persists after reconnecting, the linked phone may have removed the device (Phone > Linked devices, check if the device is still listed)."
+      ],
+      "s2Sub2Title": "2.2 Email (Resend)",
+      "s2Sub2P1": "For email the AI uses Resend, free up to 3,000 emails/month. You must own a verified domain (free gmail/outlook addresses won't work).",
+      "s2Sub2Steps": [
+        "Create a free account at resend.com and verify your domain (add 3 DNS records, takes ~10min).",
+        "In Channels > Email, paste the Resend API key (format 're_...').",
+        "Set the sender name (e.g. 'Carlos from Sweet Professional') and the sender email (e.g. 'carlos@yourbrand.com').",
+        "Click Save configuration.",
+        "Use 'Send test email' to confirm it works before the first lead arrives."
+      ],
+      "s2Sub2Tip": "Using a custom domain (yourbrand.com) drastically improves deliverability. Email from @gmail.com hits spam, email from @yourbrand.com lands in the inbox.",
+      "s2Sub3Title": "2.3 SMS (Twilio)",
+      "s2Sub3P1": "SMS is great for re-engaging a lead who went silent on WhatsApp. Works with Twilio (pay per SMS sent, ~$0.04 each).",
+      "s2Sub3Steps": [
+        "Create an account at twilio.com and buy a number (~$1/month).",
+        "Copy the Account SID, Auth Token and Phone Number from your account.",
+        "In Channels > SMS, paste the three fields.",
+        "Save and trigger a test SMS."
+      ],
+      "s2ChecklistTitle": "Step 2 checklist",
+      "s2Checklist": [
+        "WhatsApp connected (green badge and Webhook active)",
+        "Email with custom domain configured (optional but recommended)",
+        "SMS configured if used as fallback (optional)",
+        "At least ONE active channel before opening the funnel"
+      ],
+      "s2Cta": "Connect WhatsApp now",
+      "step3Title": "Configure the sales funnel",
+      "step3Intro": "The funnel defines HOW the AI approaches the lead: which message comes first, on which channels, how many follow-ups, when to hand off to a human, and how to book a meeting.",
+      "s3Sub1Title": "3.1 Funnel goal",
+      "s3Sub1P1": "Before anything, pick what the AI must deliver:",
+      "s3Sub1Bullets": [
+        "Close the sale: the AI guides the lead to the checkout/payment link.",
+        "Schedule a meeting: the AI qualifies and books a slot on Google Calendar.",
+        "Qualify and transfer: the AI asks the initial questions and hands off to a human closer.",
+        "Collect data and send material: the AI captures the brief and tells the lead you will send a proposal."
+      ],
+      "s3Sub2Title": "3.2 First message (the most important one)",
+      "s3Sub2P1": "The AI's first message decides whether the lead replies or ignores. You have two modes:",
+      "s3Sub2Steps": [
+        "Instruction mode (recommended): describe the structure of the message in plain language and the AI generates a unique version per lead, using name, context and the knowledge base. E.g. 'Greet by name, mention product X, highlight differentiator Y, end with a qualifying question'.",
+        "Exact mode: write the LITERAL message that goes out to everyone. Use {name}, {company} and {campaign} as placeholders.",
+        "Either way, prefer messages with 3 to 5 structural parts (validation, hook, value, social proof, question). The AI automatically splits them into separate WhatsApp bubbles."
+      ],
+      "s3Sub2Tip": "A larger, well-structured message converts more than an ultra-short one. The lead sees the value upfront. Use detailed Instruction mode and the AI honors the structure.",
+      "s3Sub3Title": "3.3 Automatic follow-up",
+      "s3Sub3P1": "Lead didn't reply? The AI fires follow-ups in the cadence you set. You can have up to 10 follow-ups, each on its own channel and tone.",
+      "s3Sub3Steps": [
+        "In Pipeline, go to the 'Follow-ups' section.",
+        "Add the first follow-up: e.g. 'WhatsApp, 24h later, instruction: remind the topic and ask a new question'.",
+        "Add the second: e.g. 'Email, 3 days later, instruction: share a relevant case study and propose a demo'.",
+        "Add the third: e.g. 'SMS, 7 days later, instruction: last friendly attempt'.",
+        "The higher the attempt, the lighter the approach. No pressure."
+      ],
+      "s3Sub3Warn": "More than 5 follow-ups without a response = spam complaint risk. Tune the cadence for your market.",
+      "s3Sub4Title": "3.4 Connect the lead source (webhook)",
+      "s3Sub4P1": "For the AI to receive leads automatically, plug your source (Meta Ads, Typeform, Zapier, etc.) into the platform's universal webhook.",
+      "s3Sub4Steps": [
+        "In Pipeline, click 'See step-by-step connection guide' or go to Help > Webhooks.",
+        "Copy the universal URL (format https://yourdomain.com/api/v1/webhooks/leads/YOUR_ACCOUNT_ID).",
+        "Paste it into the source tool (Meta Lead Ads, Typeform, Zapier).",
+        "Configure the field mapping: name, email, phone, source, metadata.",
+        "Fire a test lead and confirm it appears in Leads."
+      ],
+      "s3Sub4MoreLink": "See detailed per-platform tutorials at",
+      "s3Sub4MoreLinkLabel": "Help > Webhooks",
+      "s3ChecklistTitle": "Step 3 checklist",
+      "s3Checklist": [
+        "Funnel goal chosen (close, book a meeting, etc.)",
+        "First message defined (Instruction mode with 3+ structural parts)",
+        "At least 2 follow-ups scheduled",
+        "Webhook connected to the lead source (Meta Ads / Typeform / etc.)",
+        "Test with 1 real lead before scaling traffic"
+      ],
+      "s3Cta": "Open Pipeline now",
+      "step4Title": "When something goes wrong",
+      "step4Intro": "The most common issues and how to fix them in 2 minutes.",
+      "t1Q": "The AI sent only the greeting and cut the rest of the message.",
+      "t1ATitle": "Usually the operator instruction is ambiguous.",
+      "t1Steps": [
+        "Go to Pipeline > First message.",
+        "Rewrite the instruction as a numbered list: '1. Greet. 2. Mention X. 3. Highlight Y. 4. Ask Z.'",
+        "Be explicit about length: 'Use 4 short paragraphs, one per item above.'",
+        "Save, go to Leads and click 'Resend first contact' on a failed lead to see the new result."
+      ],
+      "t2Q": "The AI replied in another language even though I configured English.",
+      "t2ATitle": "You are using an Assistant overlay and the overlay language is overriding.",
+      "t2Steps": [
+        "Go to AI Assistant.",
+        "Confirm the language is locked in the 'Assistant language' field.",
+        "If you have a named assistant active, make sure the language is set on the base Assistant (the overlay should not touch it, but check).",
+        "Already-generated messages won't change. Only new ones go out in the right language."
+      ],
+      "t3Q": "Getting 'Connection Closed' or messages are failing.",
+      "t3ATitle": "The WhatsApp link dropped even though the UI says Connected.",
+      "t3Steps": [
+        "Go to Channels > WhatsApp.",
+        "Click the Restart button (amber). It forces Evolution to reopen the connection without losing the pairing.",
+        "Wait 5 seconds and try to resend a message from Leads > Resend first contact.",
+        "If still failing, click Reconnect and scan the QR again. Check on the phone that WhatsApp Web wasn't unlinked under Linked devices."
+      ],
+      "t4Q": "The AI is replying to people who aren't even my leads.",
+      "t4ATitle": "The 'Only reply to funnel leads' gate is off.",
+      "t4Steps": [
+        "Go to Channels > WhatsApp.",
+        "Turn on the 'Only reply to funnel leads' toggle (should turn green).",
+        "Now the AI only talks to leads that came via webhook, import or manual entry. Messages from unknown numbers stay in the inbox without an auto-reply."
+      ],
+      "t5Q": "A lead shows 'No WhatsApp' in red.",
+      "t5ATitle": "The lead's number is not on WhatsApp.",
+      "t5Steps": [
+        "Resending won't help, Evolution already verified.",
+        "If you have the lead's email, open the conversation, pause the AI and email them manually or enable Email in the Pipeline.",
+        "If it's a fake campaign lead, mark as Lost to clean the funnel.",
+        "Consider adding number validation before submit in your forms (Typeform and Meta Lead Ads accept regex)."
+      ],
+      "supportTitle": "Need more help?",
+      "supportDesc": "If none of the above fixed it, send a screenshot of the error and the affected lead ID to support. The more context, the faster the answer."
+    },
     "webhooks": {
       "title": "How to connect your lead sources",
       "subtitle": "Paste this URL into the tool that captures your leads. Every lead sent becomes a contact in the system and the AI starts handling it automatically.",

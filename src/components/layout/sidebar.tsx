@@ -11,7 +11,7 @@ import {
   ChevronLeft, ChevronRight, ChevronDown, LogOut,
   Sun, Moon, Laptop, Users,
   Target, Phone, Mail, Smartphone,
-  Globe, Filter, Headphones, Shield,
+  Globe, Filter, Headphones, Shield, HelpCircle,
 } from 'lucide-react'
 import { useTheme } from 'next-themes'
 
@@ -124,6 +124,7 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
   const configNav: NavItem[] = [
     { href: '/ai-config', icon: Brain, label: t('aiAssistant'), id: 'sidebar-assistente' },
     { href: '/settings', icon: Settings, label: t('account'), id: 'sidebar-conta' },
+    { href: '/help', icon: HelpCircle, label: t('help'), id: 'sidebar-help' },
   ]
 
   function isItemActive(href: string) {

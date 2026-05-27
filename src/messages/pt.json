@@ -312,6 +312,17 @@
     "tryOtherTerm": "Tente outro termo",
     "msgLabel": "mensagens",
     "aiBadge": "IA",
+    "failTitle": "Mensagem nao enviada",
+    "failNoWhatsapp": "este numero nao tem WhatsApp",
+    "failNoWhatsappHint": "O numero do lead nao esta registrado no WhatsApp. Nao adianta reenviar. Use email ou SMS se tiver esses canais ativos.",
+    "failInstanceOffline": "WhatsApp desconectado",
+    "failInstanceOfflineHint": "A conexao com o WhatsApp caiu. Vai em Canais -> WhatsApp e clica em Reiniciar. Se nao resolver, clica em Reconectar e escaneia o QR de novo.",
+    "failInvalidPhone": "numero de telefone invalido",
+    "failChannelMisconfigured": "canal nao configurado",
+    "failChannelMisconfiguredHint": "Faltam dados no canal (instancia ou URL da Evolution). Vai em Canais -> WhatsApp e refaz a conexao.",
+    "failAuth": "autenticacao recusada",
+    "failAuthHint": "A API key da Evolution foi recusada. Verifique a chave configurada no servidor (variavel EVOLUTION_API_KEY).",
+    "failGeneric": "falha no envio",
     "time": {
       "now": "agora",
       "min": "min",
@@ -1054,6 +1065,7 @@
     "connections": "Conexões",
     "aiAssistant": "Assistente IA",
     "account": "Conta",
+    "help": "Ajuda",
     "signOut": "Sair",
     "sectionOperation": "Operação",
     "sectionChannels": "Canais",
@@ -1162,6 +1174,216 @@
     }
   },
   "help": {
+    "hub": {
+      "title": "Central de ajuda",
+      "subtitle": "Tudo o que voce precisa para colocar a sua IA pra vender em piloto automatico.",
+      "startHereTitle": "Comece por aqui",
+      "startHereDesc": "Se essa e a sua primeira vez na plataforma, siga o guia de setup passo a passo. Em 20 a 30 minutos a sua IA esta treinada, conectada e atendendo leads.",
+      "startHereCta": "Abrir guia completo de setup",
+      "setupTitle": "Guia de setup completo",
+      "setupDesc": "Treinamento, base de conhecimento, canais, funil. Tudo o que voce precisa configurar antes do primeiro lead chegar.",
+      "trainingTitle": "Treinar a IA",
+      "trainingDesc": "Defina o tom, a personalidade, os gatilhos e suba a base de conhecimento que a IA vai consultar.",
+      "channelsTitle": "Conectar canais",
+      "channelsDesc": "WhatsApp via Evolution API, Email via Resend e SMS via Twilio. Passo a passo de cada um.",
+      "funnelTitle": "Configurar o funil de vendas",
+      "funnelDesc": "Mensagem inicial, cadencia de follow-up, regras de transferencia e integracao com calendario.",
+      "webhooksTitle": "Conectar fontes de leads",
+      "webhooksDesc": "Meta Lead Ads, Typeform, Zapier, Make, n8n ou API direta. Como mandar leads pra ca."
+    },
+    "setup": {
+      "title": "Guia completo de setup",
+      "subtitle": "Um percurso de ponta a ponta para deixar sua IA pronta para vender.",
+      "indexTitle": "Indice",
+      "step1ShortTitle": "Treinar a IA e subir base de conhecimento",
+      "step2ShortTitle": "Conectar canais (WhatsApp, Email, SMS)",
+      "step3ShortTitle": "Configurar o funil de vendas",
+      "step4ShortTitle": "O que fazer quando algo der errado",
+      "step1Title": "Treine a IA e suba a base de conhecimento",
+      "step1Intro": "Antes de qualquer lead chegar, a IA precisa saber QUEM ela e, o que sua empresa vende e quais sao as regras do jogo. Sem isso, ela manda mensagem generica que nao converte.",
+      "s1Sub1Title": "1.1 Identidade da IA (nome, papel e tom)",
+      "s1Sub1P1": "Em Assistente de IA voce define o nome do agente, o cargo dele e o tom de voz. Esses tres campos sao usados em TODAS as mensagens que ela manda e impactam diretamente como o lead te enxerga.",
+      "s1Sub1Bullets": [
+        "Nome: use um nome de pessoa real (ex.: Carlos, Maria, Luna), nunca 'Assistente Virtual' ou 'AI Bot'. O lead sente que esta falando com gente.",
+        "Cargo: 'Consultor de vendas', 'Especialista em produto', 'Atendente comercial'. Combina com o estilo do seu negocio.",
+        "Tom: profissional, amigavel, descontraido ou formal. Em B2B premium evite emojis. Em B2C jovem, pode permitir.",
+        "Idioma: trave em PT, EN, ES ou IT se voce vende so naquele mercado. Em modo Auto a IA responde no idioma do lead, otimo para fronteiras multilingues."
+      ],
+      "s1Sub1Tip": "Se voce vai vender em varios paises, crie um Assistente para cada mercado (idioma travado) ao inves de deixar tudo em Auto. A copy fica mais natural e o numero de objecoes diminui.",
+      "s1Sub2Title": "1.2 Treinamento textual (o cerebro da IA)",
+      "s1Sub2P1": "No campo 'Treinamento da IA' voce escreve, em linguagem natural, o contexto que a IA deve dominar: descricao do produto, diferenciais, publico-alvo, objecoes comuns, faixa de preco, politica de garantia, etc. Quanto mais especifico, melhor.",
+      "s1Sub2Steps": [
+        "Abra Assistente de IA no menu lateral.",
+        "Em 'Treinamento da IA', descreva sua empresa em 4 a 8 paragrafos. Foque em: o que voce vende, para quem, qual o resultado que o cliente conquista, e o que diferencia voce dos concorrentes.",
+        "Inclua os tres top argumentos de venda (provas, autoridade, urgencia).",
+        "Liste objecoes comuns e a resposta certa para cada uma. Ex.: 'Se o lead disser que e caro, responda mostrando o ROI em X dias'.",
+        "Defina o que a IA NUNCA deve fazer (ex.: nunca inventar preco, nunca prometer prazo, nunca falar do concorrente)."
+      ],
+      "s1Sub2Warn": "Nao escreva 'venda muito' ou 'seja agressiva'. Modelos de linguagem interpretam isso pessimo. Em vez disso, descreva o COMPORTAMENTO concreto que voce quer (ex.: 'sempre termine com uma pergunta de qualificacao').",
+      "s1Sub3Title": "1.3 Base de conhecimento (PDFs, planilhas, imagens)",
+      "s1Sub3P1": "Tudo que voce subir na base de conhecimento e indexado e fica disponivel pra IA consultar quando ela for responder. Aceita PDF, DOCX, XLSX, PPTX, TXT e imagens (PNG/JPG/WebP, com OCR automatico via GPT-4o-mini).",
+      "s1Sub3Bullets": [
+        "Catalogo de produtos com SKU, preco e descricao tecnica.",
+        "Tabela de comissoes ou condicoes especiais (B2B).",
+        "Politica de troca, devolucao e garantia.",
+        "FAQ completo de objecoes e respostas.",
+        "Print de mensagens reais de vendedores que fecharam venda (treina o tom).",
+        "Cases de sucesso e depoimentos (a IA cita quando relevante)."
+      ],
+      "s1Sub3P2": "Tamanho limite por arquivo: 100 MB. Quantidade de arquivos: ilimitada. PDFs escaneados sem camada de texto NAO sao lidos, converta pra texto antes.",
+      "s1Sub3Steps": [
+        "Em Assistente de IA, role ate a secao 'Base de conhecimento'.",
+        "Clique em 'Adicionar arquivo' e selecione o PDF, planilha ou imagem.",
+        "De um titulo descritivo e marque a categoria (catalogo, FAQ, politica, etc.).",
+        "Aguarde o icone verde de 'Indexado'. Se aparecer aviso amarelo, o formato e suportado mas a extracao falhou (PDF escaneado, arquivo corrompido).",
+        "Para conferir o que foi extraido, clique no icone de olho. Se vier vazio ou bagunçado, refaça o upload em formato melhor."
+      ],
+      "s1Sub3Tip": "Faca um arquivo unico chamado 'BIBLIA_VENDAS.md' com tudo: produto, diferenciais, FAQ, scripts. A IA usa esse arquivo como referencia central e fica mais coerente.",
+      "s1ChecklistTitle": "Checklist do passo 1",
+      "s1Checklist": [
+        "Nome, cargo e tom da IA definidos",
+        "Idioma travado (se vende em um pais so)",
+        "Treinamento textual com 4+ paragrafos detalhados",
+        "Lista de objecoes comuns com resposta certa",
+        "Base de conhecimento com pelo menos um arquivo de catalogo ou FAQ"
+      ],
+      "s1Cta": "Abrir Assistente de IA agora",
+      "step2Title": "Conecte os canais que a IA vai usar",
+      "step2Intro": "Sem canal conectado, a IA nao tem por onde mandar mensagem. WhatsApp e o mais critico (90% dos leads de ad). Email e SMS sao otimos como fallback.",
+      "s2Sub1Title": "2.1 WhatsApp (Evolution API + Baileys)",
+      "s2Sub1P1": "Usamos a Evolution API por baixo do pano, que conecta no WhatsApp via Baileys (mesma tecnologia do WhatsApp Web). Voce escaneia um QR Code com o celular e pronto, a IA passa a mandar e receber mensagens.",
+      "s2Sub1Steps": [
+        "Va em Canais > WhatsApp no menu lateral.",
+        "Clique em 'Conectar WhatsApp'. Aguarde o QR Code aparecer (cerca de 5 segundos).",
+        "No celular, abra WhatsApp > Configuracoes > Aparelhos conectados > Conectar um aparelho.",
+        "Escaneie o QR Code da tela. O badge muda pra verde 'Conectado +numero'.",
+        "Confira que aparece tambem 'Webhook ativo' (significa que a Evolution vai te avisar quando o lead responder)."
+      ],
+      "s2Sub1Tip": "Use um numero dedicado pra IA, nao o seu pessoal. Whats pessoal corre risco de banimento porque tem multiplas conexoes simultaneas, e voce nao quer perder seu numero principal.",
+      "s2Sub1WhenFailsTitle": "Se o envio falhar:",
+      "s2Sub1WhenFails": [
+        "'Sem WhatsApp' (vermelho): numero do lead nao tem conta no WhatsApp. Nao adianta reenviar, contate por email ou SMS.",
+        "'Connection Closed' / 'Instancia offline' (ambar): a conexao caiu. Clique em Reiniciar no card de WhatsApp. Se nao resolver, Reconectar e escaneie o QR de novo.",
+        "Se o erro persistir mesmo apos reconectar, o numero conectado pode ter sido deslogado no celular (Whats > Aparelhos conectados, ve se o aparelho ainda esta la)."
+      ],
+      "s2Sub2Title": "2.2 Email (Resend)",
+      "s2Sub2P1": "Pra enviar email a IA usa o Resend, que e gratuito ate 3.000 emails/mes. Voce precisa ter um dominio proprio verificado (nao funciona com gmail/outlook gratuitos).",
+      "s2Sub2Steps": [
+        "Crie uma conta gratuita em resend.com e verifique seu dominio (adicionar 3 registros DNS, leva ~10min).",
+        "Em Canais > Email, cole a API Key da Resend (formato 're_...').",
+        "Defina o nome do remetente (ex.: 'Carlos da Sweet Professional') e o email de envio (ex.: 'carlos@suamarca.com').",
+        "Clique em Salvar Configuracao.",
+        "Use 'Enviar email de teste' pra confirmar que esta funcionando antes de receber o primeiro lead."
+      ],
+      "s2Sub2Tip": "Configurar dominio proprio (suamarca.com) faz uma diferenca brutal na entregabilidade. Email vindo de @gmail.com vai pra spam, email de @suamarca.com vai pra caixa de entrada.",
+      "s2Sub3Title": "2.3 SMS (Twilio)",
+      "s2Sub3P1": "SMS e otimo pra reativar lead que sumiu no WhatsApp. Funciona com Twilio (paga por SMS enviado, ~R$ 0,12 cada).",
+      "s2Sub3Steps": [
+        "Crie uma conta em twilio.com e compre um numero (~US$ 1/mes).",
+        "Copie o Account SID, Auth Token e Phone Number da sua conta.",
+        "Em Canais > SMS, cole os tres campos.",
+        "Salve e dispare um SMS de teste."
+      ],
+      "s2ChecklistTitle": "Checklist do passo 2",
+      "s2Checklist": [
+        "WhatsApp conectado (badge verde e Webhook ativo)",
+        "Email com dominio proprio configurado (opcional mas recomendado)",
+        "SMS configurado se for usar como fallback (opcional)",
+        "Pelo menos UM canal ativo antes de abrir o funil"
+      ],
+      "s2Cta": "Conectar WhatsApp agora",
+      "step3Title": "Configure o funil de vendas",
+      "step3Intro": "O funil define COMO a IA aborda o lead: qual mensagem ela manda primeiro, em que canais, quantos follow-ups, quando transferir pra humano, e como agendar reuniao.",
+      "s3Sub1Title": "3.1 Objetivo do funil",
+      "s3Sub1P1": "Antes de qualquer coisa, escolha o que a IA precisa entregar:",
+      "s3Sub1Bullets": [
+        "Fechar venda: a IA conduz o lead ate o checkout/link de pagamento.",
+        "Agendar reuniao: a IA qualifica e marca um horario no Google Calendar.",
+        "Qualificar e transferir: a IA faz as perguntas iniciais e passa pra um humano fechar.",
+        "Coletar dados e enviar material: a IA captura o briefing e avisa que voce mandara proposta."
+      ],
+      "s3Sub2Title": "3.2 Primeira mensagem (a mais importante)",
+      "s3Sub2P1": "A primeira mensagem da IA define se o lead responde ou ignora. Voce tem dois modos:",
+      "s3Sub2Steps": [
+        "Modo 'Instrucao' (recomendado): voce descreve a estrutura da mensagem em linguagem natural e a IA gera uma versao unica pra cada lead, usando nome, contexto e base de conhecimento. Ex.: 'Cumprimente o lead pelo nome, mencione o produto X, destaque o diferencial Y, termine com uma pergunta de qualificacao'.",
+        "Modo 'Exata': voce escreve a mensagem LITERAL que sera enviada igual pra todos. Use {nome}, {empresa} e {campanha} como placeholders.",
+        "Em qualquer um dos modos, prefira mensagens com 3 a 5 partes estruturais (validacao, gancho, valor, prova social, pergunta). A IA quebra automaticamente em baloes separados no WhatsApp."
+      ],
+      "s3Sub2Tip": "Mensagem grande estruturada converte mais que mensagem ultra-curta. O lead percebe valor logo de cara. Use o modo Instrucao detalhado e a IA respeita a estrutura.",
+      "s3Sub3Title": "3.3 Follow-up automatico",
+      "s3Sub3P1": "Lead nao responde ao primeiro contato? A IA dispara follow-ups na cadencia que voce definir. Voce pode ter ate 10 follow-ups, cada um com canal e tom proprios.",
+      "s3Sub3Steps": [
+        "Em Pipeline, va na secao 'Follow-ups'.",
+        "Adicione o primeiro follow-up: ex.: 'WhatsApp, 24h depois, instrucao: relembre o assunto e faca uma pergunta nova'.",
+        "Adicione o segundo: ex.: 'Email, 3 dias depois, instrucao: mande um case relevante e proponha uma demo'.",
+        "Adicione o terceiro: ex.: 'SMS, 7 dias depois, instrucao: ultima tentativa em tom amigavel'.",
+        "Quanto maior o numero da tentativa, mais leve a abordagem. Nada de cobranca."
+      ],
+      "s3Sub3Warn": "Mais de 5 follow-ups sem resposta = chance de queixa por spam. Ajuste a cadencia ao seu mercado.",
+      "s3Sub4Title": "3.4 Conectar a fonte de leads (webhook)",
+      "s3Sub4P1": "Pra IA receber leads automaticamente, voce conecta sua fonte (Meta Ads, Typeform, Zapier, etc.) ao webhook universal da plataforma.",
+      "s3Sub4Steps": [
+        "Em Pipeline, clique em 'Ver guia de conexao passo a passo' ou va direto em Ajuda > Webhooks.",
+        "Copie a URL universal (formato https://seudominio.com/api/v1/webhooks/leads/SEU_ACCOUNT_ID).",
+        "Cole essa URL na ferramenta de origem (Meta Lead Ads, Typeform, Zapier).",
+        "Configure o mapeamento dos campos: name, email, phone, source, metadata.",
+        "Dispare um lead de teste e confirme em Leads que ele apareceu."
+      ],
+      "s3Sub4MoreLink": "Veja os tutoriais detalhados por plataforma em",
+      "s3Sub4MoreLinkLabel": "Ajuda > Webhooks",
+      "s3ChecklistTitle": "Checklist do passo 3",
+      "s3Checklist": [
+        "Objetivo do funil escolhido (fechar venda, agendar, etc.)",
+        "Primeira mensagem definida (modo Instrucao com 3+ partes estruturais)",
+        "Pelo menos 2 follow-ups programados",
+        "Webhook conectado a fonte de leads (Meta Ads / Typeform / etc.)",
+        "Teste com 1 lead real feito antes de escalar o trafego"
+      ],
+      "s3Cta": "Abrir Pipeline agora",
+      "step4Title": "Quando algo der errado",
+      "step4Intro": "Os problemas mais comuns e como resolver sozinho em 2 minutos.",
+      "t1Q": "A IA mandou so a saudacao e cortou o resto da mensagem.",
+      "t1ATitle": "Geralmente o problema esta na instrucao do operador ser ambigua.",
+      "t1Steps": [
+        "Va em Pipeline > Primeira mensagem.",
+        "Reescreva a instrucao em formato de lista numerada: '1. Cumprimente. 2. Mencione X. 3. Destaque Y. 4. Pergunte Z.'",
+        "Seja explicito sobre o tamanho: 'Use 4 paragrafos curtos, um para cada item acima.'",
+        "Salve, va em Leads e clique em 'Reenviar primeiro contato' em um lead com falha pra ver o novo resultado."
+      ],
+      "t2Q": "A IA respondeu em portugues mesmo eu tendo configurado em ingles.",
+      "t2ATitle": "Voce esta usando um Assistente como overlay e o idioma do overlay esta sobrescrevendo.",
+      "t2Steps": [
+        "Va em Assistente de IA.",
+        "Confirme que o idioma esta travado no campo 'Idioma do assistente'.",
+        "Se voce usa um assistente nomeado ativo, garanta que o idioma esta no Assistente Base (o overlay nao deveria mexer, mas confira).",
+        "Mensagens antigas (ja geradas) nao mudam. So as proximas vao sair no idioma certo."
+      ],
+      "t3Q": "Estou recebendo 'Connection Closed' ou as mensagens estao falhando.",
+      "t3ATitle": "A conexao com WhatsApp caiu mesmo a UI dizendo Conectado.",
+      "t3Steps": [
+        "Va em Canais > WhatsApp.",
+        "Clique no botao Reiniciar (laranja). Isso forca a Evolution a reabrir a conexao sem perder o pareamento.",
+        "Aguarde 5 segundos e tente reenviar uma mensagem via Leads > Reenviar primeiro contato.",
+        "Se ainda falhar, clique em Reconectar e escaneie o QR de novo. Confira no celular se o WhatsApp Web nao foi desconectado em Aparelhos conectados."
+      ],
+      "t4Q": "A IA esta respondendo gente que nem e meu lead.",
+      "t4ATitle": "O gate 'Responder apenas leads do funil' esta desligado.",
+      "t4Steps": [
+        "Va em Canais > WhatsApp.",
+        "Ative o toggle 'Responder apenas leads do funil' (deve ficar verde).",
+        "Agora a IA so atende quem ja chegou via webhook, importacao ou cadastro manual. Mensagens de numeros desconhecidos ficam no inbox sem resposta automatica."
+      ],
+      "t5Q": "O lead aparece com 'Sem WhatsApp' em vermelho.",
+      "t5ATitle": "O numero do lead nao tem conta no WhatsApp.",
+      "t5Steps": [
+        "Reenviar nao adianta, a Evolution ja verificou.",
+        "Se voce tem o email do lead, abra a conversa, pause a IA e mande email manual ou ative o canal Email no Pipeline.",
+        "Se for um lead falso de campanha, marque como Lost para limpar o funil.",
+        "Considere adicionar validacao de numero antes do submit nos seus formularios (Typeform, Meta Lead Ads aceitam regex)."
+      ],
+      "supportTitle": "Precisa de mais ajuda?",
+      "supportDesc": "Se nada acima resolveu, mande um print do erro e o ID do lead afetado pro time de suporte. Quanto mais contexto voce der, mais rapida a resposta."
+    },
     "webhooks": {
       "title": "Como conectar suas fontes de leads",
       "subtitle": "Cole esta URL na ferramenta que captura seus leads. Cada lead enviado vira um contato no sistema e a IA comeca a atender automaticamente.",

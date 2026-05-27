@@ -12,7 +12,7 @@ import { cn } from "@/lib/utils";
 
 /* ═══ TYPES ═══ */
 interface Conv { id: string; leadName: string; leadPhone: string | null; leadEmail: string | null; channel: string; isAIEnabled: boolean; isActive: boolean; lastMessage: string | null; lastMessageAt: string | null; unreadCount: number; sentiment: string | null; messageCount: number; }
-interface Msg { id: string; direction: "INBOUND" | "OUTBOUND"; content: string; contentType: string; isAIGenerated: boolean; status: string; createdAt: string; }
+interface Msg { id: string; direction: "INBOUND" | "OUTBOUND"; content: string; contentType: string; isAIGenerated: boolean; status: string; createdAt: string; metadata?: Record<string, unknown> | null; }
 interface Detail { id: string; channel: string; isActive: boolean; isAIEnabled: boolean; sentiment: string | null; lead: { name: string | null; phone: string | null; email: string | null }; }
 
 /* ═══ CONFIG ═══ */
@@ -40,6 +40,37 @@ export default function ConversationsPage() {
 
   function ftime(d: string): string {
     return new Date(d).toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" });
+  }
+
+  /**
+   * Map the raw `metadata.lastSendError` saved by send-parts.ts into a
+   * short i18n key so the chat bubble can show "Sem WhatsApp" instead of
+   * leaking the raw HTTP error to the operator.
+   */
+  function failReasonLabel(meta?: Record<string, unknown> | null): {
+    label: string;
+    hint?: string;
+  } {
+    const err = (meta && typeof meta.lastSendError === "string" ? meta.lastSendError : "").toLowerCase();
+    if (!err) return { label: t("failGeneric") };
+    if (err === "not_on_whatsapp" || err.includes("not_on_whatsapp")) {
+      return { label: t("failNoWhatsapp"), hint: t("failNoWhatsappHint") };
+    }
+    if (err.includes("connection closed") || err.includes("auto-restart attempted")) {
+      return { label: t("failInstanceOffline"), hint: t("failInstanceOfflineHint") };
+    }
+    if (err.includes("invalid_phone_format")) {
+      return { label: t("failInvalidPhone") };
+    }
+    if (err.includes("missing_instance_name") || err.includes("missing_evolution")) {
+      return { label: t("failChannelMisconfigured"), hint: t("failChannelMisconfiguredHint") };
+    }
+    if (err.includes("http 401") || err.includes("http 403")) {
+      return { label: t("failAuth"), hint: t("failAuthHint") };
+    }
+    // Last resort: show the raw error in a small mono block so the
+    // operator can copy it and ask for help.
+    return { label: t("failGeneric"), hint: err.slice(0, 240) };
   }
 
   const [convs, setConvs] = useState<Conv[]>([]);
@@ -322,35 +353,53 @@ export default function ConversationsPage() {
                         </div>
                       )}
                       <div className={cn("flex animate-fade-in-up", out ? "justify-end" : "justify-start")}>
-                        <div
-                          className={cn(
-                            "max-w-[72%] rounded-2xl px-3.5 py-2.5 border transition-shadow",
-                            out
-                              ? m.isAIGenerated
-                                ? "bg-gradient-to-br from-primary/[0.1] to-primary/[0.05] border-primary/20 shadow-sm shadow-primary/5 hover:shadow-md hover:shadow-primary/10"
-                                : "bg-muted border-border/60 shadow-sm"
-                              : "bg-card border-border/60 shadow-sm"
-                          )}
-                        >
-                          {m.isAIGenerated && out && (
-                            <div className="flex items-center gap-1 mb-1">
-                              <Brain className="w-2.5 h-2.5 text-primary" />
-                              <span className="text-[8.5px] font-bold text-primary tracking-[0.12em] uppercase">{t("aiBadge")}</span>
+                        <div className="flex flex-col gap-1.5 max-w-[72%]">
+                          <div
+                            className={cn(
+                              "rounded-2xl px-3.5 py-2.5 border transition-shadow",
+                              out
+                                ? m.isAIGenerated
+                                  ? m.status === "FAILED"
+                                    ? "bg-rose-500/[0.06] border-rose-500/30 shadow-sm"
+                                    : "bg-gradient-to-br from-primary/[0.1] to-primary/[0.05] border-primary/20 shadow-sm shadow-primary/5 hover:shadow-md hover:shadow-primary/10"
+                                  : "bg-muted border-border/60 shadow-sm"
+                                : "bg-card border-border/60 shadow-sm"
+                            )}
+                          >
+                            {m.isAIGenerated && out && (
+                              <div className="flex items-center gap-1 mb-1">
+                                <Brain className="w-2.5 h-2.5 text-primary" />
+                                <span className="text-[8.5px] font-bold text-primary tracking-[0.12em] uppercase">{t("aiBadge")}</span>
+                              </div>
+                            )}
+                            <p className="text-[13px] leading-[1.6] font-dm-sans whitespace-pre-wrap">{m.content}</p>
+                            <div className="flex items-center justify-end gap-1 mt-1">
+                              <span className="text-[9.5px] text-muted-foreground/50 tabular-nums">{ftime(m.createdAt)}</span>
+                              {out && (m.status === "SENT" || m.status === "DELIVERED" ? (
+                                <CheckCheck className="w-3 h-3 text-primary" />
+                              ) : m.status === "SENDING" ? (
+                                <Clock className="w-2.5 h-2.5 text-muted-foreground/40 animate-pulse" />
+                              ) : m.status === "FAILED" ? (
+                                <AlertTriangle className="w-3 h-3 text-rose-500" />
+                              ) : (
+                                <Check className="w-3 h-3 text-muted-foreground/40" />
+                              ))}
                             </div>
-                          )}
-                          <p className="text-[13px] leading-[1.6] font-dm-sans whitespace-pre-wrap">{m.content}</p>
-                          <div className="flex items-center justify-end gap-1 mt-1">
-                            <span className="text-[9.5px] text-muted-foreground/50 tabular-nums">{ftime(m.createdAt)}</span>
-                            {out && (m.status === "SENT" || m.status === "DELIVERED" ? (
-                              <CheckCheck className="w-3 h-3 text-primary" />
-                            ) : m.status === "SENDING" ? (
-                              <Clock className="w-2.5 h-2.5 text-muted-foreground/40 animate-pulse" />
-                            ) : m.status === "FAILED" ? (
-                              <span className="text-destructive text-[9px] font-bold">!</span>
-                            ) : (
-                              <Check className="w-3 h-3 text-muted-foreground/40" />
-                            ))}
                           </div>
+                          {out && m.status === "FAILED" && (() => {
+                            const { label, hint } = failReasonLabel(m.metadata);
+                            return (
+                              <div className="flex items-start gap-2 px-3 py-2 rounded-xl bg-rose-500/[0.06] border border-rose-500/20 text-[11px] text-rose-500/90 font-dm-sans">
+                                <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                                <div className="min-w-0 flex-1">
+                                  <p className="font-semibold leading-tight">{t("failTitle")}: {label}</p>
+                                  {hint && (
+                                    <p className="text-rose-500/70 mt-0.5 leading-snug break-words">{hint}</p>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })()}
                         </div>
                       </div>
                     </React.Fragment>
