@@ -443,16 +443,17 @@ const aiWorker = new Worker(
 
     if (provider && contactId) {
       // Compose the outbound text. If the AI requested CLOSE_WITH_LINK
-      // we append the configured link as an extra bubble (separator |||)
-      // so the lead sees it as its own message right after the closing
-      // pitch, with the typing indicator between.
+      // we append the configured link as TWO extra bubbles (separator |||
+      // between accompanying message and the URL itself) so the lead
+      // sees three discrete messages: AI pitch, then context, then the
+      // bare URL. Discord/WhatsApp render the URL as a clickable card
+      // when it sits on its own line.
       let fullText = aiResult.message;
       if (aiResult.closeWithLink) {
         const { url, accompanyingMessage } = aiResult.closeWithLink;
-        const linkBubble = accompanyingMessage
-          ? `${accompanyingMessage}\n${url}`
-          : url;
-        fullText = `${fullText}|||${linkBubble}`;
+        fullText = accompanyingMessage
+          ? `${fullText}|||${accompanyingMessage}|||${url}`
+          : `${fullText}|||${url}`;
       }
 
       const sent = await sendMessagesInParts({

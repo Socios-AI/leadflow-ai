@@ -1131,7 +1131,7 @@ export default function PipelinePage() {
           {needsTransfer && (
             <StepCard
               id="step-transfer"
-              step={isProactive ? 7 : 6}
+              step={isProactive ? 8 : 7}
               title={t("step5transfer.title")}
               desc={t("step5transfer.desc")}
             >
@@ -1168,7 +1168,7 @@ export default function PipelinePage() {
           {needsCalendar && (
             <StepCard
               id="step-calendar"
-              step={isProactive ? 7 : 6}
+              step={isProactive ? 8 : 7}
               title={t("step5calendar.title")}
               desc={t("step5calendar.desc")}
             >
@@ -1218,18 +1218,22 @@ export default function PipelinePage() {
             </StepCard>
           )}
 
-          {/* STEP: WEBHOOK (simplified) */}
+          {/* STEP: WEBHOOK (simplified). Steps before webhook:
+                proactive: 1..6 base, +1 closing (always when goal set),
+                  +1 if transfer/calendar => 7 or 8 base, webhook = 8 or 9
+                reactive: 1..5 base, +1 closing, +1 if t/c => 6 or 7 base,
+                  webhook = 7 or 8 */}
           {needsWebhook && config.goal && (
             <StepCard
               id="step-webhook"
               step={
                 isProactive
                   ? needsTransfer || needsCalendar
+                    ? 9
+                    : 8
+                  : needsTransfer || needsCalendar
                     ? 8
                     : 7
-                  : needsTransfer || needsCalendar
-                    ? 7
-                    : 6
               }
               title={t("webhook.title")}
               desc={t("webhook.desc")}

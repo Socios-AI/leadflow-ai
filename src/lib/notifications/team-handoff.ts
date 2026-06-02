@@ -133,14 +133,18 @@ async function sendEmail({
   subject: string;
   html: string;
 }): Promise<boolean> {
-  const apiKey = process.env.PLATFORM_RESEND_API_KEY || process.env.RESEND_API_KEY;
+  // ONLY use the platform key here — the from address is hardcoded to
+  // handoff@mkt.sociosai.com (the platform's transactional domain), and
+  // a tenant Resend key wouldn't have permission to send from it. The
+  // previous fallback to RESEND_API_KEY caused 403s in tenants that had
+  // only their own key configured. Better to fail loudly so the operator
+  // configures the platform key once in Coolify.
+  const apiKey = process.env.PLATFORM_RESEND_API_KEY;
   if (!apiKey) {
-    throw new Error("PLATFORM_RESEND_API_KEY not configured");
+    throw new Error(
+      "PLATFORM_RESEND_API_KEY not configured. Set it in Coolify env vars to enable team handoff emails."
+    );
   }
-  // Send from the platform's transactional address so the handoff
-  // notification always lands in the inbox even when the tenant has
-  // their own custom-domain email channel configured for outbound to
-  // leads.
   const from = `MKT Digital <handoff@${platformEmailDomain()}>`;
   const res = await fetch("https://api.resend.com/emails", {
     method: "POST",

@@ -332,16 +332,20 @@ export class AIEngine {
     const closingLinkUrl = String(personaField(cfg.persona, "pipelineClosingLink", ""));
     const closingLinkMsg = String(personaField(cfg.persona, "pipelineClosingMessage", ""));
     const handoffEmail = String(personaField(cfg.persona, "pipelineHandoffEmail", ""));
+    const handoffWebhook = String(personaField(cfg.persona, "pipelineHandoffWebhook", ""));
     const closeWithLink =
       closingParsed.closeWithLink && closingLinkUrl
         ? { url: closingLinkUrl, accompanyingMessage: closingLinkMsg }
         : undefined;
+    // Fire the handoff result when EITHER an email OR a webhook is
+    // configured — previously webhook-only setups silently dropped the
+    // signal even though the worker would have happily POSTed to the URL.
     const handoff =
-      closingParsed.handoffSummary && handoffEmail
+      closingParsed.handoffSummary && (handoffEmail || handoffWebhook)
         ? {
             summary: closingParsed.handoffSummary,
             requestedAction: closingParsed.handoffSummary,
-            // Best-effort: pull any "key: value" lines from the recent
+            // Best-effort: pull any "Field: value" lines from the recent
             // conversation, so the team email shows what the lead said.
             capturedInfo: extractKeyValuesFromHistory(params.conversationHistory),
           }
@@ -624,52 +628,81 @@ function extractMediaTags(raw: string, catalog: MediaCatalogItem[]): {
   return { cleaned, matched };
 }
 
-const CLOSE_TAG_RE = /\[CLOSE_WITH_LINK\]/gi;
-const HANDOFF_TAG_RE = /\[HANDOFF_TO_TEAM:\s*([^\]]+)\]/gi;
-
 /**
  * Strip the [CLOSE_WITH_LINK] and [HANDOFF_TO_TEAM:summary] tags from
  * the AI's raw reply and return what was found. The visible text is the
  * cleaned version — never leak a tag to the lead.
+ *
+ * IMPORTANT: regexes are built fresh per call. A module-scope `/.../g`
+ * regex shares `lastIndex` between invocations on the long-lived worker
+ * process, which silently dropped tag matches on the 2nd-and-later AI
+ * responses. Building locally costs nothing and is bullet-proof.
  */
 function extractClosingTags(raw: string): {
   cleaned: string;
   closeWithLink: boolean;
   handoffSummary: string | null;
 } {
+  const closeRe = /\[CLOSE_WITH_LINK\]/gi;
+  const handoffMatchRe = /\[HANDOFF_TO_TEAM:\s*([^\]]+)\]/i;
+  const handoffStripRe = /\[HANDOFF_TO_TEAM:\s*[^\]]+\]/gi;
+
   let cleaned = raw;
-  const closeWithLink = CLOSE_TAG_RE.test(cleaned);
-  cleaned = cleaned.replace(CLOSE_TAG_RE, "");
-  let handoffSummary: string | null = null;
-  const m = HANDOFF_TAG_RE.exec(cleaned);
-  if (m) {
-    handoffSummary = m[1].trim().slice(0, 500);
-  }
-  cleaned = cleaned.replace(HANDOFF_TAG_RE, "");
+  const closeWithLink = closeRe.test(cleaned);
+  cleaned = cleaned.replace(closeRe, "");
+  const m = cleaned.match(handoffMatchRe);
+  const handoffSummary = m ? m[1].trim().slice(0, 500) : null;
+  cleaned = cleaned.replace(handoffStripRe, "");
   // Collapse extra whitespace left behind by tag removal.
   cleaned = cleaned.replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
   return { cleaned, closeWithLink, handoffSummary };
 }
 
 /**
- * Heuristic: scan the lead's recent messages for "key: value" lines so
+ * Heuristic: scan the lead's recent messages for "Field: value" lines so
  * the handoff email shows what they answered to the AI's qualifying
- * questions. Not perfect but better than dumping the raw transcript.
+ * questions. We're conservative on what counts as a "field" to avoid
+ * polluting the team email with casual stuff like "sim: pode mandar":
+ *
+ *  - Key must be 2+ words OR end in a known field-name keyword
+ *    (nome, email, telefone, empresa, cnpj, cpf, endereco, etc.)
+ *  - Lines starting with conversational openers (sim, nao, ok, blz,
+ *    obrigado, etc.) are explicitly skipped
+ *  - Value must contain at least one digit or be 6+ chars (filters short
+ *    affirmations that slip past the keyword guard)
+ *
+ * Better to under-extract than fill the team email with junk.
  */
+const FIELD_KEYWORDS_RE =
+  /\b(nome|name|email|e-?mail|telefone|phone|celular|whats(?:app)?|empresa|company|cnpj|cpf|rg|tax|id|documento|endereco|address|cidade|city|estado|bairro|cep|zip|idade|age|salario|salary|orcamento|budget|cargo|role|funcao|profissao|profession)\b/i;
+const CONVERSATIONAL_OPENERS = new Set([
+  "sim", "nao", "não", "yes", "no", "ok", "blz", "obrigado", "obrigada",
+  "obg", "vlw", "valeu", "thanks", "thank", "gracias", "grazie",
+  "claro", "sure", "talvez", "maybe", "ola", "olá", "hi", "hello",
+]);
+
 function extractKeyValuesFromHistory(
   history: HistoryEntry[]
 ): Record<string, string> {
   const out: Record<string, string> = {};
   const userTurns = history.filter((h) => h.role === "user").slice(-6);
   for (const turn of userTurns) {
-    const lines = turn.content.split(/[\n,;]/);
+    const lines = turn.content.split(/[\n;]/);
     for (const line of lines) {
-      const m = line.match(/^\s*([A-Za-zÀ-ſ][A-Za-zÀ-ſ\s]{2,30})\s*[:\-=]\s*(.{2,180})/);
-      if (m) {
-        const key = m[1].trim();
-        const val = m[2].trim();
-        if (!out[key]) out[key] = val;
-      }
+      const m = line.match(/^\s*([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ0-9 _-]{1,30})\s*[:=]\s*(.{2,180})$/);
+      if (!m) continue;
+      const key = m[1].trim();
+      const val = m[2].trim();
+      const keyLower = key.toLowerCase();
+      // Skip casual affirmations masquerading as keys.
+      if (CONVERSATIONAL_OPENERS.has(keyLower)) continue;
+      // Require either multiple words OR a recognized field keyword.
+      const isMultiWord = /\s/.test(key.trim());
+      const matchesKeyword = FIELD_KEYWORDS_RE.test(keyLower);
+      if (!isMultiWord && !matchesKeyword) continue;
+      // Value must look substantive (digits OR at least 6 chars).
+      if (val.length < 6 && !/\d/.test(val)) continue;
+      if (!out[key]) out[key] = val;
     }
   }
   return out;
@@ -1048,15 +1081,17 @@ function buildClosingBlock(persona: Record<string, unknown>): string {
     .map((q) => String(q || "").trim())
     .filter(Boolean);
   const handoffEmail = String(personaField(persona, "pipelineHandoffEmail", ""));
+  const handoffWebhook = String(personaField(persona, "pipelineHandoffWebhook", ""));
   const handoffWaitMessage = String(
     personaField(persona, "pipelineHandoffWaitMessage", "")
   );
+  const hasHandoffTarget = !!handoffEmail || !!handoffWebhook;
 
   // If absolutely nothing is configured, return empty so the prompt stays clean.
   if (
     strategy === "auto" &&
     !closingLink &&
-    !handoffEmail &&
+    !hasHandoffTarget &&
     questions.length === 0 &&
     requiredInfo.length === 0
   ) {
@@ -1126,7 +1161,7 @@ function buildClosingBlock(persona: Record<string, unknown>): string {
   }
 
   // Handoff config
-  if (handoffEmail && (strategy === "team_handoff" || strategy === "auto")) {
+  if (hasHandoffTarget && (strategy === "team_handoff" || strategy === "auto")) {
     parts.push("");
     parts.push("HANDOFF PRA EQUIPE:");
     parts.push(
@@ -1137,8 +1172,13 @@ function buildClosingBlock(persona: Record<string, unknown>): string {
       `Ex: [HANDOFF_TO_TEAM:gerar link Stripe pro plano Plus mensal, R$ 297]`
     );
     parts.push(
-      "O sistema vai apagar a tag, notificar o(a) responsavel por email" +
-        " com todo o contexto da conversa, e atualizar o status do lead."
+      `O sistema vai apagar a tag e notificar a equipe ${
+        handoffEmail && handoffWebhook
+          ? "via email e webhook"
+          : handoffEmail
+            ? "via email"
+            : "via webhook"
+      } com todo o contexto da conversa.`
     );
     if (handoffWaitMessage) {
       parts.push(
