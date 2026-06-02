@@ -540,40 +540,31 @@ function SidebarNavLink({
         'transition-[background-color,color,transform] duration-150 ease-out',
         isCollapsed ? 'justify-center px-2 py-2' : 'px-3 py-2',
         indent && !isCollapsed && 'py-1.5 text-[12.5px]',
+        // SOLID active state: lime/indigo background with primary-foreground
+        // (black in dark mode, white in light mode). The previous
+        // bg-primary/10 + text-foreground combo rendered as washed-out
+        // white-on-faint-green that the operator could barely read.
+        // Solid bg + contrast text reads like a real toggled chip and
+        // works the same on any theme.
         isActive
           ? admin
-            ? 'bg-red-500/10 text-red-400 font-semibold'
-            : 'bg-primary/[0.1] text-foreground font-semibold'
+            ? 'bg-red-500/15 text-red-400 font-semibold ring-1 ring-red-500/30'
+            : 'bg-primary text-primary-foreground font-semibold shadow-sm'
           : admin
             ? 'text-red-400/70 hover:text-red-400 hover:bg-red-500/[0.07]'
             : 'text-muted-foreground hover:text-foreground hover:bg-muted/45'
       )}
       title={isCollapsed ? item.label : undefined}
     >
-      {/* Active indicator rail on the left. No more shadow halo — the
-          0_0_8px lime glow used to bleed over the icon and read as a
-          green smudge swallowing the symbol. */}
-      {isActive && !isCollapsed && (
-        <span
-          className={cn(
-            'absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-r-full',
-            admin ? 'bg-red-400' : 'bg-primary'
-          )}
-        />
-      )}
-
-      {/* Icon. When active we use text-foreground (white in dark mode,
-          near-black in light mode). The previous text-primary made the
-          lime icon invisible on the lime-tinted bg, which is exactly
-          what the operator was seeing as "o símbolo sumiu". */}
+      {/* Icon inherits color in active state (primary-foreground = black
+          on lime in dark mode, white on indigo in light mode). Outside
+          active, faded muted -> bright on hover. */}
       <Icon
         className={cn(
           'shrink-0 transition-colors',
           indent && !isCollapsed ? 'w-[15px] h-[15px]' : 'w-[17px] h-[17px]',
           isActive
-            ? admin
-              ? 'text-red-400'
-              : 'text-foreground'
+            ? '' /* inherits text color from parent */
             : 'opacity-70 group-hover:opacity-100'
         )}
       />
