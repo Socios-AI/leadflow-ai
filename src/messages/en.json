@@ -172,6 +172,8 @@
     "create": "Create",
     "delete": "Delete",
     "edit": "Edit",
+    "add": "Add",
+    "remove": "Remove",
     "back": "Back",
     "loading": "Loading...",
     "noName": "No name",
@@ -232,6 +234,12 @@
   "dashboard": {
     "title": "Dashboard",
     "subtitle": "Overview of your AI-powered digital marketing",
+    "greeting": {
+      "lateNight": "Hello, late owl",
+      "morning": "Good morning",
+      "afternoon": "Good afternoon",
+      "evening": "Good evening"
+    },
     "empty": {
       "heroTitle": "Your platform is ready",
       "heroSubtitle": "Set up your AI in three quick steps and start converting leads today.",

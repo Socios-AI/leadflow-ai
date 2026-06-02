@@ -172,6 +172,8 @@
     "create": "Crea",
     "delete": "Elimina",
     "edit": "Modifica",
+    "add": "Aggiungi",
+    "remove": "Rimuovi",
     "back": "Indietro",
     "loading": "Caricamento...",
     "noName": "Senza nome",
@@ -232,6 +234,12 @@
   "dashboard": {
     "title": "Pannello",
     "subtitle": "Vista d'insieme del tuo marketing digitale con IA",
+    "greeting": {
+      "lateNight": "Buona notte fonda",
+      "morning": "Buongiorno",
+      "afternoon": "Buon pomeriggio",
+      "evening": "Buona sera"
+    },
     "empty": {
       "heroTitle": "La tua piattaforma e pronta",
       "heroSubtitle": "Configura la tua IA in tre passi rapidi e inizia a convertire lead gia oggi.",

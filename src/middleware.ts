@@ -62,12 +62,20 @@ export default async function middleware(req: NextRequest) {
     return NextResponse.next();
   }
 
-  // Apply intl middleware first
+  // Apply intl middleware first. With localePrefix: "always" this will
+  // redirect `/` to `/<locale>` based on the NEXT_LOCALE cookie or the
+  // Accept-Language header.
   const intlResponse = intlMiddleware(req);
 
-  // Extract path without locale prefix
+  // Extract path without locale prefix. When the URL has no prefix yet
+  // (the intl middleware hasn't redirected), fall back to the cookie set
+  // by the language switcher so our auth redirects don't downgrade an
+  // English user to Portuguese.
   const localeMatch = pathname.match(/^\/(pt|en|es|it)/);
-  const locale = localeMatch?.[1] || "pt";
+  const cookieLocale = req.cookies.get("NEXT_LOCALE")?.value;
+  const locale =
+    localeMatch?.[1] ||
+    (cookieLocale && ["pt", "en", "es", "it"].includes(cookieLocale) ? cookieLocale : "pt");
   const pathWithoutLocale = pathname.replace(/^\/(pt|en|es|it)/, "") || "/";
 
   const isAuthPath = AUTH_PATHS.some((p) => pathWithoutLocale.startsWith(p));

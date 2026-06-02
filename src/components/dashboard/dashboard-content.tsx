@@ -229,14 +229,15 @@ function Header({
 }
 
 function useGreeting() {
+  const t = useTranslations("dashboard.greeting");
   const [g, setG] = useState("");
   useEffect(() => {
     const h = new Date().getHours();
-    if (h < 5) setG("Boa madrugada");
-    else if (h < 12) setG("Bom dia");
-    else if (h < 18) setG("Boa tarde");
-    else setG("Boa noite");
-  }, []);
+    if (h < 5) setG(t("lateNight"));
+    else if (h < 12) setG(t("morning"));
+    else if (h < 18) setG(t("afternoon"));
+    else setG(t("evening"));
+  }, [t]);
   return g;
 }
 

@@ -77,6 +77,12 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
   }
 
   function switchLocale(newLocale: 'pt' | 'en' | 'es' | 'it') {
+    // Persist the choice so server-rendered routes pick up the right
+    // locale on the very first request after a hard refresh or when the
+    // user lands via a deep link without a prefix. next-intl reads this
+    // cookie when localeDetection is enabled (see src/i18n/routing.ts).
+    // 1 year expiry, root path so it covers every page.
+    document.cookie = `NEXT_LOCALE=${newLocale}; path=/; max-age=${60 * 60 * 24 * 365}; samesite=lax`
     router.replace(pathname, { locale: newLocale })
     setShowLangMenu(false)
   }

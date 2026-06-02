@@ -1432,6 +1432,7 @@ function StringList({
   onChange: (next: string[]) => void;
   placeholder?: string;
 }) {
+  const tc = useTranslations("common");
   return (
     <div className="space-y-2">
       {items.map((it, i) => (
@@ -1453,7 +1454,7 @@ function StringList({
             type="button"
             onClick={() => onChange(items.filter((_, idx) => idx !== i))}
             className="text-muted-foreground/50 hover:text-rose-500 transition-colors shrink-0 h-9 w-9 grid place-items-center rounded-lg hover:bg-rose-500/10"
-            aria-label="Remove"
+            aria-label={tc("remove")}
           >
             <X className="w-3.5 h-3.5" />
           </button>
@@ -1466,7 +1467,7 @@ function StringList({
           className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg border border-dashed border-border text-[12px] text-muted-foreground hover:text-foreground hover:border-foreground/40 transition-colors"
         >
           <Plus className="w-3.5 h-3.5" />
-          Adicionar
+          {tc("add")}
         </button>
       )}
     </div>
