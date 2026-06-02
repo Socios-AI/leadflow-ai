@@ -605,7 +605,7 @@ function AssistantsTab({ onToast }: { onToast: (msg: string, ok: boolean) => voi
                     <div className="flex items-center gap-2 flex-wrap mb-1">
                       <p className="font-display text-[14px] font-semibold text-foreground">{a.name}</p>
                       {activeId === a.id && (
-                        <span className="text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded-md bg-primary/15 text-primary border border-primary/30">
+                        <span className="text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded-md bg-primary/15 text-foreground border border-primary/30">
                           {t("active")}
                         </span>
                       )}
@@ -1107,7 +1107,7 @@ function MediaCard({
       <div className="flex items-center justify-between pt-1 border-t border-border">
         <button onClick={onToggle}
           className={cn("text-[11px] font-semibold uppercase tracking-wider px-2 py-1 rounded-md border cursor-pointer",
-            media.isActive ? "bg-primary/15 text-primary border-primary/30" : "bg-muted text-muted-foreground border-border")}>
+            media.isActive ? "bg-primary/15 text-foreground border-primary/30" : "bg-muted text-muted-foreground border-border")}>
           {media.isActive ? t("active") : t("inactive")}
         </button>
         <div className="flex items-center gap-1">

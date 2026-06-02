@@ -1098,7 +1098,7 @@ function TabButton({
         className={cn(
           "text-[10.5px] px-1.5 py-0.5 rounded-md",
           active
-            ? "bg-primary/15 text-primary"
+            ? "bg-primary/15 text-foreground"
             : "bg-muted text-muted-foreground"
         )}
       >
@@ -1118,9 +1118,11 @@ function RoleBadge({ role }: { role: PlatformRole }) {
     );
   }
   if (role === "SUPER_ADMIN") {
+    // text-foreground (not text-primary) so the "SUPER ADMIN" label stays
+    // readable on the faint lime bg-primary/15 background in dark mode.
     return (
-      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-semibold bg-primary/15 text-primary border border-primary/30">
-        <Shield className="w-3 h-3" />
+      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-semibold bg-primary/15 text-foreground border border-primary/30">
+        <Shield className="w-3 h-3 text-primary" />
         SUPER ADMIN
       </span>
     );
@@ -1128,21 +1130,27 @@ function RoleBadge({ role }: { role: PlatformRole }) {
   return null;
 }
 
-function PlanBadge({ plan }: { plan: string }) {
+function PlanBadge({ plan }: { plan: string | null | undefined }) {
+  // Defensive: tenants imported from older code or via the legacy API
+  // sometimes have plan=null, which used to render as an empty pill.
+  // Coerce to "FREE" so the badge always shows readable text.
+  const safe = (plan && String(plan).trim().toUpperCase()) || "FREE";
   const styles: Record<string, string> = {
     FREE: "bg-muted text-muted-foreground border-border",
     STARTER: "bg-blue-500/10 text-blue-500 border-blue-500/20",
-    PRO: "bg-primary/10 text-primary border-primary/20",
+    // text-foreground (not text-primary): in dark mode primary is lime
+    // and matches the bg-primary/10 tint, making "PRO" invisible.
+    PRO: "bg-primary/15 text-foreground border-primary/30",
     ENTERPRISE: "bg-amber-500/10 text-amber-500 border-amber-500/20",
   };
   return (
     <span
       className={cn(
         "text-[10px] font-semibold px-1.5 py-0.5 rounded-md border uppercase tracking-wide",
-        styles[plan] || styles.FREE
+        styles[safe] || styles.FREE
       )}
     >
-      {plan}
+      {safe}
     </span>
   );
 }

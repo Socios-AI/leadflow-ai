@@ -139,10 +139,10 @@ export function NotificationsPopover() {
                       >
                         <div
                           className={cn(
-                            "w-7 h-7 rounded-full grid place-items-center shrink-0 mt-0.5",
+                            "w-7 h-7 rounded-full grid place-items-center shrink-0 mt-0.5 border",
                             !n.read
-                              ? "bg-primary/15 text-primary"
-                              : "bg-muted text-muted-foreground"
+                              ? "bg-primary/15 text-foreground border-primary/40"
+                              : "bg-muted text-muted-foreground border-transparent"
                           )}
                         >
                           <Icon className="w-3.5 h-3.5" />

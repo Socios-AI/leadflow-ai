@@ -41,7 +41,7 @@ const STATUS_STYLE: Record<string, string> = {
   CONTACTED: "bg-sky-500/10 text-sky-500",
   IN_CONVERSATION: "bg-amber-500/10 text-amber-500",
   QUALIFIED: "bg-emerald-500/10 text-emerald-500",
-  CONVERTED: "bg-primary/15 text-primary",
+  CONVERTED: "bg-primary/15 text-foreground",
   LOST: "bg-red-500/10 text-red-500",
   UNRESPONSIVE: "bg-muted text-muted-foreground",
 };

@@ -340,7 +340,7 @@ function ProfileTab({
                 "inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold tracking-wider mt-2 border uppercase",
                 profile.platformRole === "HIPER_ADMIN"
                   ? "bg-amber-500/15 text-amber-400 border-amber-500/30"
-                  : "bg-primary/15 text-primary border-primary/30"
+                  : "bg-primary/15 text-foreground border-primary/30"
               )}
             >
               {profile.platformRole === "HIPER_ADMIN" ? (
@@ -682,7 +682,8 @@ function MemberRow({
 
 function RolePill({ role }: { role: Member["role"] }) {
   const styles: Record<Member["role"], string> = {
-    OWNER: "bg-primary/15 text-primary border-primary/30",
+    // text-foreground to avoid the lime-on-lime invisibility in dark mode
+    OWNER: "bg-primary/15 text-foreground border-primary/30",
     ADMIN: "bg-amber-500/10 text-amber-500 border-amber-500/20",
     MEMBER: "bg-muted text-muted-foreground border-border",
   };

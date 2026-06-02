@@ -569,7 +569,7 @@ export default function PipelinePage() {
                         className={cn(
                           "text-[10px] font-semibold uppercase tracking-[0.1em] px-2 py-0.5 rounded-md border self-start",
                           tpl.proactive
-                            ? "bg-primary/10 text-primary border-primary/25"
+                            ? "bg-primary/10 text-foreground border-primary/25"
                             : "bg-blue-500/10 text-blue-400 border-blue-500/25"
                         )}
                       >

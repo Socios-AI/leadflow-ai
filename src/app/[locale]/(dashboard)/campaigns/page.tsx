@@ -37,7 +37,7 @@ const TYPE_RING: Record<string, string> = {
   VIDEO: "bg-rose-500/15 text-rose-400",
   IMAGE: "bg-blue-500/15 text-blue-400",
   TEXT: "bg-amber-500/15 text-amber-400",
-  DIGITAL: "bg-primary/15 text-primary",
+  DIGITAL: "bg-primary/15 text-foreground",
 };
 
 const STATUS_CLS: Record<string, string> = {
