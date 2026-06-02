@@ -510,7 +510,7 @@ function WorkspaceTab({
       <Card title={t("workspace.planTitle")} subtitle={t("workspace.planSubtitle")}>
         <div className="flex items-center justify-between p-4 rounded-xl bg-muted/40 border border-border">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary grid place-items-center">
+            <div className="w-10 h-10 rounded-xl bg-primary text-primary-foreground grid place-items-center shadow-sm">
               <Zap className="w-4 h-4" />
             </div>
             <div>

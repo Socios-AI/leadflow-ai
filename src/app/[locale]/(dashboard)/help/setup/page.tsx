@@ -32,7 +32,7 @@ export default function SetupGuidePage() {
         >
           <ArrowLeft className="w-4 h-4 text-muted-foreground" />
         </Link>
-        <div className="w-10 h-10 rounded-xl bg-primary/12 ring-1 ring-primary/25 grid place-items-center text-primary">
+        <div className="w-10 h-10 rounded-xl bg-primary grid place-items-center text-primary-foreground shadow-sm">
           <BookOpen className="w-5 h-5" />
         </div>
         <div className="min-w-0">
@@ -58,7 +58,7 @@ export default function SetupGuidePage() {
             { anchor: "#trouble", label: t("step4ShortTitle"), icon: AlertTriangle },
           ].map((it, i) => (
             <li key={it.anchor} className="flex items-center gap-3">
-              <span className="w-6 h-6 rounded-full bg-primary/12 text-primary text-[11px] font-bold grid place-items-center">
+              <span className="w-6 h-6 rounded-full bg-primary text-primary-foreground text-[11px] font-bold grid place-items-center shadow-sm">
                 {i + 1}
               </span>
               <a

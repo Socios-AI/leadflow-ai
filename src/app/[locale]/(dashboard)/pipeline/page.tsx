@@ -827,7 +827,7 @@ export default function PipelinePage() {
                     >
                       <div className="flex items-center justify-between gap-3">
                         <div className="flex items-center gap-2.5">
-                          <span className="w-7 h-7 rounded-lg bg-primary/15 text-primary grid place-items-center text-[11px] font-bold ring-1 ring-primary/25">
+                          <span className="w-7 h-7 rounded-lg bg-primary text-primary-foreground grid place-items-center shadow-sm text-[11px] font-bold ring-1 ring-primary/25">
                             {idx + 1}
                           </span>
                           <span className="text-[13px] font-semibold text-foreground">

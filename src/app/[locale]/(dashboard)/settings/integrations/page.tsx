@@ -564,7 +564,7 @@ function GoogleCalendarCard({
   return (
     <section className="rounded-xl border border-border bg-card overflow-hidden">
       <div className="flex items-start gap-4 px-6 py-5 border-b border-border">
-        <div className="w-11 h-11 rounded-xl bg-primary/10 text-primary grid place-items-center shrink-0">
+        <div className="w-11 h-11 rounded-xl bg-primary text-primary-foreground grid place-items-center shadow-sm shrink-0">
           <CalendarDays className="w-5 h-5" />
         </div>
         <div className="flex-1 min-w-0">
@@ -1037,7 +1037,7 @@ function DocCard({ title, steps }: { title: string; steps: string[] }) {
           <ol className="space-y-2">
             {steps.map((step, i) => (
               <li key={i} className="flex gap-3 text-[12.5px] text-foreground/90 leading-relaxed">
-                <span className="w-5 h-5 rounded-full bg-primary/10 text-primary grid place-items-center shrink-0 mt-0.5 text-[10.5px] font-semibold">
+                <span className="w-5 h-5 rounded-full bg-primary text-primary-foreground grid place-items-center shadow-sm shrink-0 mt-0.5 text-[10.5px] font-semibold">
                   {i + 1}
                 </span>
                 <span>{step}</span>

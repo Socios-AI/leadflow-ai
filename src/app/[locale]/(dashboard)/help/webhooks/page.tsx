@@ -67,7 +67,7 @@ export default function WebhookHelpPage() {
         >
           <ArrowLeft className="w-4 h-4 text-muted-foreground" />
         </Link>
-        <div className="w-10 h-10 rounded-xl bg-primary/12 ring-1 ring-primary/25 grid place-items-center text-primary">
+        <div className="w-10 h-10 rounded-xl bg-primary grid place-items-center text-primary-foreground shadow-sm">
           <Plug className="w-5 h-5" />
         </div>
         <div className="min-w-0">

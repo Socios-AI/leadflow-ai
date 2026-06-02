@@ -281,9 +281,21 @@
 
   ::selection { background: rgba(185, 244, 149, 0.25); color: inherit; }
 
-  *:focus-visible {
-    outline: 2px solid hsl(var(--ring));
-    outline-offset: 2px;
+  /* Subtle focus ring for keyboard users. The previous rule used `*`
+     (every element) with `2px solid lime` + `2px offset`, which painted
+     a thick lime frame around every clicked Link in the sidebar — read
+     by users as "an exaggerated green box that covers the text".
+     Restricted now to actual form inputs and buttons, and toned down
+     to a single ring that doesn't compete with the active-state
+     indicators those components already paint themselves. */
+  button:focus-visible,
+  a:focus-visible,
+  input:focus-visible,
+  select:focus-visible,
+  textarea:focus-visible,
+  [tabindex]:not([tabindex="-1"]):focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 2px hsl(var(--background)), 0 0 0 4px hsl(var(--ring) / 0.45);
     border-radius: var(--radius);
   }
 }

@@ -68,7 +68,7 @@ export default function HelpPage() {
   return (
     <div className="max-w-4xl mx-auto pb-16 space-y-6">
       <div className="flex items-center gap-3">
-        <div className="w-10 h-10 rounded-xl bg-primary/12 ring-1 ring-primary/25 grid place-items-center text-primary">
+        <div className="w-10 h-10 rounded-xl bg-primary grid place-items-center text-primary-foreground shadow-sm">
           <HelpCircle className="w-5 h-5" />
         </div>
         <div className="min-w-0">
@@ -82,7 +82,7 @@ export default function HelpPage() {
       </div>
 
       <section className="rounded-2xl border border-primary/25 bg-primary/[0.04] p-5 flex items-start gap-4">
-        <div className="w-10 h-10 rounded-xl bg-primary/15 text-primary grid place-items-center shrink-0">
+        <div className="w-10 h-10 rounded-xl bg-primary text-primary-foreground grid place-items-center shrink-0 shadow-sm">
           <BookOpen className="w-5 h-5" />
         </div>
         <div className="min-w-0 flex-1">

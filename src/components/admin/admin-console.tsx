@@ -144,8 +144,8 @@ export function AdminConsole({ currentUser }: { currentUser: CurrentUser }) {
       {/* ─── HEADER ─── */}
       <header className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
         <div className="flex items-start gap-3">
-          <div className="w-11 h-11 rounded-xl bg-primary/10 grid place-items-center shrink-0">
-            <ShieldCheck className="w-5 h-5 text-primary" />
+          <div className="w-11 h-11 rounded-xl bg-primary grid place-items-center shrink-0 shadow-sm">
+            <ShieldCheck className="w-5 h-5 text-primary-foreground" />
           </div>
           <div>
             <div className="flex items-center gap-2 mb-1">
@@ -365,8 +365,8 @@ function TenantRow({
   const t = useTranslations("admin");
   return (
     <li className="px-5 py-4 flex items-center gap-4 hover:bg-muted/30 transition-colors">
-      <div className="w-10 h-10 rounded-xl bg-primary/10 grid place-items-center shrink-0">
-        <Building2 className="w-4 h-4 text-primary" />
+      <div className="w-10 h-10 rounded-xl bg-primary grid place-items-center shrink-0 shadow-sm">
+        <Building2 className="w-4 h-4 text-primary-foreground" />
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
@@ -1047,18 +1047,22 @@ function StatCard({
   value: number;
   accent: "primary" | "emerald" | "blue" | "amber";
 }) {
+  // Solid backgrounds + primary-foreground (black on lime in dark mode,
+  // white on indigo in light mode). Previously bg-primary/10 + text-primary
+  // produced an "empty green square" — lime icon on faint lime bg, the
+  // icon vanished.
   const accentMap: Record<typeof accent, { bg: string; fg: string }> = {
-    primary: { bg: "bg-primary/10", fg: "text-primary" },
-    emerald: { bg: "bg-emerald-500/10", fg: "text-emerald-500" },
-    blue: { bg: "bg-blue-500/10", fg: "text-blue-500" },
-    amber: { bg: "bg-amber-500/10", fg: "text-amber-500" },
+    primary: { bg: "bg-primary", fg: "text-primary-foreground" },
+    emerald: { bg: "bg-emerald-500", fg: "text-white" },
+    blue: { bg: "bg-blue-500", fg: "text-white" },
+    amber: { bg: "bg-amber-500", fg: "text-white" },
   };
   const a = accentMap[accent];
   return (
     <div className="rounded-2xl border border-border bg-card p-4">
       <div
         className={cn(
-          "w-9 h-9 rounded-xl grid place-items-center mb-3",
+          "w-9 h-9 rounded-xl grid place-items-center mb-3 shadow-sm",
           a.bg
         )}
       >

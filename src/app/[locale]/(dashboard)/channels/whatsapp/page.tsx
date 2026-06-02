@@ -382,7 +382,7 @@ export default function WhatsAppChannelPage() {
           the connected number. */}
       <div className="rounded-2xl border border-border bg-card p-4">
         <div className="flex items-start gap-3">
-          <div className="w-9 h-9 rounded-xl bg-primary/12 text-primary grid place-items-center shrink-0">
+          <div className="w-9 h-9 rounded-xl bg-primary text-primary-foreground grid place-items-center shadow-sm shrink-0">
             <Filter className="w-4 h-4" />
           </div>
           <div className="flex-1 min-w-0">

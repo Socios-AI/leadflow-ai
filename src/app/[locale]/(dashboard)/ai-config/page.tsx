@@ -814,7 +814,7 @@ function KnowledgeFilesTab({ onToast }: { onToast: (msg: string, ok: boolean) =>
               {files.map((f) => (
                 <div key={f.id} className="flex items-start justify-between gap-3 p-4 rounded-xl border border-border bg-card/40">
                   <div className="flex items-start gap-3 flex-1 min-w-0">
-                    <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary grid place-items-center shrink-0">
+                    <div className="w-10 h-10 rounded-xl bg-primary text-primary-foreground grid place-items-center shadow-sm shrink-0">
                       <FileText className="w-5 h-5" />
                     </div>
                     <div className="flex-1 min-w-0">
@@ -1088,7 +1088,7 @@ function MediaCard({
     <div className={cn("rounded-xl border bg-card/40 p-4 space-y-3 transition-colors",
       media.isActive ? "border-border" : "border-border/50 opacity-60")}>
       <div className="flex items-start gap-3">
-        <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary grid place-items-center shrink-0">
+        <div className="w-10 h-10 rounded-xl bg-primary text-primary-foreground grid place-items-center shadow-sm shrink-0">
           <Icon className="w-5 h-5" />
         </div>
         <div className="flex-1 min-w-0">
@@ -1230,7 +1230,7 @@ function EmptyState({ icon: Icon, title, description }: {
 }) {
   return (
     <div className="flex flex-col items-center justify-center py-12 px-6 text-center space-y-3">
-      <div className="w-14 h-14 rounded-2xl bg-primary/10 text-primary grid place-items-center">
+      <div className="w-14 h-14 rounded-2xl bg-primary text-primary-foreground grid place-items-center shadow-sm">
         <Icon className="w-6 h-6" />
       </div>
       <div className="space-y-1 max-w-md">

@@ -459,7 +459,7 @@ export default function EmailChannelPage() {
       <div className="rounded-2xl border border-border bg-card">
         <div className="px-5 py-4 border-b border-border/50 flex items-center justify-between gap-3">
           <div className="flex items-start gap-3">
-            <div className="w-9 h-9 rounded-xl bg-primary/10 text-primary grid place-items-center shrink-0">
+            <div className="w-9 h-9 rounded-xl bg-primary text-primary-foreground grid place-items-center shadow-sm shrink-0">
               <Inbox className="w-4 h-4" />
             </div>
             <div>
