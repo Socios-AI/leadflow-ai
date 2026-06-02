@@ -160,7 +160,13 @@ export default function ConversationsPage() {
   const ai = convs.filter(c => c.isAIEnabled).length;
 
   return (
-    <div className="flex h-[calc(100dvh-3.5rem)] lg:h-[calc(100dvh-4rem)] overflow-hidden">
+    // Fill the remaining vertical space inside DashboardShell's inner
+    // flex column (sibling of the header). flex-1 + min-h-0 lets the
+    // internal scroll regions (conv list + chat) compute their bounds
+    // correctly. The previous explicit h-[calc(100dvh-Xrem)] was the
+    // root of the "sidebar drifts / black bar appears" bug because vh
+    // on the shell didn't match dvh here.
+    <div className="flex flex-1 min-h-0 overflow-hidden">
 
       {/* ════════════════ LEFT: LISTA ════════════════ */}
       <div className={cn("w-full lg:w-[380px] xl:w-[400px] shrink-0 border-r border-border flex flex-col overflow-hidden", selId ? "hidden lg:flex" : "flex")}>
