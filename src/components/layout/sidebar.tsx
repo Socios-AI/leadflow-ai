@@ -550,16 +550,22 @@ function SidebarNavLink({
       )}
       title={isCollapsed ? item.label : undefined}
     >
-      {/* Active indicator rail, only on expanded view */}
+      {/* Active indicator rail on the left. No more shadow halo — the
+          0_0_8px lime glow used to bleed over the icon and read as a
+          green smudge swallowing the symbol. */}
       {isActive && !isCollapsed && (
         <span
           className={cn(
             'absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-r-full',
-            admin ? 'bg-red-400' : 'bg-primary shadow-[0_0_8px_hsl(var(--primary)/0.55)]'
+            admin ? 'bg-red-400' : 'bg-primary'
           )}
         />
       )}
 
+      {/* Icon. When active we use text-foreground (white in dark mode,
+          near-black in light mode). The previous text-primary made the
+          lime icon invisible on the lime-tinted bg, which is exactly
+          what the operator was seeing as "o símbolo sumiu". */}
       <Icon
         className={cn(
           'shrink-0 transition-colors',
@@ -567,14 +573,11 @@ function SidebarNavLink({
           isActive
             ? admin
               ? 'text-red-400'
-              : 'text-primary'
+              : 'text-foreground'
             : 'opacity-70 group-hover:opacity-100'
         )}
       />
       {!isCollapsed && <span className="flex-1 truncate">{item.label}</span>}
-      {isActive && !isCollapsed && !admin && (
-        <span className="w-1 h-1 rounded-full bg-primary shadow-[0_0_4px_hsl(var(--primary)/0.6)] shrink-0" />
-      )}
     </Link>
   )
 }
