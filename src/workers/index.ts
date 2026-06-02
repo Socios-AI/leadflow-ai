@@ -442,20 +442,87 @@ const aiWorker = new Worker(
     let followUpHours: number | null = null;
 
     if (provider && contactId) {
+      // Compose the outbound text. If the AI requested CLOSE_WITH_LINK
+      // we append the configured link as an extra bubble (separator |||)
+      // so the lead sees it as its own message right after the closing
+      // pitch, with the typing indicator between.
+      let fullText = aiResult.message;
+      if (aiResult.closeWithLink) {
+        const { url, accompanyingMessage } = aiResult.closeWithLink;
+        const linkBubble = accompanyingMessage
+          ? `${accompanyingMessage}\n${url}`
+          : url;
+        fullText = `${fullText}|||${linkBubble}`;
+      }
+
       const sent = await sendMessagesInParts({
         accountId,
         conversationId,
         to: contactId,
-        fullText: aiResult.message,
+        fullText,
         provider,
         attachments: aiResult.attachments,
         extraMetadata: {
           tags: aiResult.tags,
           sentiment: aiResult.sentiment,
+          ...(aiResult.closeWithLink ? { closingLinkSent: aiResult.closeWithLink.url } : {}),
+          ...(aiResult.handoff ? { handoffSummary: aiResult.handoff.summary } : {}),
         },
       });
       firstMessageId = sent.messages[0]?.id ?? null;
       followUpHours = sent.followUpHours;
+    }
+
+    // ── Fire team handoff (email + webhook) ──
+    // Runs AFTER the outbound bubbles so the lead sees the wait-message
+    // before the team email goes out. Best-effort: never blocks the
+    // conversation flow.
+    if (aiResult.handoff) {
+      try {
+        const persona = (await prisma.aIConfig.findUnique({
+          where: { accountId },
+          select: { persona: true },
+        }))?.persona as Record<string, unknown> | null;
+        const handoffEmail = String(persona?.pipelineHandoffEmail || "");
+        const handoffWebhook = String(persona?.pipelineHandoffWebhook || "");
+        if (handoffEmail || handoffWebhook) {
+          const { sendTeamHandoff } = await import("@/lib/notifications/team-handoff");
+          const transcriptLines = history
+            .slice(-10)
+            .map((h) => `${h.role === "user" ? "Lead" : "IA"}: ${h.content}`)
+            .join("\n");
+          const result = await sendTeamHandoff({
+            accountId,
+            conversationId,
+            leadName: lead.name || "",
+            leadPhone: lead.phone || "",
+            leadEmail: lead.email || "",
+            reason: aiResult.handoff.summary,
+            requestedAction: aiResult.handoff.requestedAction,
+            capturedInfo: aiResult.handoff.capturedInfo,
+            transcript: transcriptLines,
+            toEmail: handoffEmail,
+            toWebhook: handoffWebhook || undefined,
+            appUrl: process.env.NEXT_PUBLIC_APP_URL || "https://mktdigital.sociosai.com",
+          });
+          await prisma.eventLog.create({
+            data: {
+              accountId,
+              event: "lead.handoff_requested",
+              data: {
+                leadId,
+                conversationId,
+                summary: aiResult.handoff.summary,
+                emailSent: result.emailSent,
+                webhookSent: result.webhookSent,
+                errors: result.errors,
+              },
+            },
+          });
+        }
+      } catch (err) {
+        console.error("[ai-response] handoff failed:", err);
+      }
     }
 
     // ── Update conversation sentiment / AI enabled flag ──

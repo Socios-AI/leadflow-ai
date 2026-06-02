@@ -40,6 +40,27 @@ function asChannelArray(value: unknown): Channel[] {
   return out;
 }
 
+/**
+ * Normalize a string-array field. Caps length to maxItems and trims each
+ * entry to 240 chars (long enough for a real question, short enough to
+ * keep the prompt readable).
+ */
+function asStringArray(value: unknown, maxItems: number): string[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((v) => String(v ?? "").trim().slice(0, 240))
+    .filter((s) => s.length > 0)
+    .slice(0, maxItems);
+}
+
+function asClosingStrategy(value: unknown): "direct_link" | "qualify_first" | "team_handoff" | "auto" {
+  const s = String(value || "");
+  if (s === "direct_link" || s === "qualify_first" || s === "team_handoff" || s === "auto") {
+    return s;
+  }
+  return "auto";
+}
+
 function asFollowUps(value: unknown): FollowUp[] {
   if (!Array.isArray(value)) return [];
   return value
@@ -117,6 +138,15 @@ export async function GET() {
       calendarEmail: p.pipelineCalendarEmail || "",
       humanApproval: p.pipelineHumanApproval || false,
       webhookId: p.pipelineWebhookId || "",
+      // ── Closing strategy ──
+      closingStrategy: asClosingStrategy(p.pipelineClosingStrategy),
+      closingLink: String(p.pipelineClosingLink || ""),
+      closingMessage: String(p.pipelineClosingMessage || ""),
+      qualifyingQuestions: asStringArray(p.pipelineQualifyingQuestions, 20),
+      requiredInfo: asStringArray(p.pipelineRequiredInfo, 20),
+      handoffEmail: String(p.pipelineHandoffEmail || ""),
+      handoffWebhook: String(p.pipelineHandoffWebhook || ""),
+      handoffWaitMessage: String(p.pipelineHandoffWaitMessage || ""),
     });
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
@@ -178,6 +208,15 @@ export async function PUT(req: NextRequest) {
       pipelineCalendarEmail: body.calendarEmail,
       pipelineHumanApproval: body.humanApproval,
       pipelineWebhookId: webhookId,
+      // ── Closing strategy ──
+      pipelineClosingStrategy: asClosingStrategy(body.closingStrategy),
+      pipelineClosingLink: String(body.closingLink || "").trim().slice(0, 500),
+      pipelineClosingMessage: String(body.closingMessage || "").trim().slice(0, 1000),
+      pipelineQualifyingQuestions: asStringArray(body.qualifyingQuestions, 20),
+      pipelineRequiredInfo: asStringArray(body.requiredInfo, 20),
+      pipelineHandoffEmail: String(body.handoffEmail || "").trim().slice(0, 200),
+      pipelineHandoffWebhook: String(body.handoffWebhook || "").trim().slice(0, 500),
+      pipelineHandoffWaitMessage: String(body.handoffWaitMessage || "").trim().slice(0, 500),
     };
 
     // Prisma's JSON column types require an InputJsonValue, but our

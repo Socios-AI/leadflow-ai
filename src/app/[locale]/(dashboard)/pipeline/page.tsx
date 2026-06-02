@@ -19,6 +19,7 @@ import {
   Loader2,
   Mail,
   Phone,
+  Plus,
   Save,
   ShoppingCart,
   Smartphone,
@@ -26,6 +27,7 @@ import {
   Target,
   UserCheck,
   Users,
+  X,
   Zap,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -42,6 +44,20 @@ interface FollowUp {
   delayHours: number;
   instruction: string;
 }
+
+/**
+ * Closing strategy: how the AI behaves at the moment of conversion. The
+ * old system only stored a high-level `goal` ("close_sale", etc.) and let
+ * the LLM improvise. This is too generic — operators want concrete
+ * behavior (send THIS link, ping THIS person, ask THESE questions). Four
+ * modes cover the spectrum:
+ *
+ *  - direct_link    : AI sends a configured URL when the lead is ready.
+ *  - qualify_first  : AI MUST get answers to N questions BEFORE closing.
+ *  - team_handoff   : AI captures info, notifies a human, optionally waits.
+ *  - auto           : AI decides between link and handoff based on context.
+ */
+type ClosingStrategy = "direct_link" | "qualify_first" | "team_handoff" | "auto";
 
 interface PipelineConfig {
   template: string;
@@ -61,6 +77,22 @@ interface PipelineConfig {
   calendarEmail: string;
   humanApproval: boolean;
   webhookId: string;
+  // ── Closing strategy fields ──
+  closingStrategy: ClosingStrategy;
+  /** URL the AI sends when closing via link (Stripe checkout, Calendly, etc) */
+  closingLink: string;
+  /** Message that accompanies the link */
+  closingMessage: string;
+  /** Questions the AI MUST get answered before any closing action */
+  qualifyingQuestions: string[];
+  /** Fields the AI must capture (sent to team in handoff payload) */
+  requiredInfo: string[];
+  /** Email of the team member to notify on handoff */
+  handoffEmail: string;
+  /** Optional webhook (Slack/Discord/Make) to fire on handoff */
+  handoffWebhook: string;
+  /** Message AI sends to the lead while a handoff is in flight */
+  handoffWaitMessage: string;
 }
 
 const LANGUAGE_OPTIONS: { code: string; label: string }[] = [
@@ -99,6 +131,14 @@ const DEFAULT_CONFIG: PipelineConfig = {
   calendarEmail: "",
   humanApproval: false,
   webhookId: "",
+  closingStrategy: "auto",
+  closingLink: "",
+  closingMessage: "",
+  qualifyingQuestions: [],
+  requiredInfo: [],
+  handoffEmail: "",
+  handoffWebhook: "",
+  handoffWaitMessage: "",
 };
 
 function newFollowUpId(): string {
@@ -923,6 +963,170 @@ export default function PipelinePage() {
             </StepCard>
           )}
 
+          {/* STEP: CLOSING STRATEGY — applies to every goal */}
+          {config.goal && (
+            <StepCard
+              id="step-closing"
+              step={isProactive ? 7 : 6}
+              title={t("stepClosing.title")}
+              desc={t("stepClosing.desc")}
+            >
+              <div className="space-y-5">
+                {/* Mode selector */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {[
+                    { id: "auto", k: "modeAuto" },
+                    { id: "direct_link", k: "modeDirectLink" },
+                    { id: "qualify_first", k: "modeQualifyFirst" },
+                    { id: "team_handoff", k: "modeTeamHandoff" },
+                  ].map((m) => {
+                    const active = config.closingStrategy === m.id;
+                    return (
+                      <button
+                        type="button"
+                        key={m.id}
+                        onClick={() =>
+                          setConfig((p) => ({
+                            ...p,
+                            closingStrategy: m.id as ClosingStrategy,
+                          }))
+                        }
+                        className={cn(
+                          "text-left p-3.5 rounded-xl border transition-colors cursor-pointer",
+                          active
+                            ? "border-primary bg-primary/[0.06]"
+                            : "border-border bg-card hover:bg-muted/40"
+                        )}
+                      >
+                        <p className={cn(
+                          "text-[13px] font-semibold",
+                          active ? "text-foreground" : "text-foreground/85"
+                        )}>
+                          {t(`stepClosing.${m.k}Title`)}
+                        </p>
+                        <p className="text-[11.5px] text-muted-foreground mt-1 leading-snug">
+                          {t(`stepClosing.${m.k}Desc`)}
+                        </p>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Qualifying questions: shown unless mode is direct_link */}
+                {config.closingStrategy !== "direct_link" && (
+                  <Field
+                    label={t("stepClosing.qualifyingQuestionsLabel")}
+                    hint={t("stepClosing.qualifyingQuestionsHint")}
+                  >
+                    <StringList
+                      items={config.qualifyingQuestions}
+                      onChange={(items) =>
+                        setConfig((p) => ({ ...p, qualifyingQuestions: items }))
+                      }
+                      placeholder={t("stepClosing.qualifyingQuestionsPlaceholder")}
+                    />
+                  </Field>
+                )}
+
+                {/* Required info to capture: shown when handoff is involved */}
+                {(config.closingStrategy === "team_handoff" ||
+                  config.closingStrategy === "auto") && (
+                  <Field
+                    label={t("stepClosing.requiredInfoLabel")}
+                    hint={t("stepClosing.requiredInfoHint")}
+                  >
+                    <StringList
+                      items={config.requiredInfo}
+                      onChange={(items) =>
+                        setConfig((p) => ({ ...p, requiredInfo: items }))
+                      }
+                      placeholder={t("stepClosing.requiredInfoPlaceholder")}
+                    />
+                  </Field>
+                )}
+
+                {/* Closing link: shown when link is involved */}
+                {(config.closingStrategy === "direct_link" ||
+                  config.closingStrategy === "qualify_first" ||
+                  config.closingStrategy === "auto") && (
+                  <>
+                    <Field
+                      label={t("stepClosing.linkLabel")}
+                      hint={t("stepClosing.linkHint")}
+                    >
+                      <input
+                        type="url"
+                        value={config.closingLink}
+                        onChange={(e) =>
+                          setConfig((p) => ({ ...p, closingLink: e.target.value }))
+                        }
+                        placeholder="https://buy.stripe.com/xxx ou https://calendly.com/voce/30min"
+                        className="w-full h-10 px-3.5 rounded-lg bg-muted border border-transparent text-[13px] text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-ring/30"
+                      />
+                    </Field>
+                    <Field label={t("stepClosing.closingMessageLabel")}>
+                      <textarea
+                        value={config.closingMessage}
+                        onChange={(e) =>
+                          setConfig((p) => ({ ...p, closingMessage: e.target.value }))
+                        }
+                        rows={2}
+                        placeholder={t("stepClosing.closingMessagePlaceholder")}
+                        className="w-full px-3.5 py-2.5 rounded-lg bg-muted border border-transparent text-[13px] text-foreground placeholder:text-muted-foreground/50 resize-y focus:outline-none focus:border-ring/30 leading-relaxed"
+                      />
+                    </Field>
+                  </>
+                )}
+
+                {/* Handoff settings: shown when handoff is involved */}
+                {(config.closingStrategy === "team_handoff" ||
+                  config.closingStrategy === "auto") && (
+                  <>
+                    <Field
+                      label={`${t("stepClosing.handoffEmailLabel")} ${config.closingStrategy === "team_handoff" ? "*" : ""}`}
+                      hint={t("stepClosing.handoffEmailHint")}
+                    >
+                      <input
+                        type="email"
+                        value={config.handoffEmail}
+                        onChange={(e) =>
+                          setConfig((p) => ({ ...p, handoffEmail: e.target.value }))
+                        }
+                        placeholder="vendas@suaempresa.com"
+                        className="w-full h-10 px-3.5 rounded-lg bg-muted border border-transparent text-[13px] text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-ring/30"
+                      />
+                    </Field>
+                    <Field
+                      label={t("stepClosing.handoffWebhookLabel")}
+                      hint={t("stepClosing.handoffWebhookHint")}
+                    >
+                      <input
+                        type="url"
+                        value={config.handoffWebhook}
+                        onChange={(e) =>
+                          setConfig((p) => ({ ...p, handoffWebhook: e.target.value }))
+                        }
+                        placeholder="https://hooks.slack.com/services/..."
+                        className="w-full h-10 px-3.5 rounded-lg bg-muted border border-transparent text-[13px] text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-ring/30"
+                      />
+                    </Field>
+                    <Field label={t("stepClosing.handoffWaitMessageLabel")}>
+                      <textarea
+                        value={config.handoffWaitMessage}
+                        onChange={(e) =>
+                          setConfig((p) => ({ ...p, handoffWaitMessage: e.target.value }))
+                        }
+                        rows={2}
+                        placeholder={t("stepClosing.handoffWaitMessagePlaceholder")}
+                        className="w-full px-3.5 py-2.5 rounded-lg bg-muted border border-transparent text-[13px] text-foreground placeholder:text-muted-foreground/50 resize-y focus:outline-none focus:border-ring/30 leading-relaxed"
+                      />
+                    </Field>
+                  </>
+                )}
+              </div>
+            </StepCard>
+          )}
+
           {/* STEP: TRANSFER */}
           {needsTransfer && (
             <StepCard
@@ -1189,9 +1393,11 @@ function StepCard({
 function Field({
   label,
   children,
+  hint,
 }: {
   label: string;
   children: React.ReactNode;
+  hint?: string;
 }) {
   return (
     <label className="block">
@@ -1199,7 +1405,67 @@ function Field({
         {label}
       </span>
       {children}
+      {hint && (
+        <span className="block text-[11px] text-muted-foreground/70 mt-1.5 leading-relaxed">
+          {hint}
+        </span>
+      )}
     </label>
+  );
+}
+
+/**
+ * Editable list of short strings. Used for qualifyingQuestions and
+ * requiredInfo on the closing step. Operator adds/removes items, types
+ * inline, no separate modal. Hard cap at 20 to keep the prompt readable.
+ */
+function StringList({
+  items,
+  onChange,
+  placeholder,
+}: {
+  items: string[];
+  onChange: (next: string[]) => void;
+  placeholder?: string;
+}) {
+  return (
+    <div className="space-y-2">
+      {items.map((it, i) => (
+        <div key={i} className="flex items-center gap-2">
+          <span className="w-6 h-6 rounded-full bg-muted text-muted-foreground text-[10.5px] font-bold grid place-items-center shrink-0">
+            {i + 1}
+          </span>
+          <input
+            value={it}
+            onChange={(e) => {
+              const next = [...items];
+              next[i] = e.target.value;
+              onChange(next);
+            }}
+            placeholder={placeholder}
+            className="flex-1 h-9 px-3 rounded-lg bg-muted border border-transparent text-[12.5px] text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:border-ring/30"
+          />
+          <button
+            type="button"
+            onClick={() => onChange(items.filter((_, idx) => idx !== i))}
+            className="text-muted-foreground/50 hover:text-rose-500 transition-colors shrink-0 h-9 w-9 grid place-items-center rounded-lg hover:bg-rose-500/10"
+            aria-label="Remove"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      ))}
+      {items.length < 20 && (
+        <button
+          type="button"
+          onClick={() => onChange([...items, ""])}
+          className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg border border-dashed border-border text-[12px] text-muted-foreground hover:text-foreground hover:border-foreground/40 transition-colors"
+        >
+          <Plus className="w-3.5 h-3.5" />
+          Adicionar
+        </button>
+      )}
+    </div>
   );
 }
 

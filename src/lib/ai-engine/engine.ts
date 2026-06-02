@@ -73,6 +73,25 @@ export interface AIResponseResult {
     mimeType: string;
     url: string;
   }[];
+  /**
+   * Closing intent detected via [CLOSE_WITH_LINK] tag in the AI output.
+   * Caller (worker) is responsible for appending the configured link as
+   * an extra bubble and marking the lead status.
+   */
+  closeWithLink?: {
+    url: string;
+    accompanyingMessage: string;
+  };
+  /**
+   * Handoff request detected via [HANDOFF_TO_TEAM:summary] tag. Caller is
+   * responsible for firing the team-handoff notification (email + webhook)
+   * and recording the event.
+   */
+  handoff?: {
+    summary: string;
+    requestedAction: string;
+    capturedInfo: Record<string, string>;
+  };
 }
 
 interface ScheduleIntent {
@@ -296,10 +315,37 @@ export class AIEngine {
     // ── Parse optional SEND_MEDIA tags ──
     const mediaResult = extractMediaTags(rawReply, mediaCatalog);
 
+    // ── Parse [CLOSE_WITH_LINK] and [HANDOFF_TO_TEAM:summary] ──
+    // The closing tags are stripped from the visible text. We resolve
+    // them against the operator's pipeline config; if a tag has no
+    // matching config (e.g. AI emitted HANDOFF but operator has no email
+    // configured), we silently drop the side-effect so the lead still
+    // gets a coherent reply.
+    const closingParsed = extractClosingTags(mediaResult.cleaned);
+
     // ── Parse optional SCHEDULE:{...} block and act on it ──
-    const parsed = extractScheduleBlock(mediaResult.cleaned);
+    const parsed = extractScheduleBlock(closingParsed.cleaned);
     let visibleMessage = parsed.cleaned;
     let scheduled: AIResponseResult["scheduled"];
+
+    // Resolve closing actions from persona config.
+    const closingLinkUrl = String(personaField(cfg.persona, "pipelineClosingLink", ""));
+    const closingLinkMsg = String(personaField(cfg.persona, "pipelineClosingMessage", ""));
+    const handoffEmail = String(personaField(cfg.persona, "pipelineHandoffEmail", ""));
+    const closeWithLink =
+      closingParsed.closeWithLink && closingLinkUrl
+        ? { url: closingLinkUrl, accompanyingMessage: closingLinkMsg }
+        : undefined;
+    const handoff =
+      closingParsed.handoffSummary && handoffEmail
+        ? {
+            summary: closingParsed.handoffSummary,
+            requestedAction: closingParsed.handoffSummary,
+            // Best-effort: pull any "key: value" lines from the recent
+            // conversation, so the team email shows what the lead said.
+            capturedInfo: extractKeyValuesFromHistory(params.conversationHistory),
+          }
+        : undefined;
 
     // ── Resolve signed URLs for matched media ──
     let attachments: AIResponseResult["attachments"] | undefined;
@@ -352,18 +398,27 @@ export class AIEngine {
     return {
       message: visibleMessage,
       sentiment: analyzeSentiment(params.currentMessage),
-      tags: collectTags({ escalation, conversion, scheduled: !!scheduled }),
+      tags: collectTags({
+        escalation,
+        conversion: conversion || !!closeWithLink,
+        scheduled: !!scheduled,
+        handoff: !!handoff,
+      }),
       isEscalation: escalation,
-      isConversion: conversion || !!scheduled,
+      isConversion: conversion || !!scheduled || !!closeWithLink,
       notificationMessage: escalation
         ? `Lead solicitou atendimento humano: ${params.leadName || params.leadPhone || params.leadEmail || "lead"}`
-        : conversion
-          ? `Lead demonstrou intenção de compra: ${params.leadName || params.leadPhone || params.leadEmail || "lead"}`
-          : scheduled
-            ? `Reunião agendada com ${params.leadName || params.leadPhone || "lead"} em ${scheduled.startISO}`
-            : undefined,
+        : handoff
+          ? `Handoff solicitado pela IA: ${handoff.summary}`
+          : conversion || closeWithLink
+            ? `Lead demonstrou intenção de compra: ${params.leadName || params.leadPhone || params.leadEmail || "lead"}`
+            : scheduled
+              ? `Reunião agendada com ${params.leadName || params.leadPhone || "lead"} em ${scheduled.startISO}`
+              : undefined,
       scheduled,
       attachments,
+      closeWithLink,
+      handoff,
     };
   }
 
@@ -567,6 +622,57 @@ function extractMediaTags(raw: string, catalog: MediaCatalogItem[]): {
   }
   const cleaned = raw.replace(MEDIA_TAG_RE, "").trim();
   return { cleaned, matched };
+}
+
+const CLOSE_TAG_RE = /\[CLOSE_WITH_LINK\]/gi;
+const HANDOFF_TAG_RE = /\[HANDOFF_TO_TEAM:\s*([^\]]+)\]/gi;
+
+/**
+ * Strip the [CLOSE_WITH_LINK] and [HANDOFF_TO_TEAM:summary] tags from
+ * the AI's raw reply and return what was found. The visible text is the
+ * cleaned version — never leak a tag to the lead.
+ */
+function extractClosingTags(raw: string): {
+  cleaned: string;
+  closeWithLink: boolean;
+  handoffSummary: string | null;
+} {
+  let cleaned = raw;
+  const closeWithLink = CLOSE_TAG_RE.test(cleaned);
+  cleaned = cleaned.replace(CLOSE_TAG_RE, "");
+  let handoffSummary: string | null = null;
+  const m = HANDOFF_TAG_RE.exec(cleaned);
+  if (m) {
+    handoffSummary = m[1].trim().slice(0, 500);
+  }
+  cleaned = cleaned.replace(HANDOFF_TAG_RE, "");
+  // Collapse extra whitespace left behind by tag removal.
+  cleaned = cleaned.replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
+  return { cleaned, closeWithLink, handoffSummary };
+}
+
+/**
+ * Heuristic: scan the lead's recent messages for "key: value" lines so
+ * the handoff email shows what they answered to the AI's qualifying
+ * questions. Not perfect but better than dumping the raw transcript.
+ */
+function extractKeyValuesFromHistory(
+  history: HistoryEntry[]
+): Record<string, string> {
+  const out: Record<string, string> = {};
+  const userTurns = history.filter((h) => h.role === "user").slice(-6);
+  for (const turn of userTurns) {
+    const lines = turn.content.split(/[\n,;]/);
+    for (const line of lines) {
+      const m = line.match(/^\s*([A-Za-zÀ-ſ][A-Za-zÀ-ſ\s]{2,30})\s*[:\-=]\s*(.{2,180})/);
+      if (m) {
+        const key = m[1].trim();
+        const val = m[2].trim();
+        if (!out[key]) out[key] = val;
+      }
+    }
+  }
+  return out;
 }
 
 function parseKeywords(v: string | string[] | undefined): string[] {
@@ -897,6 +1003,8 @@ function buildResponseSystemPrompt(
     ? renderBusinessContext(flags.businessContext)
     : "";
 
+  const closingBlock = buildClosingBlock(cfg.persona);
+
   return `${commonPreamble(cfg, params.channel, flags.language)}
 ${businessBlock}
 ${flags.knowledgeBlock || ""}
@@ -914,9 +1022,132 @@ ${goalInstruction}
 ${escalationLine}
 ${conversionLine}
 ${schedulingBlock}
+${closingBlock}
 
 OBSERVAÇÃO SOBRE DEBOUNCE:
 O lead pode ter enviado várias mensagens seguidas. Elas aparecem juntas na última fala como "user". Responda a TUDO de uma vez, de forma coesa, como se tivesse lido tudo antes de responder.`;
+}
+
+/**
+ * Builds the "Estrategia de Fechamento" block that tells the AI exactly
+ * how the operator wants closing handled — which questions are required,
+ * which link to send, when to ping a team member. The AI signals its
+ * decisions with `[CLOSE_WITH_LINK]` or `[HANDOFF_TO_TEAM:summary]`
+ * tags that send-parts.ts parses and acts on.
+ */
+function buildClosingBlock(persona: Record<string, unknown>): string {
+  const strategy = String(
+    personaField(persona, "pipelineClosingStrategy", "auto")
+  );
+  const closingLink = String(personaField(persona, "pipelineClosingLink", ""));
+  const closingMessage = String(personaField(persona, "pipelineClosingMessage", ""));
+  const questions = (personaField(persona, "pipelineQualifyingQuestions", []) as unknown[])
+    .map((q) => String(q || "").trim())
+    .filter(Boolean);
+  const requiredInfo = (personaField(persona, "pipelineRequiredInfo", []) as unknown[])
+    .map((q) => String(q || "").trim())
+    .filter(Boolean);
+  const handoffEmail = String(personaField(persona, "pipelineHandoffEmail", ""));
+  const handoffWaitMessage = String(
+    personaField(persona, "pipelineHandoffWaitMessage", "")
+  );
+
+  // If absolutely nothing is configured, return empty so the prompt stays clean.
+  if (
+    strategy === "auto" &&
+    !closingLink &&
+    !handoffEmail &&
+    questions.length === 0 &&
+    requiredInfo.length === 0
+  ) {
+    return "";
+  }
+
+  const parts: string[] = [
+    "",
+    "════════════════════════════════════════════════════",
+    "ESTRATEGIA DE FECHAMENTO — esta secao define COMO voce conclui a venda",
+    "════════════════════════════════════════════════════",
+  ];
+
+  // Mode description
+  if (strategy === "direct_link") {
+    parts.push(
+      "MODO: enviar link direto. Quando o lead demonstrar intencao clara de fechar, envie o link de fechamento (abaixo). Nao precisa fazer perguntas de qualificacao se a instrucao nao listar nenhuma."
+    );
+  } else if (strategy === "qualify_first") {
+    parts.push(
+      "MODO: qualificar antes. Voce DEVE conseguir resposta para CADA pergunta de qualificacao abaixo antes de tentar fechar. Faca uma pergunta por vez, naturalmente, sem soar como formulario. Quando tiver todas as respostas, envie o link de fechamento."
+    );
+  } else if (strategy === "team_handoff") {
+    parts.push(
+      "MODO: handoff pra equipe humana. Voce coleta as informacoes obrigatorias abaixo, depois passa o caso pra um vendedor humano gerar a proxima acao. Nao tente fechar sozinha. Use a tag [HANDOFF_TO_TEAM:resumo curto do que precisa ser feito] quando estiver pronta pra acionar a equipe."
+    );
+  } else {
+    // auto
+    parts.push(
+      "MODO: automatico. Use o link direto quando o lead estiver claramente pronto (perguntando preco, querendo comprar). Acione a equipe humana quando precisar de algo customizado (geracao manual de link, negociacao especial, duvida fora do seu conhecimento). Use sua leitura da conversa."
+    );
+  }
+
+  // Qualifying questions
+  if (questions.length > 0) {
+    parts.push("");
+    parts.push("PERGUNTAS OBRIGATORIAS DE QUALIFICACAO (precisa de resposta clara pra cada):");
+    questions.forEach((q, i) => parts.push(`${i + 1}. ${q}`));
+    parts.push(
+      "REGRA: nao envie link nem acione handoff antes de ter resposta pras perguntas acima. Faca UMA por vez, espalhadas pela conversa, sem parecer interrogatorio."
+    );
+  }
+
+  // Required info to capture for handoff
+  if (requiredInfo.length > 0 && (strategy === "team_handoff" || strategy === "auto")) {
+    parts.push("");
+    parts.push("INFORMACOES OBRIGATORIAS PRA HANDOFF (capture antes de chamar a equipe):");
+    requiredInfo.forEach((f, i) => parts.push(`${i + 1}. ${f}`));
+  }
+
+  // Link config
+  if (closingLink && (strategy === "direct_link" || strategy === "qualify_first" || strategy === "auto")) {
+    parts.push("");
+    parts.push("LINK DE FECHAMENTO:");
+    parts.push(`URL: ${closingLink}`);
+    if (closingMessage) {
+      parts.push(`Mensagem que acompanha: ${closingMessage}`);
+    }
+    parts.push("");
+    parts.push(
+      "Quando estiver na hora de enviar, use NO FIM da sua resposta a tag invisivel:"
+    );
+    parts.push("[CLOSE_WITH_LINK]");
+    parts.push(
+      "O sistema vai apagar a tag, anexar o link como balao separado e marcar o lead como pronto pra fechar. Nao cite o link na sua fala visivel se voce vai usar a tag, o sistema cuida disso."
+    );
+  }
+
+  // Handoff config
+  if (handoffEmail && (strategy === "team_handoff" || strategy === "auto")) {
+    parts.push("");
+    parts.push("HANDOFF PRA EQUIPE:");
+    parts.push(
+      "Quando precisar acionar a equipe humana (ex: lead quer gerar link customizado, negociar valor, tirar duvida fora do seu treinamento), use NO FIM da sua resposta a tag:"
+    );
+    parts.push("[HANDOFF_TO_TEAM:resumo curto da acao que voce precisa que a equipe faca]");
+    parts.push(
+      `Ex: [HANDOFF_TO_TEAM:gerar link Stripe pro plano Plus mensal, R$ 297]`
+    );
+    parts.push(
+      "O sistema vai apagar a tag, notificar o(a) responsavel por email" +
+        " com todo o contexto da conversa, e atualizar o status do lead."
+    );
+    if (handoffWaitMessage) {
+      parts.push(
+        `Antes de usar a tag, mande primeiro pro lead esta mensagem (ou variacao com o mesmo sentido): "${handoffWaitMessage}"`
+      );
+    }
+  }
+
+  return parts.join("\n");
 }
 
 interface SchedulingContext {
@@ -1249,11 +1480,13 @@ function collectTags(flags: {
   escalation: boolean;
   conversion: boolean;
   scheduled?: boolean;
+  handoff?: boolean;
 }): string[] {
   const tags: string[] = [];
   if (flags.escalation) tags.push("escalation");
   if (flags.conversion) tags.push("conversion");
   if (flags.scheduled) tags.push("scheduled");
+  if (flags.handoff) tags.push("handoff");
   return tags;
 }
 
