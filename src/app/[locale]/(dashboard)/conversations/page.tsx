@@ -321,12 +321,12 @@ export default function ConversationsPage() {
               disabled={toggling || !det}
               className={cn(
                 "flex items-center gap-2 h-9 px-3 rounded-xl text-[12px] font-semibold cursor-pointer border transition-all active:scale-[0.97]",
-                // Use text-foreground (high contrast) instead of text-primary
-                // because in dark mode primary is a light lime and disappears
-                // on top of bg-primary/10. The Brain icon keeps its primary
-                // tint via its own className.
+                // Solid chip in the active state: bg-primary + text-primary-
+                // foreground = lime + black in dark mode (and indigo + white
+                // in light). Previously bg-primary/10 + text-foreground gave
+                // white-text-on-faint-lime which the operator couldn't read.
                 det?.isAIEnabled
-                  ? "bg-primary/10 text-foreground border-primary/30 hover:bg-primary/15"
+                  ? "bg-primary text-primary-foreground border-primary shadow-sm hover:opacity-90"
                   : "bg-muted text-muted-foreground border-border hover:bg-muted/80"
               )}
             >
@@ -334,9 +334,9 @@ export default function ConversationsPage() {
                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
               ) : det?.isAIEnabled ? (
                 <>
-                  <Brain className="w-3.5 h-3.5 text-primary" />
+                  <Brain className="w-3.5 h-3.5" />
                   <span className="hidden sm:inline">{t("aiActive")}</span>
-                  <Pause className="w-3 h-3 opacity-60" />
+                  <Pause className="w-3 h-3 opacity-70" />
                 </>
               ) : (
                 <>
