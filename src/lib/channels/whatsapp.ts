@@ -105,19 +105,18 @@ export class WhatsAppProvider implements ChannelProvider {
       return { success: false, error: "missing_evolution_api_url" };
     }
 
-    // PRE-FLIGHT: verify the destination number is actually on WhatsApp.
-    // Baileys returns the same opaque "Connection Closed" error for both
-    // "instance is dead" AND "destination has no WhatsApp account", which
-    // made the failure mode indistinguishable from a real connectivity
-    // problem. Catching it here gives the operator a clear "not_on_whatsapp"
-    // signal so they can clean up the lead instead of restarting the
-    // instance over and over.
-    const check = await this.checkNumber(number);
-    if (check.knownInvalid) {
-      return { success: false, error: "not_on_whatsapp" };
+    // PRE-FLIGHT: optional, off by default. Some Evolution forks return
+    // bogus exists=false on /chat/whatsappNumbers which would silently
+    // block ALL sends. Opt in via WHATSAPP_PREVALIDATE_NUMBERS=true once
+    // you've verified the endpoint behaves correctly on your server.
+    if (process.env.WHATSAPP_PREVALIDATE_NUMBERS === "true") {
+      const check = await this.checkNumber(number);
+      if (check.knownInvalid) {
+        return { success: false, error: "not_on_whatsapp" };
+      }
+      // unknown === true means the validator endpoint itself errored,
+      // proceed with the send and let normal error handling kick in.
     }
-    // check.unknown === true means the validator endpoint itself errored,
-    // proceed with the send and let normal error handling kick in.
 
     await this.sendPresence(number, content.length);
 

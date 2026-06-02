@@ -836,7 +836,13 @@
       "restartConfirm": "Riavviare la sessione WhatsApp su Evolution? Mantiene l'accoppiamento, riapre solo la connessione. Usalo quando gli invii falliscono con 'Connection Closed'.",
       "restartOk": "Sessione riavviata. Prova a inviare di nuovo.",
       "restartError": "Riavvio non riuscito. Se persiste, clicca Riconnetti e scansiona di nuovo il QR.",
-      "restartHint": "Se i messaggi falliscono anche se il numero risulta connesso, clicca Riavvia. Riapre la connessione senza riscansionare il QR."
+      "restartHint": "Se i messaggi falliscono anche se il numero risulta connesso, clicca Riavvia. Riapre la connessione senza riscansionare il QR.",
+      "diagnoseTitle": "Diagnostica connessione Evolution",
+      "diagnoseDesc": "Esegue fetchInstances, connectionState e whatsappNumbers in sequenza e mostra la risposta grezza di ciascuno. Usalo quando gli invii falliscono per vedere esattamente cosa Evolution sta restituendo.",
+      "diagnoseRun": "Diagnostica (solo verifica)",
+      "diagnoseSend": "Diagnostica + invia messaggio di test",
+      "diagnoseReport": "Report (clicca copia e incolla nella chat di supporto)",
+      "diagnoseCopy": "Copia report"
     },
     "email": {
       "title": "Email",

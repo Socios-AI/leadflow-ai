@@ -835,7 +835,13 @@
       "restartConfirm": "Reiniciar a sessao do WhatsApp na Evolution? Mantem o pareamento, so reabre a conexao com o WhatsApp. Use quando os envios estiverem falhando com 'Connection Closed'.",
       "restartOk": "Sessao reiniciada. Tente reenviar uma mensagem.",
       "restartError": "Nao foi possivel reiniciar. Se persistir, clique em Reconectar e escaneie o QR de novo.",
-      "restartHint": "Se as mensagens estiverem falhando mesmo com o numero conectado, clique em Reiniciar. Isso reabre a conexao com o WhatsApp sem precisar escanear o QR de novo."
+      "restartHint": "Se as mensagens estiverem falhando mesmo com o numero conectado, clique em Reiniciar. Isso reabre a conexao com o WhatsApp sem precisar escanear o QR de novo.",
+      "diagnoseTitle": "Diagnosticar conexao Evolution",
+      "diagnoseDesc": "Roda fetchInstances, connectionState e whatsappNumbers em sequencia e mostra a resposta crua de cada uma. Use quando os envios estiverem falhando pra ver exatamente o que a Evolution esta retornando.",
+      "diagnoseRun": "Diagnosticar (somente check)",
+      "diagnoseSend": "Diagnosticar + enviar mensagem teste",
+      "diagnoseReport": "Relatorio (clique em copiar e cole na conversa de suporte)",
+      "diagnoseCopy": "Copiar relatorio"
     },
     "email": {
       "title": "E-mail",

@@ -835,7 +835,13 @@
       "restartConfirm": "Restart the WhatsApp session on Evolution? Keeps the pairing, only reopens the connection. Use this when sends are failing with 'Connection Closed'.",
       "restartOk": "Session restarted. Try sending a message again.",
       "restartError": "Could not restart. If it persists, click Reconnect and scan the QR again.",
-      "restartHint": "If messages are failing even though the number is connected, click Restart. It reopens the WhatsApp connection without re-scanning the QR."
+      "restartHint": "If messages are failing even though the number is connected, click Restart. It reopens the WhatsApp connection without re-scanning the QR.",
+      "diagnoseTitle": "Diagnose Evolution connection",
+      "diagnoseDesc": "Runs fetchInstances, connectionState and whatsappNumbers in sequence and shows the raw response from each. Use when sends fail to see exactly what Evolution is returning.",
+      "diagnoseRun": "Diagnose (check only)",
+      "diagnoseSend": "Diagnose + send test message",
+      "diagnoseReport": "Report (click copy and paste into support chat)",
+      "diagnoseCopy": "Copy report"
     },
     "email": {
       "title": "Email",

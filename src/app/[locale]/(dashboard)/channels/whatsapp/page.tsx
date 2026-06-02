@@ -42,6 +42,9 @@ export default function WhatsAppChannelPage() {
   const [funnelOnlySaving, setFunnelOnlySaving] = useState(false);
   const [restarting, setRestarting] = useState(false);
   const [restartToast, setRestartToast] = useState<string | null>(null);
+  const [diagnosing, setDiagnosing] = useState(false);
+  // The whole raw response — operator can copy/paste it to support.
+  const [diagnoseReport, setDiagnoseReport] = useState<unknown>(null);
   const pollRef = useRef<NodeJS.Timeout | null>(null);
 
   const loadStatus = useCallback(async () => {
@@ -132,6 +135,27 @@ export default function WhatsAppChannelPage() {
       setWebhookToast(t("webhookReconfigureError"));
     } finally {
       setReconfiguring(false);
+    }
+  }
+
+  async function handleDiagnose(actuallySend: boolean) {
+    setDiagnosing(true);
+    setDiagnoseReport(null);
+    try {
+      const r = await fetch(
+        `/api/channels/whatsapp/diagnose${actuallySend ? "?send=true" : ""}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({}),
+        }
+      );
+      const d = await r.json().catch(() => ({ error: "invalid_response" }));
+      setDiagnoseReport(d);
+    } catch (err) {
+      setDiagnoseReport({ error: err instanceof Error ? err.message : String(err) });
+    } finally {
+      setDiagnosing(false);
     }
   }
 
@@ -388,6 +412,60 @@ export default function WhatsAppChannelPage() {
             />
           </button>
         </div>
+      </div>
+
+      {/* Diagnose: full trace of every Evolution call. The operator gets
+          a copy-pastable JSON blob to send to support when sends fail. */}
+      <div className="rounded-2xl border border-border bg-card p-4 space-y-3">
+        <div className="flex items-start gap-3">
+          <div className="w-9 h-9 rounded-xl bg-blue-500/15 text-blue-400 grid place-items-center shrink-0">
+            <RefreshCw className="w-4 h-4" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-[13px] font-semibold text-foreground">
+              {t("diagnoseTitle")}
+            </p>
+            <p className="text-[11.5px] text-muted-foreground mt-1 leading-relaxed">
+              {t("diagnoseDesc")}
+            </p>
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button
+            onClick={() => handleDiagnose(false)}
+            disabled={diagnosing}
+            className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg border border-border text-[11.5px] font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors disabled:opacity-50"
+          >
+            {diagnosing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+            {t("diagnoseRun")}
+          </button>
+          <button
+            onClick={() => handleDiagnose(true)}
+            disabled={diagnosing}
+            className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg border border-amber-500/40 text-[11.5px] font-medium text-amber-500 hover:bg-amber-500/10 transition-colors disabled:opacity-50"
+          >
+            {diagnosing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5" />}
+            {t("diagnoseSend")}
+          </button>
+        </div>
+        {diagnoseReport !== null && (
+          <div className="rounded-xl border border-border/40 bg-muted/30 p-3">
+            <p className="text-[10.5px] font-bold uppercase tracking-wider text-muted-foreground mb-2">
+              {t("diagnoseReport")}
+            </p>
+            <pre className="text-[10.5px] font-mono text-foreground overflow-x-auto whitespace-pre-wrap max-h-96 overflow-y-auto">
+              {JSON.stringify(diagnoseReport, null, 2)}
+            </pre>
+            <button
+              onClick={() => {
+                navigator.clipboard.writeText(JSON.stringify(diagnoseReport, null, 2)).catch(() => {});
+              }}
+              className="mt-2 text-[11px] text-primary hover:underline"
+            >
+              {t("diagnoseCopy")}
+            </button>
+          </div>
+        )}
       </div>
 
       <div className="space-y-2">
