@@ -27,7 +27,13 @@ export function DashboardShell({ children, adminOnboarding }: DashboardShellProp
   const isFullBleed = FULL_BLEED_ROUTES.some(r => pathname?.includes(r))
 
   return (
-    <div className="flex h-screen overflow-hidden bg-background">
+    // h-dvh (dynamic viewport height) instead of h-screen (100vh static).
+    // Reason: the conversations page uses 100dvh in its own calc and the
+    // parent was on 100vh — when the mobile address bar collapses (or any
+    // browser chrome animates), the child grows past the parent and the
+    // operator sees the sidebar drift up with a black bar appearing below.
+    // h-dvh keeps both in sync as the visible viewport changes.
+    <div className="flex h-dvh overflow-hidden bg-background">
       {mobileOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 lg:hidden" onClick={() => setMobileOpen(false)} />
       )}
