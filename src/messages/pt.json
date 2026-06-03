@@ -614,7 +614,18 @@
     "saveError": "Erro ao salvar",
     "connectionError": "Erro de conexão",
     "previewTiming": "Tempo",
+    "wizard": {
+      "next": "Próximo",
+      "finish": "Salvar funil",
+      "viewAll": "Ver tudo",
+      "viewGuided": "Modo guiado",
+      "switchToFlat": "Ver todas as etapas em uma única página",
+      "switchToGuided": "Voltar ao modo guiado passo a passo"
+    },
     "nav": {
+      "language": "Idioma",
+      "firstMessage": "Primeira mensagem",
+      "followups": "Follow-ups",
       "template": "Origem do lead",
       "goal": "Objetivo",
       "timing": "Quando contatar",

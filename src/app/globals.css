@@ -281,6 +281,28 @@
 
   ::selection { background: rgba(185, 244, 149, 0.25); color: inherit; }
 
+  /* Pipeline guided mode: hide every step section that isn't the one
+     currently selected. The active step's data-pipeline-step matches the
+     container's data-current-step. This avoids wrapping every StepCard
+     in conditional JSX. */
+  .pipeline-guided[data-current-step] [data-pipeline-step] {
+    display: none;
+  }
+  .pipeline-guided[data-current-step="language"] [data-pipeline-step="language"],
+  .pipeline-guided[data-current-step="template"] [data-pipeline-step="template"],
+  .pipeline-guided[data-current-step="goal"] [data-pipeline-step="goal"],
+  .pipeline-guided[data-current-step="timing"] [data-pipeline-step="timing"],
+  .pipeline-guided[data-current-step="channel"] [data-pipeline-step="channel"],
+  .pipeline-guided[data-current-step="first-message"] [data-pipeline-step="first-message"],
+  .pipeline-guided[data-current-step="followups"] [data-pipeline-step="followups"],
+  .pipeline-guided[data-current-step="closing"] [data-pipeline-step="closing"],
+  .pipeline-guided[data-current-step="links"] [data-pipeline-step="links"],
+  .pipeline-guided[data-current-step="transfer"] [data-pipeline-step="transfer"],
+  .pipeline-guided[data-current-step="calendar"] [data-pipeline-step="calendar"],
+  .pipeline-guided[data-current-step="webhook"] [data-pipeline-step="webhook"] {
+    display: block;
+  }
+
   /* Override Chrome/Edge autofill default. Without this, autofilled
      inputs paint a lime/yellow background with browser-default text
      color — which the operator was seeing as "the search bar turns all

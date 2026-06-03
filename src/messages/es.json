@@ -614,7 +614,18 @@
     "saveError": "Error al guardar",
     "connectionError": "Error de conexión",
     "previewTiming": "Tiempo",
+    "wizard": {
+      "next": "Siguiente",
+      "finish": "Guardar embudo",
+      "viewAll": "Ver todo",
+      "viewGuided": "Modo guiado",
+      "switchToFlat": "Ver todas las etapas en una sola pagina",
+      "switchToGuided": "Volver al modo paso a paso"
+    },
     "nav": {
+      "language": "Idioma",
+      "firstMessage": "Primer mensaje",
+      "followups": "Follow-ups",
       "template": "Origen del lead",
       "goal": "Objetivo",
       "timing": "Cuándo contactar",

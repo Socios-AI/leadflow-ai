@@ -614,7 +614,18 @@
     "saveError": "Error saving",
     "connectionError": "Connection error",
     "previewTiming": "Timing",
+    "wizard": {
+      "next": "Next",
+      "finish": "Save funnel",
+      "viewAll": "View all",
+      "viewGuided": "Guided mode",
+      "switchToFlat": "View all steps on a single page",
+      "switchToGuided": "Back to step-by-step mode"
+    },
     "nav": {
+      "language": "Language",
+      "firstMessage": "First message",
+      "followups": "Follow-ups",
       "template": "Lead origin",
       "goal": "Goal",
       "timing": "Timing",

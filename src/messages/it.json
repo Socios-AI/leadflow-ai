@@ -615,7 +615,18 @@
     "saveError": "Errore al salvar",
     "connectionError": "Errore de conexão",
     "previewTiming": "Tempo",
+    "wizard": {
+      "next": "Avanti",
+      "finish": "Salva funnel",
+      "viewAll": "Vedi tutto",
+      "viewGuided": "Modalita guidata",
+      "switchToFlat": "Vedi tutti i passaggi in una sola pagina",
+      "switchToGuided": "Torna alla modalita passo per passo"
+    },
     "nav": {
+      "language": "Lingua",
+      "firstMessage": "Primo messaggio",
+      "followups": "Follow-up",
       "template": "Origem del lead",
       "goal": "Obiettivo",
       "timing": "Quandel contatar",

@@ -267,7 +267,11 @@ export default function PipelinePage() {
   const [saved, setSaved] = useState(false);
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
   const [copied, setCopied] = useState(false);
-  const [showAdvanced, setShowAdvanced] = useState(false);
+  // Guided mode: one step visible at a time, with prev/next. Operator can
+  // flip to "see everything" via the toggle in the header for power-user
+  // edits without scrolling step-by-step.
+  const [guidedMode, setGuidedMode] = useState(true);
+  const [currentStepIdx, setCurrentStepIdx] = useState(0);
 
   // ── Load existing pipeline ──
   useEffect(() => {
@@ -287,6 +291,37 @@ export default function PipelinePage() {
   const needsWebhook = NEEDS_WEBHOOK_TEMPLATES.includes(
     config.template as TemplateId
   );
+
+  // Ordered list of step IDs that should appear in the wizard, gated by
+  // what the user has already chosen. The currentStepIdx is clamped to
+  // this list, so adding/removing options can't park the wizard on a
+  // hidden step.
+  const activeStepIds = useMemo<string[]>(() => {
+    const out: string[] = ["language", "template"];
+    if (config.template) {
+      out.push("goal");
+      if (config.goal) {
+        if (isProactive) out.push("timing");
+        out.push("channel", "first-message", "followups", "closing", "links");
+        if (needsTransfer) out.push("transfer");
+        if (needsCalendar) out.push("calendar");
+        if (needsWebhook) out.push("webhook");
+      }
+    }
+    return out;
+  }, [config.template, config.goal, isProactive, needsTransfer, needsCalendar, needsWebhook]);
+
+  // Clamp currentStepIdx whenever the active list changes.
+  useEffect(() => {
+    if (currentStepIdx >= activeStepIds.length) {
+      setCurrentStepIdx(Math.max(0, activeStepIds.length - 1));
+    }
+  }, [activeStepIds.length, currentStepIdx]);
+
+  const currentStepId = activeStepIds[currentStepIdx] || "language";
+  // In guided mode each StepCard wraps with this helper to know whether
+  // to render itself. In "show all" mode every step is visible.
+  const showStep = (id: string) => !guidedMode || currentStepId === id;
 
   const webhookUrl = useMemo(() => {
     if (typeof window === "undefined") return "";
@@ -485,7 +520,7 @@ export default function PipelinePage() {
         </div>
         <div className="relative p-6 sm:p-7 flex items-start justify-between gap-4 flex-wrap">
           <div>
-            <div className="inline-flex items-center gap-1.5 h-6 px-2.5 rounded-full bg-primary/12 border border-primary/25 text-primary text-[10.5px] font-semibold uppercase tracking-[0.14em] mb-3">
+            <div className="inline-flex items-center gap-1.5 h-6 px-2.5 rounded-full bg-primary text-primary-foreground text-[10.5px] font-semibold uppercase tracking-[0.14em] mb-3 shadow-sm">
               <PipelineEyebrow className="w-3 h-3" />
               {t("eyebrow")}
             </div>
@@ -496,25 +531,43 @@ export default function PipelinePage() {
               {t("subtitle")}
             </p>
           </div>
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            className="inline-flex items-center gap-2 h-10 px-5 rounded-xl text-[13px] font-semibold btn-brand active:scale-[0.98] transition-transform disabled:opacity-50"
-          >
-            {saving ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : saved ? (
-              <>
-                <CheckCircle2 className="w-4 h-4" />
-                {t("saved")}
-              </>
-            ) : (
-              <>
-                <Save className="w-4 h-4" />
-                {t("saveConfig")}
-              </>
-            )}
-          </button>
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* View-mode toggle: Guiado (wizard, 1 passo por vez) vs
+                Tudo de uma vez (modo flat, todas as secoes visiveis). */}
+            <button
+              type="button"
+              onClick={() => setGuidedMode((v) => !v)}
+              className="inline-flex items-center gap-1.5 h-10 px-3 rounded-xl border border-border text-[12px] font-medium text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors"
+              title={
+                guidedMode
+                  ? t("wizard.switchToFlat") || "Ver tudo de uma vez"
+                  : t("wizard.switchToGuided") || "Voltar ao modo guiado"
+              }
+            >
+              {guidedMode
+                ? t("wizard.viewAll") || "Ver tudo"
+                : t("wizard.viewGuided") || "Modo guiado"}
+            </button>
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="inline-flex items-center gap-2 h-10 px-5 rounded-xl text-[13px] font-semibold btn-brand active:scale-[0.98] transition-transform disabled:opacity-50"
+            >
+              {saving ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : saved ? (
+                <>
+                  <CheckCircle2 className="w-4 h-4" />
+                  {t("saved")}
+                </>
+              ) : (
+                <>
+                  <Save className="w-4 h-4" />
+                  {t("saveConfig")}
+                </>
+              )}
+            </button>
+          </div>
         </div>
       </header>
 
@@ -554,12 +607,38 @@ export default function PipelinePage() {
         </aside>
 
         {/* ═══ CONTENT ═══ */}
-        <div className="space-y-6 min-w-0">
+        <div
+          className={cn("space-y-6 min-w-0", guidedMode && "pipeline-guided")}
+          data-current-step={currentStepId}
+        >
+          {/* WIZARD HEADER (guided mode only): progress dots + step count */}
+          {guidedMode && (
+            <WizardProgress
+              steps={activeStepIds}
+              currentIdx={currentStepIdx}
+              onJump={setCurrentStepIdx}
+              stepLabels={{
+                language: t("nav.language") || "Idioma",
+                template: t("nav.template"),
+                goal: t("nav.goal"),
+                timing: t("nav.timing"),
+                channel: t("nav.channel"),
+                "first-message": t("nav.firstMessage") || "Primeira mensagem",
+                followups: t("nav.followups") || "Follow-ups",
+                closing: t("nav.closing"),
+                links: t("nav.links"),
+                transfer: t("nav.transfer"),
+                calendar: t("nav.calendar"),
+                webhook: t("nav.webhook"),
+              }}
+            />
+          )}
           {/* LANGUAGE LOCK
               Cravado em cima de tudo. Quando setado != "auto", a engine
               ignora o que o lead escrever e responde sempre nesse idioma. */}
           <section
             id="step-language"
+            data-pipeline-step="language"
             className="rounded-2xl border border-border bg-card p-5 shadow-elevated"
           >
             <div className="flex items-start gap-3.5">
@@ -607,6 +686,7 @@ export default function PipelinePage() {
           {/* STEP: TEMPLATE */}
           <StepCard
             id="step-template"
+              dataStep="template"
             step={1}
             title={t("step1.title")}
             desc={t("step1.desc")}
@@ -660,6 +740,7 @@ export default function PipelinePage() {
           {config.template && (
             <StepCard
               id="step-goal"
+              dataStep="goal"
               step={2}
               title={t("step2.title")}
               desc={t("step2.desc")}
@@ -702,6 +783,7 @@ export default function PipelinePage() {
           {config.template && config.goal && isProactive && (
             <StepCard
               id="step-timing"
+              dataStep="timing"
               step={3}
               title={t("step3.title")}
               desc={t("step3.desc")}
@@ -741,6 +823,7 @@ export default function PipelinePage() {
           {config.template && config.goal && (
             <StepCard
               id="step-channel"
+              dataStep="channel"
               step={isProactive ? 4 : 3}
               title={t("step4.title")}
               desc={t("step4.desc")}
@@ -804,6 +887,7 @@ export default function PipelinePage() {
           {config.template && config.goal && (
             <StepCard
               id="step-first-message"
+              dataStep="first-message"
               step={isProactive ? 5 : 4}
               title={t("firstMessage.title")}
               desc={t("firstMessage.desc")}
@@ -876,6 +960,7 @@ export default function PipelinePage() {
           {config.template && config.goal && (
             <StepCard
               id="step-followups"
+              dataStep="followups"
               step={isProactive ? 6 : 5}
               title={t("followUps.title")}
               desc={t("followUps.desc")}
@@ -1035,6 +1120,7 @@ export default function PipelinePage() {
           {config.goal && (
             <StepCard
               id="step-closing"
+              dataStep="closing"
               step={isProactive ? 7 : 6}
               title={t("stepClosing.title")}
               desc={t("stepClosing.desc")}
@@ -1287,6 +1373,7 @@ export default function PipelinePage() {
           {/* STEP: IMPORTANT LINKS / SOCIAL — always available */}
           <StepCard
             id="step-links"
+              dataStep="links"
             step={isProactive ? 8 : 7}
             title={t("stepLinks.title")}
             desc={t("stepLinks.desc")}
@@ -1315,6 +1402,7 @@ export default function PipelinePage() {
           {needsTransfer && (
             <StepCard
               id="step-transfer"
+              dataStep="transfer"
               step={isProactive ? 9 : 8}
               title={t("step5transfer.title")}
               desc={t("step5transfer.desc")}
@@ -1352,6 +1440,7 @@ export default function PipelinePage() {
           {needsCalendar && (
             <StepCard
               id="step-calendar"
+              dataStep="calendar"
               step={isProactive ? 9 : 8}
               title={t("step5calendar.title")}
               desc={t("step5calendar.desc")}
@@ -1409,6 +1498,7 @@ export default function PipelinePage() {
           {needsWebhook && config.goal && (
             <StepCard
               id="step-webhook"
+              dataStep="webhook"
               step={
                 isProactive
                   ? needsTransfer || needsCalendar
@@ -1456,8 +1546,50 @@ export default function PipelinePage() {
             </StepCard>
           )}
 
-          {/* FUNNEL PREVIEW */}
-          {config.template && config.goal && (
+          {/* WIZARD PREV/NEXT (only in guided mode) */}
+          {guidedMode && activeStepIds.length > 1 && (
+            <div className="flex items-center justify-between gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setCurrentStepIdx((i) => Math.max(0, i - 1))}
+                disabled={currentStepIdx === 0}
+                className="inline-flex items-center gap-1.5 h-10 px-4 rounded-xl border border-border text-[12.5px] font-medium text-muted-foreground hover:text-foreground hover:bg-muted transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+              >
+                <ChevronDown className="w-3.5 h-3.5 rotate-90" />
+                {tc("back")}
+              </button>
+              <span className="text-[11.5px] text-muted-foreground tabular-nums">
+                {currentStepIdx + 1} / {activeStepIds.length}
+              </span>
+              {currentStepIdx < activeStepIds.length - 1 ? (
+                <button
+                  type="button"
+                  onClick={() => setCurrentStepIdx((i) => Math.min(activeStepIds.length - 1, i + 1))}
+                  className="inline-flex items-center gap-1.5 h-10 px-5 rounded-xl btn-brand text-[13px] font-semibold"
+                >
+                  {t("wizard.next") || "Proximo"}
+                  <ChevronDown className="w-3.5 h-3.5 -rotate-90" />
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleSave}
+                  disabled={saving}
+                  className="inline-flex items-center gap-1.5 h-10 px-5 rounded-xl btn-brand text-[13px] font-semibold disabled:opacity-60"
+                >
+                  {saving ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                  )}
+                  {t("wizard.finish") || t("saveConfig")}
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* FUNNEL PREVIEW (only in full view) */}
+          {!guidedMode && config.template && config.goal && (
             <section className="rounded-2xl border border-border bg-card p-5">
               <div className="flex items-center gap-2 mb-3">
                 <Target className="w-4 h-4 text-primary" />
@@ -1469,49 +1601,8 @@ export default function PipelinePage() {
             </section>
           )}
 
-          {/* ADVANCED */}
-          <button
-            onClick={() => setShowAdvanced(!showAdvanced)}
-            className="w-full flex items-center justify-between px-5 py-3.5 rounded-xl border border-border bg-card hover:bg-muted/40 transition-colors"
-          >
-            <div className="flex items-center gap-2">
-              <Zap className="w-4 h-4 text-muted-foreground" />
-              <span className="text-[13px] font-medium text-foreground">
-                {t("advanced.title")}
-              </span>
-            </div>
-            <ChevronDown
-              className={cn(
-                "w-4 h-4 text-muted-foreground transition-transform",
-                showAdvanced && "rotate-180"
-              )}
-            />
-          </button>
-
-          {showAdvanced && (
-            <section className="rounded-2xl border border-border bg-card p-5 space-y-4">
-              {/* Follow-up cadence moved to its own dedicated step above.
-                  This advanced area now hosts only orthogonal flags. */}
-              <div className="flex items-center justify-between p-3.5 rounded-xl border border-border bg-muted/40">
-                <div>
-                  <p className="text-[13px] font-medium text-foreground">
-                    {t("advanced.humanApproval")}
-                  </p>
-                  <p className="text-[11.5px] text-muted-foreground mt-0.5">
-                    {t("advanced.humanApprovalDesc")}
-                  </p>
-                </div>
-                <Toggle
-                  checked={config.humanApproval}
-                  onChange={(v) =>
-                    setConfig((p) => ({ ...p, humanApproval: v }))
-                  }
-                />
-              </div>
-            </section>
-          )}
-
-          {/* BOTTOM SAVE */}
+          {/* BOTTOM SAVE (only in full view; guided mode has its own finish button) */}
+          {!guidedMode && (
           <button
             onClick={handleSave}
             disabled={saving}
@@ -1531,6 +1622,7 @@ export default function PipelinePage() {
               </>
             )}
           </button>
+          )}
         </div>
       </div>
     </div>
@@ -1541,22 +1633,82 @@ export default function PipelinePage() {
 // PIECES
 // ══════════════════════════════════════════════════════════════
 
+/**
+ * Horizontal progress strip for guided mode. Shows segmented bar with
+ * labels for the current and adjacent steps, plus a "step N of M" counter.
+ * Clicking a dot jumps to that step (operator can skip ahead/back).
+ */
+function WizardProgress({
+  steps,
+  currentIdx,
+  onJump,
+  stepLabels,
+}: {
+  steps: string[];
+  currentIdx: number;
+  onJump: (idx: number) => void;
+  stepLabels: Record<string, string>;
+}) {
+  const currentLabel = stepLabels[steps[currentIdx]] || "";
+  return (
+    <div className="rounded-2xl border border-border bg-card p-4 shadow-elevated">
+      <div className="flex items-center justify-between mb-3">
+        <div className="min-w-0">
+          <p className="text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground">
+            {`${currentIdx + 1} / ${steps.length}`}
+          </p>
+          <p className="text-[14px] font-semibold text-foreground truncate mt-0.5">
+            {currentLabel}
+          </p>
+        </div>
+      </div>
+      <div className="flex items-center gap-1">
+        {steps.map((id, i) => {
+          const done = i < currentIdx;
+          const active = i === currentIdx;
+          return (
+            <button
+              key={id}
+              type="button"
+              onClick={() => onJump(i)}
+              aria-label={stepLabels[id] || id}
+              title={stepLabels[id] || id}
+              className={cn(
+                "h-1.5 flex-1 rounded-full transition-all cursor-pointer",
+                active
+                  ? "bg-primary"
+                  : done
+                    ? "bg-primary/40"
+                    : "bg-muted hover:bg-muted-foreground/20"
+              )}
+            />
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function StepCard({
   id,
   step,
   title,
   desc,
   children,
+  dataStep,
 }: {
   id?: string;
   step: number;
   title: string;
   desc: string;
   children: React.ReactNode;
+  /** Identifier used by guided mode CSS to hide non-current steps. */
+  dataStep?: string;
 }) {
   return (
     <section
       id={id}
+      data-pipeline-step={dataStep}
       className="rounded-2xl border border-border bg-card p-6 scroll-mt-4 animate-fade-in-up shadow-elevated"
     >
       <header className="flex items-start gap-3.5 mb-6 pb-5 border-b border-border/50">
@@ -1857,7 +2009,7 @@ function FunnelPreview({
   if (isProactive)
     steps.push({
       label: t("funnel.aiContacts"),
-      color: "bg-primary/10 text-primary",
+      color: "bg-primary/15 text-foreground",
     });
   steps.push({
     label: t("funnel.conversation"),
