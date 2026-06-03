@@ -619,9 +619,23 @@
       "goal": "Goal",
       "timing": "Timing",
       "channel": "Channel",
+      "closing": "Closing",
+      "links": "Links & social",
       "transfer": "Transfer",
       "calendar": "Scheduling",
       "webhook": "Intake"
+    },
+    "stepLinks": {
+      "title": "Social media and links the AI can share",
+      "desc": "Register Instagram, Facebook, TikTok, site, portfolio links or any important URL. The AI sends them automatically when the lead asks or when the situation matches the 'when to send' instruction.",
+      "empty": "No links yet. Click add so the AI can share social media, site or portfolio when the lead asks.",
+      "addBtn": "Add link",
+      "nameLabel": "Name (what the lead sees)",
+      "namePlaceholder": "Ex: Store Instagram",
+      "urlLabel": "Full URL",
+      "kindLabel": "Type",
+      "whenLabel": "When to send",
+      "whenPlaceholder": "Ex: When the lead asks for visual references, or asks where to find more of our work."
     },
     "step1": {
       "title": "Where does your lead come from?",

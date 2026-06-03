@@ -13,11 +13,15 @@ import {
   Clock,
   Copy,
   ExternalLink,
+  Facebook,
   FileText,
   Globe,
   Instagram,
+  Link2,
+  Linkedin,
   Loader2,
   Mail,
+  MessageCircle,
   Phone,
   Plus,
   Save,
@@ -25,9 +29,12 @@ import {
   Smartphone,
   Zap as PipelineEyebrow,
   Target,
+  Twitter,
   UserCheck,
   Users,
+  Video,
   X,
+  Youtube,
   Zap,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -58,6 +65,25 @@ interface FollowUp {
  *  - auto           : AI decides between link and handoff based on context.
  */
 type ClosingStrategy = "direct_link" | "qualify_first" | "team_handoff" | "auto";
+
+type LinkKind =
+  | "instagram"
+  | "facebook"
+  | "twitter"
+  | "tiktok"
+  | "youtube"
+  | "linkedin"
+  | "whatsapp"
+  | "website"
+  | "other";
+
+interface ImportantLink {
+  id: string;
+  name: string;
+  url: string;
+  kind: LinkKind;
+  whenToSend: string;
+}
 
 interface PipelineConfig {
   template: string;
@@ -104,6 +130,8 @@ interface PipelineConfig {
   paymentWaitMessage: string;
   /** Message AI sends to the lead AFTER human confirms with "ok". */
   paymentConfirmedMessage: string;
+  /** Curated list of links (Insta, FB, site, etc.) the AI can share. */
+  importantLinks: ImportantLink[];
 }
 
 const LANGUAGE_OPTIONS: { code: string; label: string }[] = [
@@ -155,6 +183,7 @@ const DEFAULT_CONFIG: PipelineConfig = {
   paymentConfirmerPhones: [],
   paymentWaitMessage: "",
   paymentConfirmedMessage: "",
+  importantLinks: [],
 };
 
 function newFollowUpId(): string {
@@ -366,6 +395,29 @@ export default function PipelinePage() {
     id: "channel",
     label: t("nav.channel"),
     done: completedSteps.channel && completedSteps.goal,
+  });
+  // Closing strategy and Links cards always show after the goal is set —
+  // surface them in the sticky nav so the operator can jump there without
+  // scrolling through the wall of follow-up settings.
+  if (config.goal) {
+    stepsForNav.push({
+      id: "closing",
+      label: t("nav.closing"),
+      done:
+        config.closingStrategy === "team_handoff"
+          ? !!config.handoffEmail || !!config.handoffWebhook
+          : config.closingStrategy === "direct_link"
+            ? !!config.closingLink
+            : config.qualifyingQuestions.length > 0 ||
+              !!config.closingLink ||
+              !!config.handoffEmail ||
+              !!config.handoffWebhook,
+    });
+  }
+  stepsForNav.push({
+    id: "links",
+    label: t("nav.links"),
+    done: config.importantLinks.length > 0,
   });
   if (needsTransfer) {
     stepsForNav.push({
@@ -1232,11 +1284,38 @@ export default function PipelinePage() {
             </StepCard>
           )}
 
+          {/* STEP: IMPORTANT LINKS / SOCIAL — always available */}
+          <StepCard
+            id="step-links"
+            step={isProactive ? 8 : 7}
+            title={t("stepLinks.title")}
+            desc={t("stepLinks.desc")}
+          >
+            <LinksEditor
+              items={config.importantLinks}
+              onChange={(items) =>
+                setConfig((p) => ({ ...p, importantLinks: items }))
+              }
+              labels={{
+                empty: t("stepLinks.empty"),
+                addBtn: t("stepLinks.addBtn"),
+                nameLabel: t("stepLinks.nameLabel"),
+                namePlaceholder: t("stepLinks.namePlaceholder"),
+                urlLabel: t("stepLinks.urlLabel"),
+                urlPlaceholder: "https://...",
+                kindLabel: t("stepLinks.kindLabel"),
+                whenLabel: t("stepLinks.whenLabel"),
+                whenPlaceholder: t("stepLinks.whenPlaceholder"),
+                remove: tc("remove"),
+              }}
+            />
+          </StepCard>
+
           {/* STEP: TRANSFER */}
           {needsTransfer && (
             <StepCard
               id="step-transfer"
-              step={isProactive ? 8 : 7}
+              step={isProactive ? 9 : 8}
               title={t("step5transfer.title")}
               desc={t("step5transfer.desc")}
             >
@@ -1273,7 +1352,7 @@ export default function PipelinePage() {
           {needsCalendar && (
             <StepCard
               id="step-calendar"
-              step={isProactive ? 8 : 7}
+              step={isProactive ? 9 : 8}
               title={t("step5calendar.title")}
               desc={t("step5calendar.desc")}
             >
@@ -1323,22 +1402,21 @@ export default function PipelinePage() {
             </StepCard>
           )}
 
-          {/* STEP: WEBHOOK (simplified). Steps before webhook:
-                proactive: 1..6 base, +1 closing (always when goal set),
-                  +1 if transfer/calendar => 7 or 8 base, webhook = 8 or 9
-                reactive: 1..5 base, +1 closing, +1 if t/c => 6 or 7 base,
-                  webhook = 7 or 8 */}
+          {/* STEP: WEBHOOK (simplified). Step number cascades: closing (always
+                when goal set) + links (always) + transfer/calendar (conditional).
+                proactive: 8 (closing) + 1 (links) + maybe 1 (t/c) -> 10 or 11 - bumped to a stable next slot
+                reactive: 7 base + 1 + 1 -> 9 or 10 */}
           {needsWebhook && config.goal && (
             <StepCard
               id="step-webhook"
               step={
                 isProactive
                   ? needsTransfer || needsCalendar
+                    ? 10
+                    : 9
+                  : needsTransfer || needsCalendar
                     ? 9
                     : 8
-                  : needsTransfer || needsCalendar
-                    ? 8
-                    : 7
               }
               title={t("webhook.title")}
               desc={t("webhook.desc")}
@@ -1573,6 +1651,171 @@ function StringList({
         >
           <Plus className="w-3.5 h-3.5" />
           {tc("add")}
+        </button>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Map a link "kind" to its lucide-react icon. `Link2` is the generic
+ * fallback. Used inside LinksEditor and could also be used elsewhere
+ * if we ever surface curated links visually outside the editor.
+ */
+const LINK_KIND_ICONS: Record<LinkKind, React.ComponentType<{ className?: string }>> = {
+  instagram: Instagram,
+  facebook: Facebook,
+  twitter: Twitter,
+  tiktok: Video, // lucide has no TikTok icon
+  youtube: Youtube,
+  linkedin: Linkedin,
+  whatsapp: MessageCircle,
+  website: Globe,
+  other: Link2,
+};
+
+const LINK_KIND_LABELS: Record<LinkKind, string> = {
+  instagram: "Instagram",
+  facebook: "Facebook",
+  twitter: "X / Twitter",
+  tiktok: "TikTok",
+  youtube: "YouTube",
+  linkedin: "LinkedIn",
+  whatsapp: "WhatsApp",
+  website: "Site / URL",
+  other: "Outro",
+};
+
+interface LinksEditorLabels {
+  empty: string;
+  addBtn: string;
+  nameLabel: string;
+  namePlaceholder: string;
+  urlLabel: string;
+  urlPlaceholder: string;
+  kindLabel: string;
+  whenLabel: string;
+  whenPlaceholder: string;
+  remove: string;
+}
+
+function LinksEditor({
+  items,
+  onChange,
+  labels,
+}: {
+  items: ImportantLink[];
+  onChange: (next: ImportantLink[]) => void;
+  labels: LinksEditorLabels;
+}) {
+  function update(idx: number, patch: Partial<ImportantLink>) {
+    const next = items.map((it, i) => (i === idx ? { ...it, ...patch } : it));
+    onChange(next);
+  }
+  function add() {
+    onChange([
+      ...items,
+      {
+        id: `lk-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        name: "",
+        url: "",
+        kind: "instagram",
+        whenToSend: "",
+      },
+    ]);
+  }
+  function remove(idx: number) {
+    onChange(items.filter((_, i) => i !== idx));
+  }
+
+  return (
+    <div className="space-y-3">
+      {items.length === 0 && (
+        <p className="text-[12.5px] text-muted-foreground/80 italic">{labels.empty}</p>
+      )}
+      {items.map((link, idx) => {
+        const Icon = LINK_KIND_ICONS[link.kind] || Link2;
+        return (
+          <div
+            key={link.id}
+            className="rounded-xl border border-border bg-card p-4 space-y-3"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="w-8 h-8 rounded-lg bg-primary text-primary-foreground grid place-items-center shrink-0 shadow-sm">
+                  <Icon className="w-4 h-4" />
+                </div>
+                <span className="text-[12.5px] font-semibold text-foreground truncate">
+                  {link.name || LINK_KIND_LABELS[link.kind]}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => remove(idx)}
+                aria-label={labels.remove}
+                className="text-muted-foreground/50 hover:text-rose-500 transition-colors h-8 w-8 grid place-items-center rounded-lg hover:bg-rose-500/10"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <Field label={labels.nameLabel}>
+                <input
+                  value={link.name}
+                  onChange={(e) => update(idx, { name: e.target.value })}
+                  placeholder={labels.namePlaceholder}
+                  className="w-full h-9 px-3 rounded-lg bg-muted border border-transparent text-[12.5px] text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:border-ring/30"
+                />
+              </Field>
+              <Field label={labels.kindLabel}>
+                <select
+                  value={link.kind}
+                  onChange={(e) =>
+                    update(idx, { kind: e.target.value as LinkKind })
+                  }
+                  className="w-full h-9 px-3 rounded-lg bg-muted border border-transparent text-[12.5px] text-foreground focus:outline-none focus:border-ring/30 cursor-pointer"
+                >
+                  {(Object.keys(LINK_KIND_LABELS) as LinkKind[]).map((k) => (
+                    <option key={k} value={k}>
+                      {LINK_KIND_LABELS[k]}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            </div>
+
+            <Field label={labels.urlLabel}>
+              <input
+                type="url"
+                value={link.url}
+                onChange={(e) => update(idx, { url: e.target.value })}
+                placeholder={labels.urlPlaceholder}
+                className="w-full h-9 px-3 rounded-lg bg-muted border border-transparent text-[12.5px] text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:border-ring/30 font-mono"
+              />
+            </Field>
+
+            <Field label={labels.whenLabel} hint="">
+              <textarea
+                value={link.whenToSend}
+                onChange={(e) => update(idx, { whenToSend: e.target.value })}
+                placeholder={labels.whenPlaceholder}
+                rows={2}
+                className="w-full px-3 py-2 rounded-lg bg-muted border border-transparent text-[12.5px] text-foreground placeholder:text-muted-foreground/40 resize-y focus:outline-none focus:border-ring/30 leading-relaxed"
+              />
+            </Field>
+          </div>
+        );
+      })}
+
+      {items.length < 20 && (
+        <button
+          type="button"
+          onClick={add}
+          className="inline-flex items-center gap-1.5 h-10 px-4 rounded-xl border border-dashed border-border text-[12.5px] text-muted-foreground hover:text-foreground hover:border-foreground/40 transition-colors"
+        >
+          <Plus className="w-3.5 h-3.5" />
+          {labels.addBtn}
         </button>
       )}
     </div>

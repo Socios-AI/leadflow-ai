@@ -442,13 +442,17 @@ const aiWorker = new Worker(
     let followUpHours: number | null = null;
 
     if (provider && contactId) {
-      // Compose the outbound text. If the AI requested CLOSE_WITH_LINK
-      // we append the configured link as TWO extra bubbles (separator |||
-      // between accompanying message and the URL itself) so the lead
-      // sees three discrete messages: AI pitch, then context, then the
-      // bare URL. Discord/WhatsApp render the URL as a clickable card
-      // when it sits on its own line.
+      // Compose the outbound text. Order of appended bubbles matters:
+      //   1. AI's main reply
+      //   2. Curated social/important links (one bubble per URL so each
+      //      gets a link preview in WhatsApp)
+      //   3. Closing link (accompanyingMessage + URL bubbles)
       let fullText = aiResult.message;
+      if (aiResult.linksToSend && aiResult.linksToSend.length > 0) {
+        for (const link of aiResult.linksToSend) {
+          fullText = `${fullText}|||${link.url}`;
+        }
+      }
       if (aiResult.closeWithLink) {
         const { url, accompanyingMessage } = aiResult.closeWithLink;
         fullText = accompanyingMessage

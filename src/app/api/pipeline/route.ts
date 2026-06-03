@@ -79,6 +79,37 @@ function asPhoneArray(value: unknown): string[] {
   return out;
 }
 
+const LINK_KINDS = new Set([
+  "instagram", "facebook", "twitter", "tiktok", "youtube",
+  "linkedin", "whatsapp", "website", "other",
+]);
+
+interface ImportantLink {
+  id: string;
+  name: string;
+  url: string;
+  kind: string;
+  whenToSend: string;
+}
+
+function asImportantLinks(value: unknown): ImportantLink[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((entry, i) => {
+      const e = (entry as Record<string, unknown>) || {};
+      const url = String(e.url || "").trim().slice(0, 500);
+      const name = String(e.name || "").trim().slice(0, 60);
+      if (!url || !name) return null;
+      const rawKind = String(e.kind || "other").toLowerCase();
+      const kind = LINK_KINDS.has(rawKind) ? rawKind : "other";
+      const whenToSend = String(e.whenToSend || "").trim().slice(0, 280);
+      const id = typeof e.id === "string" && e.id ? e.id : `lk-${i}-${Date.now()}`;
+      return { id, name, url, kind, whenToSend };
+    })
+    .filter((x): x is ImportantLink => x !== null)
+    .slice(0, 20);
+}
+
 function asClosingStrategy(value: unknown): "direct_link" | "qualify_first" | "team_handoff" | "auto" {
   const s = String(value || "");
   if (s === "direct_link" || s === "qualify_first" || s === "team_handoff" || s === "auto") {
@@ -178,6 +209,7 @@ export async function GET() {
       paymentConfirmerPhones: asPhoneArray(p.pipelinePaymentConfirmerPhones),
       paymentWaitMessage: String(p.pipelinePaymentWaitMessage || ""),
       paymentConfirmedMessage: String(p.pipelinePaymentConfirmedMessage || ""),
+      importantLinks: asImportantLinks(p.pipelineImportantLinks),
     });
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
@@ -253,6 +285,7 @@ export async function PUT(req: NextRequest) {
       pipelinePaymentConfirmerPhones: asPhoneArray(body.paymentConfirmerPhones),
       pipelinePaymentWaitMessage: String(body.paymentWaitMessage || "").trim().slice(0, 500),
       pipelinePaymentConfirmedMessage: String(body.paymentConfirmedMessage || "").trim().slice(0, 500),
+      pipelineImportantLinks: asImportantLinks(body.importantLinks),
     };
 
     // Prisma's JSON column types require an InputJsonValue, but our

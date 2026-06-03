@@ -97,6 +97,13 @@ export interface AIResponseResult {
   /** AI emitted [PAYMENT_PROOF_RECEIVED]: lead claims paid; worker
    *  notifies the configured confirmer phones and pauses the AI. */
   paymentProofReceived?: boolean;
+  /** Curated links the AI picked via SEND_LINK tag. Worker appends each
+   *  one as a separate bubble after the visible reply. */
+  linksToSend?: {
+    name: string;
+    url: string;
+    kind: string;
+  }[];
 }
 
 interface ScheduleIntent {
@@ -297,6 +304,8 @@ export class AIEngine {
       loadMediaCatalog(params.accountId),
     ]);
     const mediaBlock = buildMediaBlock(mediaCatalog);
+    const linksCatalog = readLinksCatalog(cfg.persona);
+    const linksBlock = buildLinksBlock(linksCatalog);
 
     const systemPrompt = buildResponseSystemPrompt(cfg, params, {
       escalation,
@@ -306,6 +315,7 @@ export class AIEngine {
       language,
       knowledgeBlock,
       mediaBlock,
+      linksBlock,
     });
 
     const messages: HistoryEntry[] = [
@@ -320,13 +330,16 @@ export class AIEngine {
     // ── Parse optional SEND_MEDIA tags ──
     const mediaResult = extractMediaTags(rawReply, mediaCatalog);
 
+    // ── Parse SEND_LINK tags (curated important links) ──
+    const linksResult = extractLinkTags(mediaResult.cleaned, linksCatalog);
+
     // ── Parse [CLOSE_WITH_LINK] and [HANDOFF_TO_TEAM:summary] ──
     // The closing tags are stripped from the visible text. We resolve
     // them against the operator's pipeline config; if a tag has no
     // matching config (e.g. AI emitted HANDOFF but operator has no email
     // configured), we silently drop the side-effect so the lead still
     // gets a coherent reply.
-    const closingParsed = extractClosingTags(mediaResult.cleaned);
+    const closingParsed = extractClosingTags(linksResult.cleaned);
 
     // ── Parse optional SCHEDULE:{...} block and act on it ──
     const parsed = extractScheduleBlock(closingParsed.cleaned);
@@ -432,6 +445,14 @@ export class AIEngine {
       handoff,
       paymentInstructionsSent: closingParsed.paymentInstructions || undefined,
       paymentProofReceived: closingParsed.paymentProofReceived || undefined,
+      linksToSend:
+        linksResult.matched.length > 0
+          ? linksResult.matched.map((l) => ({
+              name: l.name,
+              url: l.url,
+              kind: l.kind,
+            }))
+          : undefined,
     };
   }
 
@@ -614,6 +635,58 @@ ${list}
 `;
 }
 
+/**
+ * Curated catalog of "important links" the operator manages on /pipeline:
+ * Instagram, Facebook, site, WhatsApp comercial, portfolio, etc. The AI
+ * shares one with a [SEND_LINK:name] tag and the worker appends the URL
+ * as a fresh WhatsApp bubble. Different from the closing link (only one)
+ * and from media (files in storage).
+ */
+interface LinkCatalogItem {
+  id: string;
+  name: string;
+  url: string;
+  kind: string;
+  whenToSend: string;
+}
+
+function readLinksCatalog(persona: Record<string, unknown>): LinkCatalogItem[] {
+  const raw = persona.pipelineImportantLinks;
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((entry) => {
+      const e = (entry as Record<string, unknown>) || {};
+      const id = String(e.id || "");
+      const name = String(e.name || "").trim();
+      const url = String(e.url || "").trim();
+      const kind = String(e.kind || "other");
+      const whenToSend = String(e.whenToSend || "").trim();
+      if (!id || !name || !url) return null;
+      return { id, name, url, kind, whenToSend };
+    })
+    .filter((x): x is LinkCatalogItem => x !== null);
+}
+
+function buildLinksBlock(items: LinkCatalogItem[]): string {
+  if (items.length === 0) return "";
+  const list = items
+    .map((l, i) => {
+      const when = l.whenToSend ? `\n   QUANDO ENVIAR: ${l.whenToSend}` : "";
+      return `${i + 1}. [${l.kind.toUpperCase()}] "${l.name}" -> ${l.url}${when}`;
+    })
+    .join("\n");
+  return `\nLINKS / REDES SOCIAIS QUE VOCE PODE COMPARTILHAR:
+Quando fizer sentido na conversa (lead pediu "me passa o Insta", "tem site?", etc, ou quando o "QUANDO ENVIAR" abaixo descrever a situacao), emita NO FIM da resposta UMA linha por link:
+SEND_LINK: "<nome exato>"
+
+Voce NUNCA cola a URL na fala visivel — o sistema cuida disso e envia a URL como balao separado.
+Maximo 2 links por resposta. Use o nome EXATO listado.
+
+DISPONIVEIS:
+${list}
+`;
+}
+
 const MEDIA_TAG_RE = /SEND_MEDIA:\s*"([^"\n]+)"/gi;
 
 function extractMediaTags(raw: string, catalog: MediaCatalogItem[]): {
@@ -622,8 +695,11 @@ function extractMediaTags(raw: string, catalog: MediaCatalogItem[]): {
 } {
   const matched: MediaCatalogItem[] = [];
   const seen = new Set<string>();
+  // Fresh regex per call — module-scope /g/ has lastIndex carryover bugs
+  // in long-lived worker processes.
+  const re = /SEND_MEDIA:\s*"([^"\n]+)"/gi;
   let m: RegExpExecArray | null;
-  while ((m = MEDIA_TAG_RE.exec(raw))) {
+  while ((m = re.exec(raw))) {
     const name = m[1].trim().toLowerCase();
     if (seen.has(name)) continue;
     const item = catalog.find((c) => c.name.trim().toLowerCase() === name);
@@ -633,7 +709,30 @@ function extractMediaTags(raw: string, catalog: MediaCatalogItem[]): {
     }
     if (matched.length >= 2) break;
   }
-  const cleaned = raw.replace(MEDIA_TAG_RE, "").trim();
+  const cleaned = raw.replace(re, "").trim();
+  return { cleaned, matched };
+}
+
+function extractLinkTags(raw: string, catalog: LinkCatalogItem[]): {
+  cleaned: string;
+  matched: LinkCatalogItem[];
+} {
+  if (catalog.length === 0) return { cleaned: raw, matched: [] };
+  const matched: LinkCatalogItem[] = [];
+  const seen = new Set<string>();
+  const re = /SEND_LINK:\s*"([^"\n]+)"/gi;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(raw))) {
+    const name = m[1].trim().toLowerCase();
+    if (seen.has(name)) continue;
+    const item = catalog.find((c) => c.name.trim().toLowerCase() === name);
+    if (item) {
+      matched.push(item);
+      seen.add(name);
+    }
+    if (matched.length >= 2) break;
+  }
+  const cleaned = raw.replace(re, "").trim();
   return { cleaned, matched };
 }
 
@@ -1034,6 +1133,7 @@ function buildResponseSystemPrompt(
     language: ResolvedLanguage;
     knowledgeBlock?: string;
     mediaBlock?: string;
+    linksBlock?: string;
   }
 ): string {
   const pipelineGoal = personaField(cfg.persona, "pipelineGoal", "closeSale");
@@ -1066,6 +1166,7 @@ function buildResponseSystemPrompt(
 ${businessBlock}
 ${flags.knowledgeBlock || ""}
 ${flags.mediaBlock || ""}
+${flags.linksBlock || ""}
 CONTEXTO DO LEAD:
 - Nome: ${params.leadName || "desconhecido"}
 - Telefone: ${params.leadPhone || "—"}

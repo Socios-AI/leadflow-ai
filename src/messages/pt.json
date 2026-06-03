@@ -619,9 +619,23 @@
       "goal": "Objetivo",
       "timing": "Quando contatar",
       "channel": "Canal",
+      "closing": "Fechamento",
+      "links": "Links e redes",
       "transfer": "Transferência",
       "calendar": "Agendamento",
       "webhook": "Recebimento"
+    },
+    "stepLinks": {
+      "title": "Redes sociais e links que a IA pode compartilhar",
+      "desc": "Cadastre Instagram, Facebook, TikTok, site, links de portfolio ou qualquer URL importante. A IA envia automaticamente quando o lead pedir ou quando a situacao bater com a instrucao 'quando enviar'.",
+      "empty": "Nenhum link cadastrado ainda. Clique em adicionar pra que a IA possa compartilhar redes sociais, site ou portfolio quando o lead pedir.",
+      "addBtn": "Adicionar link",
+      "nameLabel": "Nome (como o lead ve)",
+      "namePlaceholder": "Ex: Instagram da loja",
+      "urlLabel": "URL completa",
+      "kindLabel": "Tipo",
+      "whenLabel": "Quando enviar",
+      "whenPlaceholder": "Ex: Quando o lead pedir referencias visuais, ou perguntar onde encontrar mais do nosso trabalho."
     },
     "step1": {
       "title": "De onde vem seu lead?",
