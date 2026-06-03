@@ -18,6 +18,7 @@ import { queues } from "@/lib/queues";
 import { debounceMessage } from "@/lib/debounce";
 import { getChannelProvider } from "@/lib/channels/factory";
 import { WhatsAppProvider } from "@/lib/channels/whatsapp";
+import { AIEngine } from "@/lib/ai-engine/engine";
 
 // Words a payment confirmer can reply with to release the lead.
 const CONFIRM_TOKENS_RE =
@@ -192,9 +193,47 @@ export async function handleWhatsAppInbound(
 
   // 8. Text / media with caption → save INBOUND message + debounce
   const { text: textContent, type: contentType } = extractContent(data);
-  const content =
+  let content =
     textContent || (contentType !== "TEXT" ? `[${contentType}]` : "");
   if (!content) return { status: "ignored", reason: "empty" };
+
+  // 8a. If the lead is in the payment-proof window AND just sent an image,
+  //     run Vision OCR so the AI sees the actual content (Zelle/Pix receipt)
+  //     instead of a blind "[IMAGE]". This is what makes the manual payment
+  //     flow actually close the loop end-to-end.
+  if (contentType === "IMAGE") {
+    const leadMeta = (lead.metadata as Record<string, unknown> | null) || {};
+    const paymentFlow = leadMeta.paymentFlow as
+      | Record<string, unknown>
+      | undefined;
+    if (paymentFlow?.awaitingProof === true && externalMsgId) {
+      try {
+        const cfg = (channelRow.config as Record<string, string> | null) || {};
+        const wa = new WhatsAppProvider({
+          instanceName: cfg.instanceName || instanceName,
+          evolutionApiUrl:
+            cfg.evolutionApiUrl || process.env.EVOLUTION_API_URL || "",
+          evolutionApiKey:
+            cfg.evolutionApiKey || process.env.EVOLUTION_API_KEY || "",
+        });
+        const { buffer, mimetype } = await wa.downloadMedia(externalMsgId);
+        const ocrReport = await AIEngine.analyzePaymentProofImage(
+          buffer,
+          mimetype || "image/jpeg"
+        );
+        // Caption + OCR (caption first so the AI sees the lead's words too).
+        content = textContent
+          ? `${textContent}\n\n${ocrReport}`
+          : ocrReport;
+      } catch (err) {
+        console.warn(
+          "[whatsapp-inbound] payment-proof OCR failed",
+          err instanceof Error ? err.message : err
+        );
+        // Fall back to "[IMAGE]" — better than dropping the message.
+      }
+    }
+  }
 
   const message = await prisma.message.create({
     data: {

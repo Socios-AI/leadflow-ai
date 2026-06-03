@@ -861,7 +861,10 @@
     "language": {
       "title": "AI language",
       "desc": "Lock the language the AI will use to reply to EVERY lead in this funnel. If you leave Auto, the AI guesses from the lead's text.",
-      "lockedHint": "Locked to {lang}. The AI will reply in this language even if the lead writes in another one."
+      "lockedHint": "Locked to {lang}. The AI will reply in this language even if the lead writes in another one.",
+      "secondaryTitle": "Other languages the AI also speaks",
+      "secondaryDesc": "Pick up to 4 extra languages. The AI starts in {primary}, but if the lead replies in any of these, it switches to the lead's language. Great for bilingual markets (e.g. US with Hispanic customers).",
+      "secondaryHint": "Starts in {primary}. If the lead writes in {list}, the AI switches to that language."
     }
   },
   "channels": {

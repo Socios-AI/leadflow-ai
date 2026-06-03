@@ -79,6 +79,28 @@ function asPhoneArray(value: unknown): string[] {
   return out;
 }
 
+// Whitelist of secondary-language codes the AI engine can render. Kept in
+// sync with ALLOWED_LANGS below and with LANGUAGE_OPTIONS in the UI.
+const SECONDARY_LANG_CODES = new Set([
+  "pt", "pt-BR", "en", "es", "it", "de", "fr", "nl", "ja",
+]);
+
+function asLanguageArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const v of value) {
+    const raw = String(v ?? "").trim();
+    if (!raw) continue;
+    if (!SECONDARY_LANG_CODES.has(raw)) continue;
+    if (seen.has(raw)) continue;
+    seen.add(raw);
+    out.push(raw);
+    if (out.length >= 4) break;
+  }
+  return out;
+}
+
 const LINK_KINDS = new Set([
   "instagram", "facebook", "twitter", "tiktok", "youtube",
   "linkedin", "whatsapp", "website", "other",
@@ -187,6 +209,9 @@ export async function GET() {
       // Hard language override stored at persona.language. "auto" lets the
       // engine fall back to the campaign/lead heuristic.
       language: String(p.language || "auto"),
+      // Optional whitelist of languages the AI may MIRROR if the lead
+      // replies in one of them. Empty array = hard lock on `language`.
+      secondaryLanguages: asLanguageArray(p.pipelineSecondaryLanguages),
       followUps,
       followUpEnabled: followUps.length > 0,
       transferPhone: p.pipelineTransferPhone || "",
@@ -246,11 +271,17 @@ export async function PUT(req: NextRequest) {
     ]);
     const rawLang = String(body.language || "auto");
     const language = ALLOWED_LANGS.has(rawLang) ? rawLang : "auto";
+    // Normalize secondary languages: drop "auto", duplicates, the primary
+    // itself, and anything not in the whitelist. Hard cap at 4.
+    const secondaryLanguages = asLanguageArray(body.secondaryLanguages).filter(
+      (c) => c !== "auto" && c !== language
+    );
 
     const persona: PersonaShape = {
       ...existingPersona,
       // Hard language override read by the AI engine on every generation.
       language,
+      pipelineSecondaryLanguages: secondaryLanguages,
       pipelineTemplate: body.template,
       pipelineGoal: body.goal,
       pipelineFirstContact: body.firstContact,

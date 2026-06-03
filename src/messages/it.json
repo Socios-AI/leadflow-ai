@@ -862,7 +862,10 @@
     "language": {
       "title": "Lingua dell'IA",
       "desc": "Blocca qui la lingua in cui l'IA rispondera a OGNI lead di questo funnel. Se lasci Auto, l'IA la deduce dal testo del lead.",
-      "lockedHint": "Bloccato su {lang}. L'IA rispondera in questa lingua anche se il lead scrive in un'altra."
+      "lockedHint": "Bloccato su {lang}. L'IA rispondera in questa lingua anche se il lead scrive in un'altra.",
+      "secondaryTitle": "Altre lingue che l'IA parla",
+      "secondaryDesc": "Scegli fino a 4 lingue extra. L'IA inizia in {primary}, ma se il lead risponde in una di queste, passa alla lingua del lead. Utile per mercati bilingui (es.: USA con clienti ispanici).",
+      "secondaryHint": "Inizia in {primary}. Se il lead scrive in {list}, l'IA passa a quella lingua."
     }
   },
   "channels": {

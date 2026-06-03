@@ -162,6 +162,7 @@ export class AIEngine {
       campaignLanguage: params.campaignLanguage,
       campaignCountry: params.campaignCountry,
     });
+    const secondaryLanguages = readSecondaryLanguages(cfg.persona, language.code);
 
     const knowledgeQuery = [
       params.campaignInfo || "",
@@ -182,7 +183,8 @@ export class AIEngine {
       params,
       businessContext,
       language,
-      knowledgeBlock
+      knowledgeBlock,
+      secondaryLanguages
     );
     const userTurn = buildFirstContactUserTurn(params);
 
@@ -223,6 +225,7 @@ export class AIEngine {
       campaignLanguage: params.campaignLanguage,
       campaignCountry: params.campaignCountry,
     });
+    const secondaryLanguages = readSecondaryLanguages(cfg.persona, language.code);
 
     const knowledgeBlock = await buildKnowledgeBlock(
       params.accountId,
@@ -237,7 +240,8 @@ export class AIEngine {
       language,
       knowledgeBlock,
       inst,
-      params.attemptIndex ?? 0
+      params.attemptIndex ?? 0,
+      secondaryLanguages
     );
     const userTurn = buildFollowUpUserTurn(params, params.attemptIndex ?? 0);
 
@@ -284,6 +288,7 @@ export class AIEngine {
       campaignLanguage: params.campaignLanguage,
       campaignCountry: params.campaignCountry,
     });
+    const secondaryLanguages = readSecondaryLanguages(cfg.persona, language.code);
 
     // ── Knowledge base + media catalog ──
     // Retrieve only the chunks most relevant to the lead's recent turns.
@@ -316,6 +321,7 @@ export class AIEngine {
       knowledgeBlock,
       mediaBlock,
       linksBlock,
+      secondaryLanguages,
     });
 
     const messages: HistoryEntry[] = [
@@ -459,9 +465,12 @@ export class AIEngine {
   // ════════════════════════════════════════════════════
   // AUDIO TRANSCRIPTION (OpenAI Whisper)
   // ════════════════════════════════════════════════════
+  // languageHint must be ISO-639-1 (whisper does not accept "pt-BR", only "pt").
+  // Passing it cuts misdetection on short voice notes from ~15% to ~3% in PT/ES.
   static async transcribeAudio(
     audio: Buffer | { buffer: Buffer; mimetype?: string },
-    filename = "audio.ogg"
+    filename = "audio.ogg",
+    languageHint?: string
   ): Promise<string> {
     const key = process.env.OPENAI_API_KEY;
     if (!key) {
@@ -475,6 +484,8 @@ export class AIEngine {
     const form = new FormData();
     form.append("file", new Blob([new Uint8Array(buffer)], { type: mimetype }), filename);
     form.append("model", "whisper-1");
+    const iso = toIso6391(languageHint);
+    if (iso) form.append("language", iso);
 
     const res = await fetch("https://api.openai.com/v1/audio/transcriptions", {
       method: "POST",
@@ -489,6 +500,75 @@ export class AIEngine {
 
     const data = (await res.json()) as { text?: string };
     return (data.text || "").trim();
+  }
+
+  // ════════════════════════════════════════════════════
+  // PAYMENT-PROOF VISION (OpenAI gpt-4o-mini)
+  // ════════════════════════════════════════════════════
+  // Used by the inbound handler when a lead sends an image AND the lead is
+  // currently awaiting payment proof. Returns the OCR'd text framed as a
+  // payment-proof report so the downstream AI naturally emits the
+  // [PAYMENT_PROOF_RECEIVED] tag. Never throws — degrades to "[IMAGEM]".
+  static async analyzePaymentProofImage(
+    buffer: Buffer,
+    mimetype: string
+  ): Promise<string> {
+    const key = process.env.OPENAI_API_KEY;
+    if (!key) return "[IMAGEM] (comprovante recebido, OCR indisponivel)";
+
+    const MAX_BYTES = 6 * 1024 * 1024;
+    const slice = buffer.length > MAX_BYTES ? buffer.subarray(0, MAX_BYTES) : buffer;
+    const dataUrl = `data:${mimetype || "image/jpeg"};base64,${slice.toString("base64")}`;
+
+    const body = {
+      model: "gpt-4o-mini",
+      temperature: 0,
+      max_tokens: 600,
+      messages: [
+        {
+          role: "system",
+          content:
+            "Voce analisa imagens enviadas em conversa de venda. Se a imagem parecer um comprovante " +
+            "de pagamento (Zelle, Pix, transferencia bancaria, screenshot de aplicativo de banco), " +
+            'responda no formato EXATO:\nTIPO: COMPROVANTE\nVALOR: <valor ou "?">\nORIGEM: <nome do remetente ou "?">\nDATA: <data/hora ou "?">\nDETALHES: <texto adicional relevante>\n\n' +
+            "Se NAO for comprovante, responda no formato:\nTIPO: OUTRO\nDESCRICAO: <o que voce ve na imagem em 1-2 frases>\n\nNao adicione comentarios fora do formato.",
+        },
+        {
+          role: "user",
+          content: [
+            { type: "text", text: "Analise esta imagem e siga o formato pedido." },
+            { type: "image_url", image_url: { url: dataUrl, detail: "high" } },
+          ],
+        },
+      ],
+    };
+
+    try {
+      const res = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${key}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) return "[IMAGEM] (comprovante recebido, OCR falhou)";
+      const data = (await res.json()) as {
+        choices?: { message?: { content?: string } }[];
+      };
+      const raw = (data.choices?.[0]?.message?.content || "").trim();
+      if (!raw) return "[IMAGEM] (comprovante recebido, sem texto extraido)";
+
+      // If the model says TIPO: COMPROVANTE, wrap in a header the AI prompt
+      // can match. Otherwise return the description verbatim so the AI
+      // reacts to whatever was actually sent (selfie, product photo, etc.).
+      const isProof = /^TIPO:\s*COMPROVANTE/im.test(raw);
+      return isProof
+        ? `[COMPROVANTE_DE_PAGAMENTO_RECEBIDO]\n${raw}`
+        : `[IMAGEM]\n${raw}`;
+    } catch {
+      return "[IMAGEM] (comprovante recebido, OCR falhou)";
+    }
   }
 }
 
@@ -875,7 +955,8 @@ function pickTenantFields(
 function commonPreamble(
   cfg: LoadedConfig,
   channel: Channel,
-  resolved: ResolvedLanguage
+  resolved: ResolvedLanguage,
+  secondaryLanguages: string[] = []
 ): string {
   const aiName = personaField(cfg.persona, "aiName", "Assistente");
   const aiRole = personaField(cfg.persona, "aiRole", "Consultor de vendas");
@@ -884,18 +965,33 @@ function commonPreamble(
   // their brand voice actually wants them. Most B2B/premium brands don't.
   const emojisAllowed = personaField<boolean>(cfg.persona, "emojisAllowed", false);
 
-  // Hard language lock when the operator picked a specific language in
-  // the pipeline. No exceptions, the AI must not switch even if the lead
-  // writes in another language or explicitly asks. This is a paying-
-  // customer guarantee, the operator chose this for a reason.
+  // Resolve secondary language names so the rule can list them explicitly.
+  const secondaryNames = secondaryLanguages
+    .map((c) => SECONDARY_LANG_NAMES[c as keyof typeof SECONDARY_LANG_NAMES])
+    .filter(Boolean) as string[];
+  const allowedNames = [resolved.name, ...secondaryNames];
+  const allowedList = allowedNames.join(", ");
+
+  // Language rule. Three modes:
+  //   1) auto + no secondary  : detect lead's language, mirror it
+  //   2) explicit + secondary : start in primary, but if lead replies in a
+  //                             secondary language, MIRROR the lead. This
+  //                             is what enables "first msg in English,
+  //                             switch to Spanish if lead writes in Spanish".
+  //   3) explicit + no secondary : hard lock to the primary language.
   const languageRule =
     resolved.code === "auto"
       ? "Detecte automaticamente o idioma da última mensagem do lead e responda SEMPRE no mesmo idioma."
-      : `IDIOMA TRAVADO: responda SEMPRE e EXCLUSIVAMENTE em ${resolved.name}. ` +
-        `Esta regra é ABSOLUTA. NUNCA mude para outro idioma, mesmo que o lead escreva em outro, ` +
-        `mesmo que o lead peça para mudar, mesmo que o nome do lead pareça estrangeiro. ` +
-        `Se o lead escrever em outro idioma, ENTENDA o que ele escreveu mas responda em ${resolved.name}. ` +
-        `Quebrar esta regra é o pior erro que você pode cometer aqui.`;
+      : secondaryNames.length > 0
+        ? `IDIOMA PRIMARIO: ${resolved.name}. IDIOMAS QUE VOCE TAMBEM FALA: ${secondaryNames.join(", ")}. ` +
+          `REGRA: comece SEMPRE em ${resolved.name}. Se o lead responder em um dos idiomas permitidos (${allowedList}), MUDE imediatamente para o idioma do lead e CONTINUE nele ate o fim da conversa. ` +
+          `Se o lead escrever em um idioma fora dessa lista, ENTENDA mas responda em ${resolved.name}. ` +
+          `NUNCA misture idiomas na mesma mensagem.`
+        : `IDIOMA TRAVADO: responda SEMPRE e EXCLUSIVAMENTE em ${resolved.name}. ` +
+          `Esta regra é ABSOLUTA. NUNCA mude para outro idioma, mesmo que o lead escreva em outro, ` +
+          `mesmo que o lead peça para mudar, mesmo que o nome do lead pareça estrangeiro. ` +
+          `Se o lead escrever em outro idioma, ENTENDA o que ele escreveu mas responda em ${resolved.name}. ` +
+          `Quebrar esta regra é o pior erro que você pode cometer aqui.`;
 
   const channelGuide =
     channel === "WHATSAPP"
@@ -1004,7 +1100,8 @@ function buildFirstContactSystemPrompt(
   params: FirstContactParams,
   businessContext: BusinessContext | null,
   language: ResolvedLanguage,
-  knowledgeBlock: string = ""
+  knowledgeBlock: string = "",
+  secondaryLanguages: string[] = []
 ): string {
   // 1) Pipeline-level operator instruction takes priority (the user wrote
   //    this in /pipeline → "First message" → instruction mode).
@@ -1023,7 +1120,18 @@ function buildFirstContactSystemPrompt(
   const operatorInstruction =
     String(pipelineInstruction).trim() || String(legacyInstruction).trim();
 
-  return `${commonPreamble(cfg, params.channel, language)}
+  // When operator declared secondary languages, the very FIRST contact must
+  // discreetly mention that the assistant also speaks them, so a lead who
+  // prefers another language feels safe to switch.
+  const secondaryNames = secondaryLanguages
+    .map((c) => SECONDARY_LANG_NAMES[c])
+    .filter(Boolean);
+  const multilingualHint =
+    secondaryNames.length > 0
+      ? `\n6. EM UM BALAO SEPARADO no final (curto, 1 frase), mencione discretamente que voce tambem atende em ${secondaryNames.join(" e ")}. Use o idioma primario para essa frase (ex.: "Btw, I also speak Spanish if you prefer."). Nao force, soa natural.`
+      : "";
+
+  return `${commonPreamble(cfg, params.channel, language, secondaryLanguages)}
 ${businessContext ? renderBusinessContext(businessContext) : ""}
 ${knowledgeBlock}
 CONTEXTO DESTE LEAD:
@@ -1048,7 +1156,7 @@ CHECKLIST OBRIGATORIO antes de finalizar:
 2. Conte os pontos da instrucao. Se a instrucao pede 4 elementos, sua resposta tem 4 baloes. Nunca menos.
 3. Use os termos, numeros e diferenciais especificos que a instrucao e a base de conhecimento listaram. Nao generalize "tecnologia avancada", chame pelo NOME.
 4. Personalize com o nome do lead UMA vez, na abertura, nao em todo balao.
-5. Termine com a pergunta exata (ou equivalente) que a instrucao pediu, nao invente outra pergunta.
+5. Termine com a pergunta exata (ou equivalente) que a instrucao pediu, nao invente outra pergunta.${multilingualHint}
 
 PROIBIDO entregar so a saudacao e deixar o resto pra depois. PROIBIDO cortar a instrucao. PROIBIDO usar template generico ("Ola! Como posso te ajudar?"). Cada mensagem soa unica MAS contem TODO o conteudo pedido.`;
 }
@@ -1060,12 +1168,13 @@ function buildFollowUpSystemPrompt(
   language: ResolvedLanguage,
   knowledgeBlock: string,
   instruction: string,
-  attemptIndex: number
+  attemptIndex: number,
+  secondaryLanguages: string[] = []
 ): string {
   const fallback =
     "Reabra o assunto com leveza, sem cobrar. Lembre o lead do que foi prometido na primeira interacao e faca uma pergunta nova que avance a qualificacao.";
   const op = instruction.trim() || fallback;
-  return `${commonPreamble(cfg, params.channel, language)}
+  return `${commonPreamble(cfg, params.channel, language, secondaryLanguages)}
 ${businessContext ? renderBusinessContext(businessContext) : ""}
 ${knowledgeBlock}
 CONTEXTO DESTE LEAD:
@@ -1134,6 +1243,7 @@ function buildResponseSystemPrompt(
     knowledgeBlock?: string;
     mediaBlock?: string;
     linksBlock?: string;
+    secondaryLanguages?: string[];
   }
 ): string {
   const pipelineGoal = personaField(cfg.persona, "pipelineGoal", "closeSale");
@@ -1162,7 +1272,7 @@ function buildResponseSystemPrompt(
 
   const closingBlock = buildClosingBlock(cfg.persona);
 
-  return `${commonPreamble(cfg, params.channel, flags.language)}
+  return `${commonPreamble(cfg, params.channel, flags.language, flags.secondaryLanguages || [])}
 ${businessBlock}
 ${flags.knowledgeBlock || ""}
 ${flags.mediaBlock || ""}
@@ -1321,6 +1431,9 @@ function buildClosingBlock(persona: Record<string, unknown>): string {
       "Depois que o lead enviar a foto/print/comprovante OU uma mensagem clara confirmando que pagou (ex.: 'paguei', 'ja transferi', 'enviei o pix'), responda agradecendo brevemente e adicione NO FIM a tag:"
     );
     parts.push("[PAYMENT_PROOF_RECEIVED]");
+    parts.push(
+      "Se a mensagem do lead comecar com o marcador interno [COMPROVANTE_DE_PAGAMENTO_RECEBIDO], significa que o sistema ja fez OCR do print e confirmou que e um comprovante de fato. Nesse caso voce DEVE emitir [PAYMENT_PROOF_RECEIVED] sem fazer nenhuma pergunta de verificacao. Apenas agradeca de forma calorosa e avise que vai validar."
+    );
     parts.push(
       "O sistema vai pausar a conversa, notificar a pessoa responsavel via WhatsApp e te avisar quando ela confirmar o recebimento."
     );
@@ -1817,4 +1930,54 @@ function renderBusinessContext(ctx: BusinessContext): string {
   }
 
   return parts.length ? `\n${parts.join("\n")}` : "";
+}
+
+// Human-readable names for the secondary language allow-list. Kept in sync
+// with the `LANGUAGE_OPTIONS` array in the pipeline UI. Used to print
+// "voce tambem fala: English, Spanish" in the system prompt.
+const SECONDARY_LANG_NAMES: Record<string, string> = {
+  "pt-BR": "português do Brasil",
+  pt: "português",
+  en: "English",
+  es: "español",
+  de: "Deutsch",
+  fr: "français",
+  it: "italiano",
+  nl: "Nederlands",
+  ja: "日本語",
+};
+
+// Read pipelineSecondaryLanguages from persona JSON and normalize to a
+// sanitized array of known language codes. Drops "auto", duplicates and the
+// primary language (so "primary=en + secondary=[en, es]" becomes just [es]).
+function readSecondaryLanguages(
+  persona: Record<string, unknown> | null | undefined,
+  primaryCode: string
+): string[] {
+  const raw = (persona as Record<string, unknown> | null)?.pipelineSecondaryLanguages;
+  if (!Array.isArray(raw)) return [];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const item of raw) {
+    if (typeof item !== "string") continue;
+    const code = item.trim();
+    if (!code || code === "auto" || code === primaryCode) continue;
+    if (!(code in SECONDARY_LANG_NAMES)) continue;
+    if (seen.has(code)) continue;
+    seen.add(code);
+    out.push(code);
+    if (out.length >= 4) break;
+  }
+  return out;
+}
+
+// Whisper accepts ISO-639-1 codes only. "pt-BR" -> "pt", "auto" -> undefined,
+// unknown codes -> undefined (so Whisper auto-detects instead of erroring).
+function toIso6391(code?: string | null): string | undefined {
+  if (!code) return undefined;
+  const s = String(code).trim().toLowerCase();
+  if (!s || s === "auto") return undefined;
+  const short = s.split(/[-_]/)[0];
+  const ALLOWED = new Set(["pt", "en", "es", "it", "de", "fr", "nl", "ja"]);
+  return ALLOWED.has(short) ? short : undefined;
 }

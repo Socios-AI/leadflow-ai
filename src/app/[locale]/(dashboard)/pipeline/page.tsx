@@ -94,6 +94,10 @@ interface PipelineConfig {
   // Hard language override: "auto" lets the AI guess from the lead's text;
   // anything else FORCES that language no matter what the lead writes in.
   language: string;
+  /** Additional languages the AI is allowed to MIRROR if the lead replies in
+   *  one of them. Empty = hard lock on `language`. Useful for "first msg in
+   *  English, switch to Spanish if lead writes Spanish". */
+  secondaryLanguages: string[];
   firstMessageInstruction: string;
   firstMessageVariability: "instruction" | "exact";
   followUps: FollowUp[];
@@ -153,6 +157,7 @@ const DEFAULT_CONFIG: PipelineConfig = {
   firstContact: "immediate",
   channels: ["WHATSAPP"],
   language: "auto",
+  secondaryLanguages: [],
   firstMessageInstruction: "",
   firstMessageVariability: "instruction",
   followUps: [
@@ -659,7 +664,15 @@ export default function PipelinePage() {
                       <button
                         key={lang.code}
                         onClick={() =>
-                          setConfig((p) => ({ ...p, language: lang.code }))
+                          setConfig((p) => ({
+                            ...p,
+                            language: lang.code,
+                            // Drop the primary from the secondary set if user
+                            // just picked it (would be a no-op anyway).
+                            secondaryLanguages: p.secondaryLanguages.filter(
+                              (c) => c !== lang.code
+                            ),
+                          }))
                         }
                         data-selected={sel}
                         className="selectable-card text-left text-[12.5px] font-semibold py-2.5 px-3"
@@ -678,6 +691,68 @@ export default function PipelinePage() {
                           ?.label || config.language,
                     })}
                   </p>
+                )}
+
+                {/* Secondary languages: only relevant when a specific primary
+                    is set. With language="auto" the AI already mirrors the
+                    lead, so the multi-select is hidden. */}
+                {config.language !== "auto" && (
+                  <div className="mt-5 pt-5 border-t border-border/60">
+                    <h3 className="font-display text-[13px] font-semibold text-foreground tracking-tight">
+                      {t("language.secondaryTitle")}
+                    </h3>
+                    <p className="text-[12px] text-muted-foreground mt-1 leading-relaxed">
+                      {t("language.secondaryDesc")}
+                    </p>
+                    <div className="mt-3 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
+                      {LANGUAGE_OPTIONS.filter(
+                        (lang) =>
+                          lang.code !== "auto" && lang.code !== config.language
+                      ).map((lang) => {
+                        const sel = config.secondaryLanguages.includes(lang.code);
+                        return (
+                          <button
+                            key={lang.code}
+                            onClick={() =>
+                              setConfig((p) => ({
+                                ...p,
+                                secondaryLanguages: sel
+                                  ? p.secondaryLanguages.filter(
+                                      (c) => c !== lang.code
+                                    )
+                                  : [...p.secondaryLanguages, lang.code].slice(
+                                      0,
+                                      4
+                                    ),
+                              }))
+                            }
+                            data-selected={sel}
+                            className="selectable-card text-left text-[12.5px] font-semibold py-2.5 px-3"
+                          >
+                            {lang.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    {config.secondaryLanguages.length > 0 && (
+                      <p className="text-[11.5px] text-primary mt-3 flex items-center gap-1.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-primary" />
+                        {t("language.secondaryHint", {
+                          primary:
+                            LANGUAGE_OPTIONS.find(
+                              (l) => l.code === config.language
+                            )?.label || config.language,
+                          list: config.secondaryLanguages
+                            .map(
+                              (c) =>
+                                LANGUAGE_OPTIONS.find((l) => l.code === c)
+                                  ?.label || c
+                            )
+                            .join(", "),
+                        })}
+                      </p>
+                    )}
+                  </div>
                 )}
               </div>
             </div>

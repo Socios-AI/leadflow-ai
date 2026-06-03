@@ -861,7 +861,10 @@
     "language": {
       "title": "Idioma de la IA",
       "desc": "Fija aqui el idioma en que la IA respondera a CADA lead de este funnel. Si dejas Auto, la IA lo detecta del texto del lead.",
-      "lockedHint": "Fijado en {lang}. La IA respondera en este idioma incluso si el lead escribe en otro."
+      "lockedHint": "Fijado en {lang}. La IA respondera en este idioma incluso si el lead escribe en otro.",
+      "secondaryTitle": "Otros idiomas que la IA tambien habla",
+      "secondaryDesc": "Elige hasta 4 idiomas extra. La IA comienza en {primary}, pero si el lead responde en alguno de estos, cambia al idioma del lead. Util para mercados bilingues (ej.: EE.UU. con clientes hispanos).",
+      "secondaryHint": "Empieza en {primary}. Si el lead escribe en {list}, la IA cambia a ese idioma."
     }
   },
   "channels": {

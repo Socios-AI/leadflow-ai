@@ -758,7 +758,20 @@ const transcriptionWorker = new Worker(
     });
 
     const { buffer, mimetype } = await wa.downloadMedia(externalMessageId);
-    const text = await AIEngine.transcribeAudio({ buffer, mimetype });
+
+    // Pass the operator-configured pipeline language to Whisper so short
+    // voice notes in PT/ES aren't misdetected as EN. Falls back to "auto".
+    const aiCfg = await prisma.aIConfig.findUnique({
+      where: { accountId },
+      select: { persona: true },
+    });
+    const personaLang = ((aiCfg?.persona as Record<string, unknown> | null)?.language ||
+      "") as string;
+    const text = await AIEngine.transcribeAudio(
+      { buffer, mimetype },
+      "audio.ogg",
+      personaLang
+    );
 
     if (!text) {
       console.warn(`[transcription] Empty transcription for ${leadId}`);
