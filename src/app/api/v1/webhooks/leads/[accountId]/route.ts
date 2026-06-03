@@ -120,6 +120,34 @@ export async function POST(
       });
 
       if (existing) {
+        // EDGE CASE: a stranger may have messaged this WhatsApp earlier
+        // (creating a lead flagged metadata.unverifiedInbound=true). When
+        // the SAME phone later fills a real funnel form, the webhook
+        // arrives here as "duplicate". We CLAIM that lead: clear the
+        // unverified flag, merge incoming metadata, and update the campaign
+        // link. From the next inbound onward the AI will engage normally.
+        const existingMeta =
+          (existing.metadata as Record<string, unknown> | null) || {};
+        const wasUnverified = existingMeta.unverifiedInbound === true;
+        if (wasUnverified) {
+          const { unverifiedInbound, ...cleanMeta } = existingMeta;
+          void unverifiedInbound;
+          await prisma.lead.update({
+            where: { id: existing.id },
+            data: {
+              source: mapSource(normalized.source),
+              campaignId: campaignId || existing.campaignId,
+              name: existing.name || normalized.name || null,
+              email: existing.email || normalized.email?.toLowerCase() || null,
+              metadata: {
+                ...cleanMeta,
+                ...(normalized.metadata || {}),
+                claimedFromUnverifiedAt: new Date().toISOString(),
+              },
+            },
+          });
+        }
+
         // Re-enqueue if still NEW
         if (existing.status === "NEW") {
           await queues.leadProcessing.add("retry-contact", {
@@ -128,7 +156,7 @@ export async function POST(
           });
         }
         return NextResponse.json({
-          status: "duplicate",
+          status: wasUnverified ? "claimed" : "duplicate",
           leadId: existing.id,
           leadStatus: existing.status,
         });

@@ -105,23 +105,26 @@ export async function handleWhatsAppInbound(
     };
   }
 
-  // 4. Find or create lead (reactive onboarding)
-  const { lead, created: leadJustCreated } = await findOrCreateLead(
-    accountId,
-    phone,
-    data.pushName
-  );
+  // 4. Find or create lead (reactive onboarding).
+  //    Raw WhatsApp inbound is STAMPED with metadata.unverifiedInbound=true
+  //    so we can recognize "this lead was created by a stranger messaging
+  //    in cold, not by a funnel webhook" on ALL subsequent messages.
+  const { lead } = await findOrCreateLead(accountId, phone, data.pushName);
 
   // 5. Find or create conversation
   const conversation = await findOrCreateConversation(accountId, lead.id, phone);
 
-  // 6. Funnel-only gate, when ON we still record the inbound so the
-  //    operator can see "this stranger messaged us" in the inbox, but we
-  //    do NOT engage the AI. Pre-existing leads came in via a configured
-  //    source (webhook, manual import, CSV), so the AI engages them. A
-  //    brand-new lead from a raw WhatsApp ping is treated as a stranger
-  //    and left for human triage.
-  if (leadJustCreated && respondToFunnelOnly) {
+  // 6. Funnel-only gate. When ON (default) we still RECORD the inbound so
+  //    the operator can see "this stranger messaged us" in the inbox, but
+  //    we do NOT engage the AI. The gate is based on metadata.unverifiedInbound
+  //    NOT on `created` — a stranger who messages 5 times is still a
+  //    stranger on message 2/3/4/5, not just on message 1.
+  //
+  //    Leads from funnel sources (Meta lead webhook, web form POST, CSV
+  //    import, manual add) NEVER carry this flag, so the AI engages them.
+  const leadMetaForGate = (lead.metadata as Record<string, unknown> | null) || {};
+  const isUnverifiedInbound = leadMetaForGate.unverifiedInbound === true;
+  if (isUnverifiedInbound && respondToFunnelOnly) {
     const content = extractContent(data);
     await prisma.message.create({
       data: {
@@ -144,6 +147,39 @@ export async function handleWhatsAppInbound(
       leadId: lead.id,
       conversationId: conversation.id,
     };
+  }
+
+  // 6b. Pipeline-not-configured gate. Even when AI is enabled and the lead
+  //     IS from a funnel, the AI must stay silent until the operator
+  //     finishes the funnel setup (template + goal at minimum). Otherwise
+  //     the AI would answer with a generic/empty persona that embarrasses
+  //     the operator. The message is still saved for visibility.
+  if (respondToFunnelOnly) {
+    const pipelineReady = await isPipelineConfigured(accountId);
+    if (!pipelineReady) {
+      const content = extractContent(data);
+      await prisma.message.create({
+        data: {
+          accountId,
+          conversationId: conversation.id,
+          direction: "INBOUND",
+          content: content.text || `[${content.type}]`,
+          contentType: content.type,
+          externalId: externalMsgId,
+        },
+      });
+      await prisma.conversation.update({
+        where: { id: conversation.id },
+        data: { lastMessageAt: new Date() },
+      });
+      return {
+        status: "saved",
+        reason: "pipeline_not_configured",
+        accountId,
+        leadId: lead.id,
+        conversationId: conversation.id,
+      };
+    }
   }
 
   // 7. AI disabled → save inbound raw and stop
@@ -326,6 +362,12 @@ async function findOrCreateLead(
   });
   if (existing) return { lead: existing, created: false };
 
+  // CRITICAL: a lead created by a stranger messaging the operator's
+  // WhatsApp out-of-the-blue is flagged unverifiedInbound=true so the
+  // funnel-only gate (whatsapp-inbound.ts:117) can identify them on EVERY
+  // future message, not just the first one. Funnel webhooks (Meta lead ad
+  // form, web form POST, CSV import) do NOT set this flag — they create
+  // leads via /api/v1/webhooks/leads/[accountId] with clean metadata.
   const lead = await prisma.lead.create({
     data: {
       accountId,
@@ -334,9 +376,28 @@ async function findOrCreateLead(
       source: "MARKETING",
       status: "NEW",
       score: 0,
+      metadata: { unverifiedInbound: true },
     },
   });
   return { lead, created: true };
+}
+
+// A pipeline is "configured" once the operator has picked both a template
+// and a goal in /pipeline. Until both are set we treat the funnel as not
+// ready and the AI stays silent (the message is still recorded for
+// inbox visibility). The cosmetics-brand case: owner connects WhatsApp,
+// hasn't filled the funnel yet — first stranger message must NOT trigger
+// a generic AI reply.
+async function isPipelineConfigured(accountId: string): Promise<boolean> {
+  const row = await prisma.aIConfig.findUnique({
+    where: { accountId },
+    select: { persona: true },
+  });
+  if (!row) return false;
+  const persona = (row.persona as Record<string, unknown> | null) || {};
+  const template = String(persona.pipelineTemplate || "").trim();
+  const goal = String(persona.pipelineGoal || "").trim();
+  return Boolean(template) && Boolean(goal);
 }
 
 async function findOrCreateConversation(
