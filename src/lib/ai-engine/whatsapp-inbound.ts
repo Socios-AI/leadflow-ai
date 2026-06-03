@@ -360,34 +360,46 @@ async function handlePaymentConfirmerReply(opts: {
   const isConfirmer = confirmers.some((c) => c.slice(-10) === senderLast10);
   if (!isConfirmer) return false;
 
-  // Find a conversation in this account that is currently awaiting
-  // confirmation. There can only be a handful at most — for early stage
-  // a simple scan is fine.
-  const candidates = await prisma.conversation.findMany({
-    where: { accountId, isAIEnabled: false },
-    select: { id: true, channel: true, channelIdentifier: true, leadId: true, metadata: true, lead: { select: { phone: true } } },
-    orderBy: { lastMessageAt: "desc" },
-    take: 50,
+  // Find a lead in this account whose metadata.paymentFlow.awaiting
+  // Confirmation is true. paymentFlow is stored on lead.metadata (not
+  // conversation.metadata, which doesn't exist in the Prisma schema).
+  // Limited scan: early-stage SaaS only has a handful of leads in this
+  // state at any moment.
+  const leadsAwaiting = await prisma.lead.findMany({
+    where: { accountId },
+    select: { id: true, phone: true, metadata: true },
+    orderBy: { updatedAt: "desc" },
+    take: 100,
   });
-  const awaiting = candidates.find((c) => {
-    const meta = (c.metadata as Record<string, unknown> | null) || {};
+  const awaitingLead = leadsAwaiting.find((l) => {
+    const meta = (l.metadata as Record<string, unknown> | null) || {};
     const pf = meta.paymentFlow as Record<string, unknown> | undefined;
     return pf?.awaitingConfirmation === true;
   });
-  if (!awaiting) return false;
+  if (!awaitingLead) return false;
 
-  const meta = (awaiting.metadata as Record<string, unknown> | null) || {};
+  const meta = (awaitingLead.metadata as Record<string, unknown> | null) || {};
   const pf = (meta.paymentFlow as Record<string, unknown>) || {};
+  const conversationId = String(pf.conversationId || "");
+  if (!conversationId) return false;
+
+  // Load the conversation to get the actual channel + contact identifier.
+  const conv = await prisma.conversation.findUnique({
+    where: { id: conversationId },
+    select: { id: true, channel: true, channelIdentifier: true, leadId: true },
+  });
+  if (!conv) return false;
+
   const confirmedMessage =
     String(pf.confirmedMessage || "") ||
     "Pagamento recebido, muito obrigado pela sua compra e confianca!";
 
   // Send the success message to the lead on the conversation's channel.
-  const leadContact = awaiting.channelIdentifier || awaiting.lead?.phone || "";
+  const leadContact = conv.channelIdentifier || awaitingLead.phone || "";
   if (leadContact) {
     const provider = await getChannelProvider(
       accountId,
-      (awaiting.channel as "WHATSAPP" | "EMAIL" | "SMS") || "WHATSAPP"
+      (conv.channel as "WHATSAPP" | "EMAIL" | "SMS") || "WHATSAPP"
     );
     if (provider) {
       try {
@@ -395,7 +407,7 @@ async function handlePaymentConfirmerReply(opts: {
         await prisma.message.create({
           data: {
             accountId,
-            conversationId: awaiting.id,
+            conversationId: conv.id,
             direction: "OUTBOUND",
             content: confirmedMessage,
             contentType: "TEXT",
@@ -414,12 +426,10 @@ async function handlePaymentConfirmerReply(opts: {
     }
   }
 
-  // Update conversation: re-enable AI, stamp confirmation state.
-  await prisma.conversation.update({
-    where: { id: awaiting.id },
+  // Update lead.metadata + re-enable AI on the conversation.
+  await prisma.lead.update({
+    where: { id: awaitingLead.id },
     data: {
-      isAIEnabled: true,
-      lastMessageAt: new Date(),
       metadata: {
         ...meta,
         paymentFlow: {
@@ -431,14 +441,18 @@ async function handlePaymentConfirmerReply(opts: {
       },
     },
   });
+  await prisma.conversation.update({
+    where: { id: conv.id },
+    data: { isAIEnabled: true, lastMessageAt: new Date() },
+  });
 
   await prisma.eventLog.create({
     data: {
       accountId,
       event: "lead.payment_confirmed",
       data: {
-        conversationId: awaiting.id,
-        leadId: awaiting.leadId,
+        conversationId: conv.id,
+        leadId: awaitingLead.id,
         confirmedBy: senderPhone,
       },
     },

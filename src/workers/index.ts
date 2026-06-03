@@ -495,23 +495,31 @@ const aiWorker = new Worker(
           persona?.pipelinePaymentConfirmedMessage || ""
         );
 
-        if (aiResult.paymentInstructionsSent) {
-          // Stash the flow state in conversation.metadata. The inbound
-          // handler reads this to know an IMAGE from the lead means
-          // "they probably sent a receipt".
-          const conv = await prisma.conversation.findUnique({
-            where: { id: conversationId },
+        // We store paymentFlow state on lead.metadata (already a Json
+        // column in the Prisma schema) instead of conversation.metadata
+        // (which doesn't exist). The flow includes the conversationId so
+        // a future expansion of multi-channel-per-lead can still route
+        // back correctly.
+        const refreshLeadMeta = async (): Promise<Record<string, unknown>> => {
+          const fresh = await prisma.lead.findUnique({
+            where: { id: leadId },
             select: { metadata: true },
           });
-          const prevMeta =
-            ((conv?.metadata as Record<string, unknown> | null) || {}) as Record<string, unknown>;
-          await prisma.conversation.update({
-            where: { id: conversationId },
+          return ((fresh?.metadata as Record<string, unknown> | null) || {}) as Record<string, unknown>;
+        };
+
+        if (aiResult.paymentInstructionsSent) {
+          const prevMeta = await refreshLeadMeta();
+          const prevPaymentFlow =
+            (prevMeta.paymentFlow as Record<string, unknown> | undefined) || {};
+          await prisma.lead.update({
+            where: { id: leadId },
             data: {
               metadata: {
                 ...prevMeta,
                 paymentFlow: {
-                  ...(prevMeta.paymentFlow as Record<string, unknown> | undefined),
+                  ...prevPaymentFlow,
+                  conversationId,
                   awaitingProof: true,
                   instructionsSentAt: new Date().toISOString(),
                 },
@@ -527,22 +535,20 @@ const aiWorker = new Worker(
             data: { isAIEnabled: false },
           });
 
-          // 2. Persist state so the WhatsApp inbound handler can route a
-          //    later "ok" from any of these confirmer phones back to THIS
-          //    conversation.
-          const conv = await prisma.conversation.findUnique({
-            where: { id: conversationId },
-            select: { metadata: true },
-          });
-          const prevMeta =
-            ((conv?.metadata as Record<string, unknown> | null) || {}) as Record<string, unknown>;
-          await prisma.conversation.update({
-            where: { id: conversationId },
+          // 2. Persist state on lead.metadata so the WhatsApp inbound
+          //    handler can route a later "ok" from any of these confirmer
+          //    phones back to THIS conversation.
+          const prevMeta = await refreshLeadMeta();
+          const prevPaymentFlow =
+            (prevMeta.paymentFlow as Record<string, unknown> | undefined) || {};
+          await prisma.lead.update({
+            where: { id: leadId },
             data: {
               metadata: {
                 ...prevMeta,
                 paymentFlow: {
-                  ...(prevMeta.paymentFlow as Record<string, unknown> | undefined),
+                  ...prevPaymentFlow,
+                  conversationId,
                   awaitingProof: false,
                   proofReceivedAt: new Date().toISOString(),
                   awaitingConfirmation: true,
