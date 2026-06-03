@@ -93,6 +93,17 @@ interface PipelineConfig {
   handoffWebhook: string;
   /** Message AI sends to the lead while a handoff is in flight */
   handoffWaitMessage: string;
+  // ── Manual payment confirmation (Pix / Zelle / TED / etc.) ──
+  /** Master toggle. When on, the AI sends instructions and waits for proof. */
+  paymentEnabled: boolean;
+  /** Free-text instructions sent to the lead (Pix key, bank info, Zelle). */
+  paymentInstructions: string;
+  /** WhatsApp numbers (E.164) of humans who review and confirm receipt. */
+  paymentConfirmerPhones: string[];
+  /** Message AI sends to the lead while waiting for human confirmation. */
+  paymentWaitMessage: string;
+  /** Message AI sends to the lead AFTER human confirms with "ok". */
+  paymentConfirmedMessage: string;
 }
 
 const LANGUAGE_OPTIONS: { code: string; label: string }[] = [
@@ -139,6 +150,11 @@ const DEFAULT_CONFIG: PipelineConfig = {
   handoffEmail: "",
   handoffWebhook: "",
   handoffWaitMessage: "",
+  paymentEnabled: false,
+  paymentInstructions: "",
+  paymentConfirmerPhones: [],
+  paymentWaitMessage: "",
+  paymentConfirmedMessage: "",
 };
 
 function newFollowUpId(): string {
@@ -1077,6 +1093,95 @@ export default function PipelinePage() {
                     </Field>
                   </>
                 )}
+
+                {/* Payment confirmation flow: Pix/Zelle/wire transfer with
+                    a human in the loop. Independent of the closing strategy
+                    — operator can enable it on top of any mode. */}
+                <div className="rounded-xl border border-border bg-card p-4 space-y-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-[13px] font-semibold text-foreground">
+                        {t("stepClosing.paymentTitle")}
+                      </p>
+                      <p className="text-[11.5px] text-muted-foreground mt-1 leading-relaxed">
+                        {t("stepClosing.paymentSubtitle")}
+                      </p>
+                    </div>
+                    <Toggle
+                      checked={config.paymentEnabled}
+                      onChange={(v) =>
+                        setConfig((p) => ({ ...p, paymentEnabled: v }))
+                      }
+                    />
+                  </div>
+                  {config.paymentEnabled && (
+                    <div className="space-y-4 pt-2 border-t border-border/40">
+                      <Field
+                        label={t("stepClosing.paymentInstructionsLabel")}
+                        hint={t("stepClosing.paymentInstructionsHint")}
+                      >
+                        <textarea
+                          value={config.paymentInstructions}
+                          onChange={(e) =>
+                            setConfig((p) => ({
+                              ...p,
+                              paymentInstructions: e.target.value,
+                            }))
+                          }
+                          rows={4}
+                          placeholder={t("stepClosing.paymentInstructionsPlaceholder")}
+                          className="w-full px-3.5 py-2.5 rounded-lg bg-muted border border-transparent text-[13px] text-foreground placeholder:text-muted-foreground/50 resize-y focus:outline-none focus:border-ring/30 leading-relaxed"
+                        />
+                      </Field>
+                      <Field
+                        label={t("stepClosing.paymentConfirmersLabel")}
+                        hint={t("stepClosing.paymentConfirmersHint")}
+                      >
+                        <StringList
+                          items={config.paymentConfirmerPhones}
+                          onChange={(items) =>
+                            setConfig((p) => ({
+                              ...p,
+                              paymentConfirmerPhones: items,
+                            }))
+                          }
+                          placeholder="+5511999998888"
+                        />
+                      </Field>
+                      <Field label={t("stepClosing.paymentWaitMessageLabel")}>
+                        <textarea
+                          value={config.paymentWaitMessage}
+                          onChange={(e) =>
+                            setConfig((p) => ({
+                              ...p,
+                              paymentWaitMessage: e.target.value,
+                            }))
+                          }
+                          rows={2}
+                          placeholder={t("stepClosing.paymentWaitMessagePlaceholder")}
+                          className="w-full px-3.5 py-2.5 rounded-lg bg-muted border border-transparent text-[13px] text-foreground placeholder:text-muted-foreground/50 resize-y focus:outline-none focus:border-ring/30 leading-relaxed"
+                        />
+                      </Field>
+                      <Field
+                        label={t("stepClosing.paymentConfirmedLabel")}
+                        hint={t("stepClosing.paymentConfirmedHint")}
+                      >
+                        <textarea
+                          value={config.paymentConfirmedMessage}
+                          onChange={(e) =>
+                            setConfig((p) => ({
+                              ...p,
+                              paymentConfirmedMessage: e.target.value,
+                            }))
+                          }
+                          rows={2}
+                          placeholder={t("stepClosing.paymentConfirmedPlaceholder")}
+                          className="w-full px-3.5 py-2.5 rounded-lg bg-muted border border-transparent text-[13px] text-foreground placeholder:text-muted-foreground/50 resize-y focus:outline-none focus:border-ring/30 leading-relaxed"
+                        />
+                      </Field>
+                    </div>
+                  )}
+                </div>
 
                 {/* Handoff settings: shown when handoff is involved */}
                 {(config.closingStrategy === "team_handoff" ||

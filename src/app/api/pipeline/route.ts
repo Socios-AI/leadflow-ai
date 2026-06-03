@@ -53,6 +53,32 @@ function asStringArray(value: unknown, maxItems: number): string[] {
     .slice(0, maxItems);
 }
 
+/**
+ * Normalize phones to a canonical E.164-ish form: keep the leading `+`,
+ * strip everything that isn't a digit. Drops entries shorter than 8
+ * digits (clearly invalid) so the matcher in handleWhatsAppInbound has
+ * something reliable to compare against.
+ */
+function asPhoneArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const v of value) {
+    const raw = String(v ?? "").trim();
+    if (!raw) continue;
+    const hasPlus = raw.startsWith("+");
+    const digits = raw.replace(/\D/g, "");
+    if (digits.length < 8) continue;
+    const canonical = (hasPlus ? "+" : "") + digits;
+    if (!seen.has(canonical)) {
+      seen.add(canonical);
+      out.push(canonical);
+    }
+    if (out.length >= 10) break;
+  }
+  return out;
+}
+
 function asClosingStrategy(value: unknown): "direct_link" | "qualify_first" | "team_handoff" | "auto" {
   const s = String(value || "");
   if (s === "direct_link" || s === "qualify_first" || s === "team_handoff" || s === "auto") {
@@ -147,6 +173,11 @@ export async function GET() {
       handoffEmail: String(p.pipelineHandoffEmail || ""),
       handoffWebhook: String(p.pipelineHandoffWebhook || ""),
       handoffWaitMessage: String(p.pipelineHandoffWaitMessage || ""),
+      paymentEnabled: !!p.pipelinePaymentEnabled,
+      paymentInstructions: String(p.pipelinePaymentInstructions || ""),
+      paymentConfirmerPhones: asPhoneArray(p.pipelinePaymentConfirmerPhones),
+      paymentWaitMessage: String(p.pipelinePaymentWaitMessage || ""),
+      paymentConfirmedMessage: String(p.pipelinePaymentConfirmedMessage || ""),
     });
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
@@ -217,6 +248,11 @@ export async function PUT(req: NextRequest) {
       pipelineHandoffEmail: String(body.handoffEmail || "").trim().slice(0, 200),
       pipelineHandoffWebhook: String(body.handoffWebhook || "").trim().slice(0, 500),
       pipelineHandoffWaitMessage: String(body.handoffWaitMessage || "").trim().slice(0, 500),
+      pipelinePaymentEnabled: !!body.paymentEnabled,
+      pipelinePaymentInstructions: String(body.paymentInstructions || "").trim().slice(0, 2000),
+      pipelinePaymentConfirmerPhones: asPhoneArray(body.paymentConfirmerPhones),
+      pipelinePaymentWaitMessage: String(body.paymentWaitMessage || "").trim().slice(0, 500),
+      pipelinePaymentConfirmedMessage: String(body.paymentConfirmedMessage || "").trim().slice(0, 500),
     };
 
     // Prisma's JSON column types require an InputJsonValue, but our

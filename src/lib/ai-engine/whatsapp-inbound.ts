@@ -16,6 +16,12 @@
 import prisma from "@/lib/db/prisma";
 import { queues } from "@/lib/queues";
 import { debounceMessage } from "@/lib/debounce";
+import { getChannelProvider } from "@/lib/channels/factory";
+import { WhatsAppProvider } from "@/lib/channels/whatsapp";
+
+// Words a payment confirmer can reply with to release the lead.
+const CONFIRM_TOKENS_RE =
+  /\b(ok|okay|okei|ok\.|sim|confirma(do|r|do!)?|recebido|recebi|recebi!|pago|liberar|liberado|aprovado|👍|✅)\b/i;
 
 export interface InboundResult {
   status: string;
@@ -77,6 +83,26 @@ export async function handleWhatsAppInbound(
   // Default ON: the AI must only engage with leads that came from a
   // configured funnel/webhook. Operators can opt out per channel.
   const respondToFunnelOnly = channelCfg.respondToFunnelLeadsOnly !== false;
+
+  // 3.5 Payment confirmer? If this phone is configured as a confirmer for
+  //     this account AND there's a conversation awaiting confirmation,
+  //     AND the message looks like an OK, release the lead and notify
+  //     the AI to resume. Done BEFORE the lead/funnel logic because a
+  //     confirmer is usually NOT a lead in the funnel.
+  const inboundText = extractContent(data).text || "";
+  const confirmerHandled = await handlePaymentConfirmerReply({
+    accountId,
+    senderPhone: phone,
+    inboundText,
+    instanceName,
+  });
+  if (confirmerHandled) {
+    return {
+      status: "saved",
+      reason: "payment_confirmed_by_confirmer",
+      accountId,
+    };
+  }
 
   // 4. Find or create lead (reactive onboarding)
   const { lead, created: leadJustCreated } = await findOrCreateLead(
@@ -293,6 +319,154 @@ async function findOrCreateConversation(
     },
     update: { isActive: true },
   });
+}
+
+/**
+ * If the inbound phone is a configured payment confirmer for this account
+ * AND a conversation is currently awaiting confirmation from this phone
+ * AND the text reads as a confirmation token (ok, sim, confirmado, etc.),
+ * then: send the configured "Pagamento recebido" message to the lead,
+ * re-enable the AI on that conversation, and stamp the state.
+ *
+ * Returns true when the inbound was consumed (caller should stop normal
+ * lead processing).
+ */
+async function handlePaymentConfirmerReply(opts: {
+  accountId: string;
+  /** Sender phone in digits-only form, no + prefix. */
+  senderPhone: string;
+  inboundText: string;
+  instanceName: string;
+}): Promise<boolean> {
+  const { accountId, senderPhone, inboundText } = opts;
+  if (!inboundText.trim()) return false;
+  if (!CONFIRM_TOKENS_RE.test(inboundText)) return false;
+
+  // Compare confirmer phones (canonical "+5511..." in DB) to inbound
+  // (digits-only). Match on the last 10 digits to ignore country-code
+  // formatting variance.
+  const persona = (
+    await prisma.aIConfig.findUnique({
+      where: { accountId },
+      select: { persona: true },
+    })
+  )?.persona as Record<string, unknown> | null;
+  const confirmers = ((persona?.pipelinePaymentConfirmerPhones as string[] | undefined) || [])
+    .map((p) => String(p).replace(/\D/g, ""))
+    .filter((p) => p.length >= 8);
+  if (confirmers.length === 0) return false;
+
+  const senderLast10 = senderPhone.slice(-10);
+  const isConfirmer = confirmers.some((c) => c.slice(-10) === senderLast10);
+  if (!isConfirmer) return false;
+
+  // Find a conversation in this account that is currently awaiting
+  // confirmation. There can only be a handful at most — for early stage
+  // a simple scan is fine.
+  const candidates = await prisma.conversation.findMany({
+    where: { accountId, isAIEnabled: false },
+    select: { id: true, channel: true, channelIdentifier: true, leadId: true, metadata: true, lead: { select: { phone: true } } },
+    orderBy: { lastMessageAt: "desc" },
+    take: 50,
+  });
+  const awaiting = candidates.find((c) => {
+    const meta = (c.metadata as Record<string, unknown> | null) || {};
+    const pf = meta.paymentFlow as Record<string, unknown> | undefined;
+    return pf?.awaitingConfirmation === true;
+  });
+  if (!awaiting) return false;
+
+  const meta = (awaiting.metadata as Record<string, unknown> | null) || {};
+  const pf = (meta.paymentFlow as Record<string, unknown>) || {};
+  const confirmedMessage =
+    String(pf.confirmedMessage || "") ||
+    "Pagamento recebido, muito obrigado pela sua compra e confianca!";
+
+  // Send the success message to the lead on the conversation's channel.
+  const leadContact = awaiting.channelIdentifier || awaiting.lead?.phone || "";
+  if (leadContact) {
+    const provider = await getChannelProvider(
+      accountId,
+      (awaiting.channel as "WHATSAPP" | "EMAIL" | "SMS") || "WHATSAPP"
+    );
+    if (provider) {
+      try {
+        const sendRes = await provider.send(leadContact, confirmedMessage);
+        await prisma.message.create({
+          data: {
+            accountId,
+            conversationId: awaiting.id,
+            direction: "OUTBOUND",
+            content: confirmedMessage,
+            contentType: "TEXT",
+            isAIGenerated: true,
+            status: sendRes.success ? "SENT" : "FAILED",
+            externalId: sendRes.externalId || null,
+            metadata: {
+              role: "payment_confirmation",
+              confirmedBy: senderPhone,
+            },
+          },
+        });
+      } catch {
+        // best effort
+      }
+    }
+  }
+
+  // Update conversation: re-enable AI, stamp confirmation state.
+  await prisma.conversation.update({
+    where: { id: awaiting.id },
+    data: {
+      isAIEnabled: true,
+      lastMessageAt: new Date(),
+      metadata: {
+        ...meta,
+        paymentFlow: {
+          ...pf,
+          awaitingConfirmation: false,
+          confirmedBy: senderPhone,
+          confirmedAt: new Date().toISOString(),
+        },
+      },
+    },
+  });
+
+  await prisma.eventLog.create({
+    data: {
+      accountId,
+      event: "lead.payment_confirmed",
+      data: {
+        conversationId: awaiting.id,
+        leadId: awaiting.leadId,
+        confirmedBy: senderPhone,
+      },
+    },
+  });
+
+  // Acknowledge the confirmer so they know we got it. Best effort.
+  try {
+    const cfg = (
+      await prisma.channel.findFirst({
+        where: { accountId, type: "WHATSAPP", isEnabled: true },
+        select: { config: true },
+      })
+    )?.config as Record<string, unknown> | null;
+    if (cfg) {
+      const wa = new WhatsAppProvider({
+        instanceName: String(cfg.instanceName || ""),
+        evolutionApiUrl: String(cfg.evolutionApiUrl || process.env.EVOLUTION_API_URL || ""),
+        evolutionApiKey: String(cfg.evolutionApiKey || process.env.EVOLUTION_API_KEY || ""),
+      });
+      await wa
+        .send(opts.senderPhone, "Confirmado. O cliente ja foi avisado, obrigado!")
+        .catch(() => {});
+    }
+  } catch {
+    // ignore
+  }
+
+  return true;
 }
 
 function extractContent(data: NonNullable<EvolutionBody["data"]>): {

@@ -92,6 +92,11 @@ export interface AIResponseResult {
     requestedAction: string;
     capturedInfo: Record<string, string>;
   };
+  /** AI emitted [PAYMENT_INSTRUCTIONS]: lead got the payment details. */
+  paymentInstructionsSent?: boolean;
+  /** AI emitted [PAYMENT_PROOF_RECEIVED]: lead claims paid; worker
+   *  notifies the configured confirmer phones and pauses the AI. */
+  paymentProofReceived?: boolean;
 }
 
 interface ScheduleIntent {
@@ -414,15 +419,19 @@ export class AIEngine {
         ? `Lead solicitou atendimento humano: ${params.leadName || params.leadPhone || params.leadEmail || "lead"}`
         : handoff
           ? `Handoff solicitado pela IA: ${handoff.summary}`
-          : conversion || closeWithLink
-            ? `Lead demonstrou intenção de compra: ${params.leadName || params.leadPhone || params.leadEmail || "lead"}`
-            : scheduled
-              ? `Reunião agendada com ${params.leadName || params.leadPhone || "lead"} em ${scheduled.startISO}`
-              : undefined,
+          : closingParsed.paymentProofReceived
+            ? `Comprovante de pagamento recebido de ${params.leadName || params.leadPhone || "lead"}`
+            : conversion || closeWithLink
+              ? `Lead demonstrou intenção de compra: ${params.leadName || params.leadPhone || params.leadEmail || "lead"}`
+              : scheduled
+                ? `Reunião agendada com ${params.leadName || params.leadPhone || "lead"} em ${scheduled.startISO}`
+                : undefined,
       scheduled,
       attachments,
       closeWithLink,
       handoff,
+      paymentInstructionsSent: closingParsed.paymentInstructions || undefined,
+      paymentProofReceived: closingParsed.paymentProofReceived || undefined,
     };
   }
 
@@ -629,23 +638,28 @@ function extractMediaTags(raw: string, catalog: MediaCatalogItem[]): {
 }
 
 /**
- * Strip the [CLOSE_WITH_LINK] and [HANDOFF_TO_TEAM:summary] tags from
- * the AI's raw reply and return what was found. The visible text is the
- * cleaned version — never leak a tag to the lead.
+ * Strip closing tags from the AI's raw reply. Regexes are built fresh
+ * per call to avoid the `/.../g` lastIndex carryover bug in long-lived
+ * worker processes.
  *
- * IMPORTANT: regexes are built fresh per call. A module-scope `/.../g`
- * regex shares `lastIndex` between invocations on the long-lived worker
- * process, which silently dropped tag matches on the 2nd-and-later AI
- * responses. Building locally costs nothing and is bullet-proof.
+ * Tags handled:
+ *   [CLOSE_WITH_LINK]          AI is ready to send the configured URL
+ *   [HANDOFF_TO_TEAM:summary]  AI is escalating to a human seller
+ *   [PAYMENT_INSTRUCTIONS]     AI sent payment details, expects proof
+ *   [PAYMENT_PROOF_RECEIVED]   AI saw a payment confirmation from the lead
  */
 function extractClosingTags(raw: string): {
   cleaned: string;
   closeWithLink: boolean;
   handoffSummary: string | null;
+  paymentInstructions: boolean;
+  paymentProofReceived: boolean;
 } {
   const closeRe = /\[CLOSE_WITH_LINK\]/gi;
   const handoffMatchRe = /\[HANDOFF_TO_TEAM:\s*([^\]]+)\]/i;
   const handoffStripRe = /\[HANDOFF_TO_TEAM:\s*[^\]]+\]/gi;
+  const paymentInstrRe = /\[PAYMENT_INSTRUCTIONS\]/gi;
+  const paymentProofRe = /\[PAYMENT_PROOF_RECEIVED\]/gi;
 
   let cleaned = raw;
   const closeWithLink = closeRe.test(cleaned);
@@ -653,9 +667,19 @@ function extractClosingTags(raw: string): {
   const m = cleaned.match(handoffMatchRe);
   const handoffSummary = m ? m[1].trim().slice(0, 500) : null;
   cleaned = cleaned.replace(handoffStripRe, "");
+  const paymentInstructions = paymentInstrRe.test(cleaned);
+  cleaned = cleaned.replace(paymentInstrRe, "");
+  const paymentProofReceived = paymentProofRe.test(cleaned);
+  cleaned = cleaned.replace(paymentProofRe, "");
   // Collapse extra whitespace left behind by tag removal.
   cleaned = cleaned.replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
-  return { cleaned, closeWithLink, handoffSummary };
+  return {
+    cleaned,
+    closeWithLink,
+    handoffSummary,
+    paymentInstructions,
+    paymentProofReceived,
+  };
 }
 
 /**
@@ -1087,13 +1111,29 @@ function buildClosingBlock(persona: Record<string, unknown>): string {
   );
   const hasHandoffTarget = !!handoffEmail || !!handoffWebhook;
 
+  // Manual payment confirmation flow (Pix/Zelle/wire). The actual proof
+  // detection + confirmer notification happens in the worker; here we
+  // just teach the AI what to say and when to emit the proof tag.
+  const paymentEnabled = personaField<boolean>(
+    persona,
+    "pipelinePaymentEnabled",
+    false
+  );
+  const paymentInstructions = String(
+    personaField(persona, "pipelinePaymentInstructions", "")
+  );
+  const paymentWaitMessage = String(
+    personaField(persona, "pipelinePaymentWaitMessage", "")
+  );
+
   // If absolutely nothing is configured, return empty so the prompt stays clean.
   if (
     strategy === "auto" &&
     !closingLink &&
     !hasHandoffTarget &&
     questions.length === 0 &&
-    requiredInfo.length === 0
+    requiredInfo.length === 0 &&
+    !(paymentEnabled && paymentInstructions)
   ) {
     return "";
   }
@@ -1157,6 +1197,39 @@ function buildClosingBlock(persona: Record<string, unknown>): string {
     parts.push("[CLOSE_WITH_LINK]");
     parts.push(
       "O sistema vai apagar a tag, anexar o link como balao separado e marcar o lead como pronto pra fechar. Nao cite o link na sua fala visivel se voce vai usar a tag, o sistema cuida disso."
+    );
+  }
+
+  // Manual payment flow. Independent of the closing strategy — the
+  // operator may enable it on top of any mode (direct_link, qualify_first,
+  // team_handoff, auto). Two tags drive the runtime:
+  //   [PAYMENT_INSTRUCTIONS]      AI sent the payment details, expects proof
+  //   [PAYMENT_PROOF_RECEIVED]    AI saw the lead confirm payment via text
+  if (paymentEnabled && paymentInstructions) {
+    parts.push("");
+    parts.push("FLUXO DE PAGAMENTO MANUAL (Pix / Zelle / transferencia):");
+    parts.push(
+      "Quando o lead estiver pronto pra pagar, NAO mande link nem chame a equipe. Em vez disso, envie em UM balao separado as instrucoes de pagamento abaixo (na integra, sem omitir nada) e NO FIM da resposta adicione a tag:"
+    );
+    parts.push("[PAYMENT_INSTRUCTIONS]");
+    parts.push("");
+    parts.push("INSTRUCOES DE PAGAMENTO (copia exata):");
+    parts.push(paymentInstructions);
+    parts.push("");
+    parts.push(
+      "Depois que o lead enviar a foto/print/comprovante OU uma mensagem clara confirmando que pagou (ex.: 'paguei', 'ja transferi', 'enviei o pix'), responda agradecendo brevemente e adicione NO FIM a tag:"
+    );
+    parts.push("[PAYMENT_PROOF_RECEIVED]");
+    parts.push(
+      "O sistema vai pausar a conversa, notificar a pessoa responsavel via WhatsApp e te avisar quando ela confirmar o recebimento."
+    );
+    if (paymentWaitMessage) {
+      parts.push(
+        `Use esta mensagem (ou variacao com o mesmo sentido) ao avisar que vai validar com a equipe: "${paymentWaitMessage}"`
+      );
+    }
+    parts.push(
+      "IMPORTANTE: NUNCA repita as instrucoes de pagamento mais de uma vez. Se o lead pedir de novo, reenvie a tag [PAYMENT_INSTRUCTIONS] sem mudar o texto."
     );
   }
 

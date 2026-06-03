@@ -761,7 +761,19 @@
       "handoffWebhookLabel": "Webhook (opzionale)",
       "handoffWebhookHint": "URL Slack, Discord, Make, n8n o Zapier da chiamare quando l'IA richiede un handoff. Riceve JSON completo con i dati.",
       "handoffWaitMessageLabel": "Messaggio che l'IA manda al lead mentre aspetta",
-      "handoffWaitMessagePlaceholder": "Es: Chiedo al team di generare il tuo link personalizzato, rispondo subito qui."
+      "handoffWaitMessagePlaceholder": "Es: Chiedo al team di generare il tuo link personalizzato, rispondo subito qui.",
+      "paymentTitle": "Conferma manuale del pagamento (Pix / Zelle / bonifico)",
+      "paymentSubtitle": "Quando attivo, l'IA invia le istruzioni di pagamento, attende la prova (foto o testo), avvisa la persona o le persone responsabili via WhatsApp e libera il lead solo dopo un OK umano.",
+      "paymentInstructionsLabel": "Istruzioni di pagamento",
+      "paymentInstructionsHint": "Testo esatto che l'IA invia al lead alla chiusura (chiave Pix, dati bancari, Zelle, ecc). L'IA copia il 100% di quello che scrivi qui, senza inventare.",
+      "paymentInstructionsPlaceholder": "Es:\nIBAN: IT60 X054 2811 1010 0000 0123 456\nBeneficiario: Tua Brand SRL\nImporto: EUR 297,00\n\nDopo il pagamento, invia lo screenshot della ricevuta qui.",
+      "paymentConfirmersLabel": "WhatsApp del responsabile della conferma",
+      "paymentConfirmersHint": "Uno o piu numeri in formato internazionale. Quando il lead invia la prova, ricevono un messaggio dalla nostra IA che chiede OK. Basta rispondere 'ok' e il lead viene rilasciato automaticamente.",
+      "paymentWaitMessageLabel": "Messaggio durante la validazione col team",
+      "paymentWaitMessagePlaceholder": "Es: Ho ricevuto la ricevuta. La sto validando col team, rispondo qui tra pochi minuti.",
+      "paymentConfirmedLabel": "Messaggio dopo l'OK del responsabile",
+      "paymentConfirmedHint": "Testo che l'IA invia automaticamente al lead quando il confermatore risponde con OK.",
+      "paymentConfirmedPlaceholder": "Es: Pagamento confermato, grazie mille per l'acquisto e la fiducia! Ti passo il prossimo passo ora..."
     },
     "step5transfer": {
       "title": "Transferência per humano",

@@ -161,16 +161,18 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
       >
         {!isCollapsed ? (
           <Link href="/" className="group flex items-center gap-3 min-w-0">
-            <div className="relative w-9 h-9 rounded-xl overflow-hidden shrink-0 ring-1 ring-border/70 shadow-md transition-transform group-hover:scale-[1.04]">
-              <Image
-                src="/logo.png"
-                alt="MKT Digital"
-                width={36}
-                height={36}
-                className="object-contain"
-              />
-              <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-500 border-2 border-card shadow-sm" />
-            </div>
+            {/* Plain PNG render — no rounded mask, no ring, no shadow, no
+                decorative status dot. The operator complained the logo
+                was "torta com fundo e circulo que nao existem no PNG
+                original" — all of that came from this wrapper. */}
+            <Image
+              src="/logo.png"
+              alt="MKT Digital"
+              width={36}
+              height={36}
+              className="object-contain shrink-0 transition-transform group-hover:scale-[1.04]"
+              priority
+            />
             <div className="flex flex-col leading-tight min-w-0">
               <span className="text-[14px] font-semibold text-foreground tracking-tight truncate font-display">
                 MKT Digital
@@ -181,11 +183,15 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
             </div>
           </Link>
         ) : (
-          <Link href="/" className="block relative">
-            <div className="w-9 h-9 rounded-xl overflow-hidden ring-1 ring-border/70 shadow-md hover:scale-[1.04] transition-transform">
-              <Image src="/logo.png" alt="MKT Digital" width={36} height={36} className="object-contain" />
-            </div>
-            <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-500 border-2 border-card shadow-sm" />
+          <Link href="/" className="block">
+            <Image
+              src="/logo.png"
+              alt="MKT Digital"
+              width={36}
+              height={36}
+              className="object-contain hover:scale-[1.04] transition-transform"
+              priority
+            />
           </Link>
         )}
       </div>

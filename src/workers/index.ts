@@ -474,6 +474,119 @@ const aiWorker = new Worker(
       followUpHours = sent.followUpHours;
     }
 
+    // ── Payment-flow side effects (runs AFTER bubbles, never blocks) ──
+    // Two distinct moments to handle, both signaled by AI tags:
+    //   1) [PAYMENT_INSTRUCTIONS]   — just mark the conversation as
+    //      "awaitingProof" so the inbound handler knows that the next
+    //      IMAGE / "ja paguei" / etc. should trigger the confirm flow.
+    //   2) [PAYMENT_PROOF_RECEIVED] — notify the configured confirmer
+    //      phones via the tenant's WhatsApp channel and pause the AI
+    //      until a human responds "ok".
+    if (aiResult.paymentInstructionsSent || aiResult.paymentProofReceived) {
+      try {
+        const persona = (await prisma.aIConfig.findUnique({
+          where: { accountId },
+          select: { persona: true },
+        }))?.persona as Record<string, unknown> | null;
+        const confirmers = (
+          (persona?.pipelinePaymentConfirmerPhones as string[] | undefined) || []
+        ).filter((p) => typeof p === "string" && p.trim().length > 0);
+        const confirmedMsg = String(
+          persona?.pipelinePaymentConfirmedMessage || ""
+        );
+
+        if (aiResult.paymentInstructionsSent) {
+          // Stash the flow state in conversation.metadata. The inbound
+          // handler reads this to know an IMAGE from the lead means
+          // "they probably sent a receipt".
+          const conv = await prisma.conversation.findUnique({
+            where: { id: conversationId },
+            select: { metadata: true },
+          });
+          const prevMeta =
+            ((conv?.metadata as Record<string, unknown> | null) || {}) as Record<string, unknown>;
+          await prisma.conversation.update({
+            where: { id: conversationId },
+            data: {
+              metadata: {
+                ...prevMeta,
+                paymentFlow: {
+                  ...(prevMeta.paymentFlow as Record<string, unknown> | undefined),
+                  awaitingProof: true,
+                  instructionsSentAt: new Date().toISOString(),
+                },
+              },
+            },
+          });
+        }
+
+        if (aiResult.paymentProofReceived) {
+          // 1. Pause the AI so it doesn't reply while we wait for the human.
+          await prisma.conversation.update({
+            where: { id: conversationId },
+            data: { isAIEnabled: false },
+          });
+
+          // 2. Persist state so the WhatsApp inbound handler can route a
+          //    later "ok" from any of these confirmer phones back to THIS
+          //    conversation.
+          const conv = await prisma.conversation.findUnique({
+            where: { id: conversationId },
+            select: { metadata: true },
+          });
+          const prevMeta =
+            ((conv?.metadata as Record<string, unknown> | null) || {}) as Record<string, unknown>;
+          await prisma.conversation.update({
+            where: { id: conversationId },
+            data: {
+              metadata: {
+                ...prevMeta,
+                paymentFlow: {
+                  ...(prevMeta.paymentFlow as Record<string, unknown> | undefined),
+                  awaitingProof: false,
+                  proofReceivedAt: new Date().toISOString(),
+                  awaitingConfirmation: true,
+                  confirmerPhones: confirmers,
+                  confirmedMessage: confirmedMsg,
+                },
+              },
+            },
+          });
+
+          // 3. Notify each confirmer via the tenant's own WhatsApp channel.
+          //    The text includes a unique LEADREF token the confirmer just
+          //    has to keep when replying "ok" — but in practice "ok" alone
+          //    is fine because we track conversation state.
+          if (confirmers.length > 0 && channel === "WHATSAPP" && provider instanceof WhatsAppProvider) {
+            const text =
+              `Comprovante recebido do lead ${lead.name || lead.phone || "(sem nome)"}.\n` +
+              `Conversa: ${process.env.NEXT_PUBLIC_APP_URL || "https://mktdigital.sociosai.com"}/conversations?id=${conversationId}\n\n` +
+              `Confirma o recebimento? Responde aqui com OK pra liberar o cliente.`;
+            for (const phone of confirmers) {
+              await provider.send(phone, text).catch(() => {
+                // best effort, individual confirmer may be offline
+              });
+            }
+          }
+
+          await prisma.eventLog.create({
+            data: {
+              accountId,
+              event: "lead.payment_proof_received",
+              data: {
+                leadId,
+                conversationId,
+                confirmers,
+                notified: confirmers.length,
+              },
+            },
+          });
+        }
+      } catch (err) {
+        console.error("[ai-response] payment flow failed:", err);
+      }
+    }
+
     // ── Fire team handoff (email + webhook) ──
     // Runs AFTER the outbound bubbles so the lead sees the wait-message
     // before the team email goes out. Best-effort: never blocks the

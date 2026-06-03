@@ -760,7 +760,19 @@
       "handoffWebhookLabel": "Webhook (opcional)",
       "handoffWebhookHint": "URL do Slack, Discord, Make, n8n ou Zapier pra disparar quando a IA pedir handoff. Recebe um JSON com os dados completos.",
       "handoffWaitMessageLabel": "Mensagem que a IA manda ao lead enquanto espera",
-      "handoffWaitMessagePlaceholder": "Ex: Vou pedir pra nossa equipe gerar seu link personalizado, fica de olho que ja te retorno aqui."
+      "handoffWaitMessagePlaceholder": "Ex: Vou pedir pra nossa equipe gerar seu link personalizado, fica de olho que ja te retorno aqui.",
+      "paymentTitle": "Confirmacao manual de pagamento (Pix / Zelle / transferencia)",
+      "paymentSubtitle": "Quando ativado, a IA envia as instrucoes de pagamento, aguarda o comprovante (foto ou texto), avisa o(s) responsavel(is) via WhatsApp e so libera o cliente apos receber um OK humano.",
+      "paymentInstructionsLabel": "Instrucoes de pagamento",
+      "paymentInstructionsHint": "Texto exato que a IA envia ao lead na hora de fechar (chave Pix, dados bancarios, Zelle, etc). A IA copia 100% do que voc escrever aqui, sem inventar.",
+      "paymentInstructionsPlaceholder": "Ex:\nPix CNPJ: 12.345.678/0001-99\nBanco: Itau (341)\nFavorecido: MKT Digital LTDA\nValor: R$ 297,00\n\nApos pagar, mande o print do comprovante por aqui.",
+      "paymentConfirmersLabel": "WhatsApp do(s) responsavel(is) por confirmar",
+      "paymentConfirmersHint": "Um ou mais numeros em formato internacional. Quando o lead enviar o comprovante, eles recebem uma mensagem da nossa propria IA pedindo OK. Basta responder 'ok' que o cliente e liberado automaticamente.",
+      "paymentWaitMessageLabel": "Mensagem enquanto valida com a equipe",
+      "paymentWaitMessagePlaceholder": "Ex: Recebi seu comprovante. Ja to validando com o time, te aviso aqui em poucos minutos.",
+      "paymentConfirmedLabel": "Mensagem apos OK do responsavel",
+      "paymentConfirmedHint": "Texto que a IA envia automaticamente ao lead quando o confirmador responde com OK.",
+      "paymentConfirmedPlaceholder": "Ex: Pagamento confirmado, muito obrigado pela sua compra e confianca! Vou te passar o proximo passo agora..."
     },
     "step5transfer": {
       "title": "Transferência para humano",

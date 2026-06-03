@@ -760,7 +760,19 @@
       "handoffWebhookLabel": "Webhook (opcional)",
       "handoffWebhookHint": "URL de Slack, Discord, Make, n8n o Zapier para disparar cuando la IA pide handoff. Recibe JSON completo con los datos.",
       "handoffWaitMessageLabel": "Mensaje que la IA manda al lead mientras espera",
-      "handoffWaitMessagePlaceholder": "Ej: Le voy a pedir al equipo que genere tu link personalizado, ya te respondo por aca."
+      "handoffWaitMessagePlaceholder": "Ej: Le voy a pedir al equipo que genere tu link personalizado, ya te respondo por aca.",
+      "paymentTitle": "Confirmacion manual de pago (Pix / Zelle / transferencia)",
+      "paymentSubtitle": "Cuando esta activo, la IA envia las instrucciones de pago, espera el comprobante (foto o texto), avisa al/los responsable(s) por WhatsApp y solo libera al lead despues de un OK humano.",
+      "paymentInstructionsLabel": "Instrucciones de pago",
+      "paymentInstructionsHint": "Texto exacto que la IA envia al lead al cerrar (clave Pix, datos bancarios, Zelle, etc). La IA copia 100% lo que escribas aqui, sin inventar.",
+      "paymentInstructionsPlaceholder": "Ej:\nZelle: pagos@tumarca.com\nBeneficiario: Tu Marca SA\nMonto: USD 297.00\n\nLuego de pagar, manda la captura del comprobante por aqui.",
+      "paymentConfirmersLabel": "WhatsApp del/los responsable(s) de confirmar",
+      "paymentConfirmersHint": "Uno o mas numeros en formato internacional. Cuando el lead manda el comprobante, reciben un mensaje de nuestra IA pidiendo OK. Basta responder 'ok' y el lead se libera automaticamente.",
+      "paymentWaitMessageLabel": "Mensaje mientras se valida con el equipo",
+      "paymentWaitMessagePlaceholder": "Ej: Recibi tu comprobante. Lo estoy validando con el equipo, te respondo por aca en unos minutos.",
+      "paymentConfirmedLabel": "Mensaje despues del OK del responsable",
+      "paymentConfirmedHint": "Texto que la IA envia automaticamente al lead cuando el confirmador responde con OK.",
+      "paymentConfirmedPlaceholder": "Ej: Pago confirmado, muchas gracias por tu compra y confianza! Te paso el siguiente paso ahora..."
     },
     "step5transfer": {
       "title": "Transferencia a humano",

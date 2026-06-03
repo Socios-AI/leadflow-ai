@@ -760,7 +760,19 @@
       "handoffWebhookLabel": "Webhook (optional)",
       "handoffWebhookHint": "Slack, Discord, Make, n8n or Zapier URL to ping when the AI requests a handoff. Receives a full JSON payload.",
       "handoffWaitMessageLabel": "Message the AI sends to the lead while waiting",
-      "handoffWaitMessagePlaceholder": "Ex: Our team is generating your personalized link, hang on, I will get back to you in a minute."
+      "handoffWaitMessagePlaceholder": "Ex: Our team is generating your personalized link, hang on, I will get back to you in a minute.",
+      "paymentTitle": "Manual payment confirmation (Pix / Zelle / wire)",
+      "paymentSubtitle": "When on, the AI sends the payment instructions, waits for proof (image or text), pings the human(s) in charge via WhatsApp and only releases the lead after a human OK.",
+      "paymentInstructionsLabel": "Payment instructions",
+      "paymentInstructionsHint": "Exact text the AI sends to the lead at closing time (Pix key, bank details, Zelle, etc). The AI copies 100% of what you write here, never invents.",
+      "paymentInstructionsPlaceholder": "Ex:\nZelle: payments@yourbrand.com\nBeneficiary: Your Brand LLC\nAmount: USD 297.00\n\nAfter paying, send the receipt screenshot here.",
+      "paymentConfirmersLabel": "WhatsApp of the person(s) confirming receipt",
+      "paymentConfirmersHint": "One or more numbers in international format. When the lead sends proof, they get a message from our AI asking for OK. Just reply 'ok' and the lead is released automatically.",
+      "paymentWaitMessageLabel": "Message while validating with the team",
+      "paymentWaitMessagePlaceholder": "Ex: Got your receipt. Validating with the team now, I will get back to you in a few minutes.",
+      "paymentConfirmedLabel": "Message after the human OK",
+      "paymentConfirmedHint": "Text the AI sends automatically to the lead once the confirmer replies with OK.",
+      "paymentConfirmedPlaceholder": "Ex: Payment confirmed, thank you so much for your purchase and trust! Here is the next step..."
     },
     "step5transfer": {
       "title": "Transfer to human",
