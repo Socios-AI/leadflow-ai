@@ -87,16 +87,18 @@ const nextConfig: NextConfig = {
       "node_modules/@prisma/engines/query-engine-linux-musl*",
       "node_modules/@prisma/engines/query-engine-windows*",
       "node_modules/@prisma/engines/query_engine-windows*",
-      // Next.js compiled vendor bundles. Webpack/Babel/Terser are only used
-      // at BUILD time; the runtime needs none of them. ~80MB combined.
-      "node_modules/next/dist/compiled/babel/**",
-      "node_modules/next/dist/compiled/babel-packages/**",
+      // Next.js compiled vendor bundles that are TRULY build-only.
+      // CAUTION: do NOT exclude next/dist/compiled/babel/** — it ships the
+      // `code-frame` module used at RUNTIME by patch-error-inspect for
+      // formatting stack traces (loaded via node-environment.js on boot).
+      // Excluding it crashes the container with MODULE_NOT_FOUND on start.
+      // Same applies to babel-packages and jest-worker (next uses worker
+      // threads for ISR/streaming at runtime).
       "node_modules/next/dist/compiled/terser/**",
       "node_modules/next/dist/compiled/webpack/**",
       "node_modules/next/dist/compiled/@ampproject/**",
       "node_modules/next/dist/compiled/sass-loader/**",
       "node_modules/next/dist/compiled/postcss-scss/**",
-      "node_modules/next/dist/compiled/jest-worker/**",
       // Dev/build-only toolchain
       "node_modules/typescript/**",
       "node_modules/@typescript-eslint/**",
