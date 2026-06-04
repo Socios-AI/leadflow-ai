@@ -84,7 +84,7 @@ export default function ConversationsPage() {
   const [loadChat, setLoadChat] = useState(false);
   const [sending, setSending] = useState(false);
   const [toggling, setToggling] = useState(false);
-  const endR = useRef<HTMLDivElement>(null);
+  const msgsBoxR = useRef<HTMLDivElement>(null);
   const inpR = useRef<HTMLTextAreaElement>(null);
   const sel = convs.find(c => c.id === selId) || null;
 
@@ -141,7 +141,16 @@ export default function ConversationsPage() {
     return () => clearInterval(id);
   }, []);
 
-  useEffect(() => { endR.current?.scrollIntoView({ behavior: "smooth" }); }, [msgs]);
+  // CRITICAL: do NOT use scrollIntoView here. It scrolls every scrollable
+  // ancestor to bring the target into view, which in this layout means the
+  // whole page jumps up/down when clicking a conversation. Setting scrollTop
+  // directly on the messages container scrolls ONLY that container, never
+  // the page. Use instant scroll (no smooth) to avoid layout-shift jitter
+  // during the animation as messages render.
+  useEffect(() => {
+    const el = msgsBoxR.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [msgs]);
 
   const toggle = useCallback(async () => {
     if (!det || toggling) return; setToggling(true);
@@ -364,7 +373,7 @@ export default function ConversationsPage() {
             </div>
           )}
 
-          <div className="flex-1 min-h-0 overflow-y-auto px-4 lg:px-6 py-4 space-y-1.5">
+          <div ref={msgsBoxR} className="flex-1 min-h-0 overflow-y-auto px-4 lg:px-6 py-4 space-y-1.5">
             {loadChat ? (
               <div className="space-y-3 py-4">
                 {Array.from({ length: 5 }).map((_, i) => (
@@ -457,7 +466,6 @@ export default function ConversationsPage() {
                     </React.Fragment>
                   );
                 })}
-                <div ref={endR} />
               </>
             )}
           </div>
