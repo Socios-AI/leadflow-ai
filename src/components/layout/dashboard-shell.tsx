@@ -46,7 +46,14 @@ export function DashboardShell({ children, adminOnboarding }: DashboardShellProp
         <Sidebar isCollapsed={collapsed} onToggle={() => { setCollapsed(!collapsed); setMobileOpen(false) }} />
       </aside>
 
-      <div className="flex-1 flex flex-col min-w-0">
+      {/* CRITICAL: min-h-0 on this flex-column. Without it, tall children
+          (long conversation list, long chat history) make the column grow
+          taller than the parent shell. The overflow-y-auto regions inside
+          conversations would then be cropped below the viewport, breaking
+          internal scroll and producing the "chat panel rises with empty
+          space below" bug. min-h-0 forces the column to honor the parent's
+          height and lets flex-1 children compute correct scroll bounds. */}
+      <div className="flex-1 flex flex-col min-w-0 min-h-0">
         <div className="hidden lg:block shrink-0"><Header /></div>
         <div className="lg:hidden shrink-0 flex items-center justify-between gap-3 px-4 h-14 border-b border-border bg-background/80 backdrop-blur-xl">
           <div className="flex items-center gap-3">
