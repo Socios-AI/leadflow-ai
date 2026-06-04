@@ -60,12 +60,13 @@ const nextConfig: NextConfig = {
       "node_modules/@swc/core-linux-x64-musl/**",
       // Prisma CLI (only @prisma/client + .prisma/client are needed at runtime;
       // the `prisma` package is the CLI used during db:generate / migrations).
+      // NOTE: do NOT exclude @prisma/get-platform or @prisma/debug — the
+      // runtime client (@prisma/client) imports both for engine resolution
+      // and structured logging respectively. Excluding them = crash on boot.
       "node_modules/prisma/**",
       "node_modules/@prisma/internals/**",
       "node_modules/@prisma/migrate/**",
       "node_modules/@prisma/fetch-engine/**",
-      "node_modules/@prisma/get-platform/**",
-      "node_modules/@prisma/debug/**",
       // Prisma engine binaries for non-runtime platforms. Coolify runs
       // node:20-bookworm-slim (linux-x64-gnu). All other engine targets
       // are dead weight that the tracer is forced to stat & hash.
@@ -126,16 +127,17 @@ const nextConfig: NextConfig = {
       "**/*.d.ts",
       "**/*.d.cts",
       "**/*.d.mts",
-      // README/CHANGELOG/LICENSE files: tiny each but there are thousands
+      // README/CHANGELOG/LICENSE files: tiny each but there are thousands.
+      // Safe to exclude — runtime never reads these.
       "**/README*",
       "**/CHANGELOG*",
       "**/LICENSE*",
       "**/HISTORY*",
-      // Test fixtures inside published packages
-      "**/test/**",
-      "**/tests/**",
-      "**/__tests__/**",
-      "**/spec/**",
+      // NOTE: do NOT use broad `**/test/**` `**/tests/**` `**/__tests__/**`
+      // `**/spec/**` excludes here. Many published packages have legit
+      // runtime modules under those paths (some-pkg/lib/test/util.js,
+      // foo/dist/__tests__/setup.js, etc) and excluding them caused the
+      // container to crash on boot with module-not-found.
     ],
   },
   images: {
