@@ -86,6 +86,12 @@ export default function ConversationsPage() {
   const [toggling, setToggling] = useState(false);
   const msgsBoxR = useRef<HTMLDivElement>(null);
   const inpR = useRef<HTMLTextAreaElement>(null);
+  // Whether the chat should auto-stick to the bottom when new messages
+  // arrive. Starts true (open a conversation = jump to latest). Flips to
+  // false the moment the operator scrolls up to read history, so the 3.5s
+  // poll no longer yanks them back down. Re-armed when they scroll back to
+  // the bottom or switch conversations.
+  const stickBottomR = useRef(true);
   const sel = convs.find(c => c.id === selId) || null;
 
   useEffect(() => { fetch("/api/conversations").then(r => r.ok ? r.json() : []).then(d => setConvs(Array.isArray(d) ? d : d?.conversations || [])).catch(() => {}).finally(() => setLoadList(false)); }, []);
@@ -95,6 +101,8 @@ export default function ConversationsPage() {
   useEffect(() => {
     if (!selId) { setMsgs([]); setDet(null); return; }
     let cancelled = false;
+    // New conversation selected → always start pinned to the latest message.
+    stickBottomR.current = true;
     setLoadChat(true);
 
     // Initial load shows the spinner; subsequent polls are silent so the
@@ -110,7 +118,20 @@ export default function ConversationsPage() {
         .then((d) => {
           if (cancelled || !d) return;
           setDet(d.conversation);
-          setMsgs(d.messages || []);
+          // Only replace the array when the content actually changed. The
+          // poll runs every 3.5s; blindly calling setMsgs each tick forces a
+          // full re-render (and re-runs the scroll effect) even when nothing
+          // is new, which shows up as flicker. Compare a cheap signature of
+          // id+status so genuine updates (new message, SENDING→SENT) still
+          // flow through.
+          const next: Msg[] = d.messages || [];
+          setMsgs((prev) => {
+            if (prev.length === next.length &&
+                prev.every((m, i) => m.id === next[i].id && m.status === next[i].status)) {
+              return prev;
+            }
+            return next;
+          });
         })
         .catch(() => {})
         .finally(() => {
@@ -147,10 +168,29 @@ export default function ConversationsPage() {
   // directly on the messages container scrolls ONLY that container, never
   // the page. Use instant scroll (no smooth) to avoid layout-shift jitter
   // during the animation as messages render.
+  //
+  // BUG FIX: previously this fired on EVERY msgs change. Because the 3.5s
+  // poll replaces the msgs array each tick, the operator was yanked back to
+  // the bottom every 3.5s and could never read older messages ("trava nas
+  // ultimas mensagens"). Now we only snap to the bottom when stickBottomR is
+  // armed — i.e. the operator is already at the bottom or just opened the
+  // conversation. Scrolling up disarms it (see onChatScroll below).
   useEffect(() => {
+    if (!stickBottomR.current) return;
     const el = msgsBoxR.current;
     if (el) el.scrollTop = el.scrollHeight;
   }, [msgs]);
+
+  // Track whether the operator is parked near the bottom. Within ~80px of the
+  // bottom counts as "at the bottom" so a tiny manual nudge doesn't disable
+  // auto-follow. Reading history (scrolling up) disarms the snap until they
+  // return to the bottom.
+  const onChatScroll = useCallback(() => {
+    const el = msgsBoxR.current;
+    if (!el) return;
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    stickBottomR.current = distanceFromBottom < 80;
+  }, []);
 
   const toggle = useCallback(async () => {
     if (!det || toggling) return; setToggling(true);
@@ -159,6 +199,8 @@ export default function ConversationsPage() {
 
   const send = useCallback(async () => {
     if (!inp.trim() || sending || !selId) return; const txt = inp.trim(); setInp(""); setSending(true);
+    // Sending my own message → follow it to the bottom.
+    stickBottomR.current = true;
     const o: Msg = { id: `t${Date.now()}`, direction: "OUTBOUND", content: txt, contentType: "TEXT", isAIGenerated: false, status: "SENDING", createdAt: new Date().toISOString() };
     setMsgs(p => [...p, o]);
     try { const r = await fetch(`/api/conversations/${selId}/messages`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ content: txt, disableAI: false }) }); if (r.ok) { const s = await r.json(); setMsgs(p => p.map(m => m.id === o.id ? { ...s } : m)); } } catch { setMsgs(p => p.map(m => m.id === o.id ? { ...m, status: "FAILED" } : m)); }
@@ -178,7 +220,7 @@ export default function ConversationsPage() {
     <div className="flex flex-1 min-h-0 overflow-hidden">
 
       {/* ════════════════ LEFT: LISTA ════════════════ */}
-      <div className={cn("w-full lg:w-[380px] xl:w-[400px] shrink-0 h-full border-r border-border flex flex-col overflow-hidden", selId ? "hidden lg:flex" : "flex")}>
+      <div className={cn("w-full lg:w-[380px] xl:w-[400px] shrink-0 h-full min-h-0 border-r border-border flex flex-col overflow-hidden", selId ? "hidden lg:flex" : "flex")}>
         <div className="shrink-0 px-5 pt-5 pb-3">
           <div className="flex items-center justify-between mb-1">
             <h1 className="font-display text-[18px] font-semibold text-foreground tracking-tight">{t("title")}</h1>
@@ -305,7 +347,7 @@ export default function ConversationsPage() {
 
       {/* ════════════════ RIGHT: CHAT ════════════════ */}
       {selId && sel ? (
-        <div className="flex-1 min-w-0 h-full flex flex-col overflow-hidden bg-gradient-to-b from-background to-background/95">
+        <div className="flex-1 min-w-0 h-full min-h-0 flex flex-col overflow-hidden bg-gradient-to-b from-background to-background/95">
           <div className="shrink-0 flex items-center justify-between px-4 lg:px-5 py-3 border-b border-border bg-card/40 backdrop-blur-sm">
             <div className="flex items-center gap-3 min-w-0">
               <button onClick={() => setSelId(null)} className="lg:hidden p-1 text-muted-foreground hover:text-foreground rounded-lg cursor-pointer">
@@ -373,7 +415,7 @@ export default function ConversationsPage() {
             </div>
           )}
 
-          <div ref={msgsBoxR} className="flex-1 min-h-0 overflow-y-auto px-4 lg:px-6 py-4 space-y-1.5">
+          <div ref={msgsBoxR} onScroll={onChatScroll} className="flex-1 min-h-0 overflow-y-auto px-4 lg:px-6 py-4 space-y-1.5">
             {loadChat ? (
               <div className="space-y-3 py-4">
                 {Array.from({ length: 5 }).map((_, i) => (

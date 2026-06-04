@@ -33,7 +33,7 @@ export function DashboardShell({ children, adminOnboarding }: DashboardShellProp
     // caused the page to scroll past the sidebar bottom on some browsers.
     // The conversations page (the only full-bleed route) sizes itself
     // with flex inside this shell, no explicit 100dvh calc needed.
-    <div className="flex h-screen max-h-screen overflow-hidden bg-background">
+    <div className="flex h-[100dvh] max-h-[100dvh] overflow-hidden bg-background">
       {mobileOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 lg:hidden" onClick={() => setMobileOpen(false)} />
       )}
