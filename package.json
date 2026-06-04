@@ -6,7 +6,7 @@
     "dev": "cross-env NODE_OPTIONS=--max-old-space-size=4096 next dev",
     "dev:turbo": "cross-env NODE_OPTIONS=--max-old-space-size=4096 next dev --turbopack",
     "dev:clean": "rimraf .next node_modules/.cache && cross-env NODE_OPTIONS=--max-old-space-size=4096 next dev",
-    "build": "cross-env NODE_OPTIONS=--max-old-space-size=3072 next build",
+    "build": "cross-env NODE_OPTIONS=--max-old-space-size=2048 next build",
     "start": "next start",
     "lint": "next lint",
     "db:generate": "prisma generate",

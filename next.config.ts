@@ -58,6 +58,44 @@ const nextConfig: NextConfig = {
       "node_modules/@swc/core-linux-arm64-gnu/**",
       "node_modules/@swc/core-linux-arm64-musl/**",
       "node_modules/@swc/core-linux-x64-musl/**",
+      // Prisma CLI (only @prisma/client + .prisma/client are needed at runtime;
+      // the `prisma` package is the CLI used during db:generate / migrations).
+      "node_modules/prisma/**",
+      "node_modules/@prisma/internals/**",
+      "node_modules/@prisma/migrate/**",
+      "node_modules/@prisma/fetch-engine/**",
+      "node_modules/@prisma/get-platform/**",
+      "node_modules/@prisma/debug/**",
+      // Prisma engine binaries for non-runtime platforms. Coolify runs
+      // node:20-bookworm-slim (linux-x64-gnu). All other engine targets
+      // are dead weight that the tracer is forced to stat & hash.
+      "node_modules/@prisma/engines/libquery_engine-darwin*",
+      "node_modules/@prisma/engines/libquery_engine-debian-openssl-1*",
+      "node_modules/@prisma/engines/libquery_engine-rhel*",
+      "node_modules/@prisma/engines/libquery_engine-linux-arm64*",
+      "node_modules/@prisma/engines/libquery_engine-linux-musl*",
+      "node_modules/@prisma/engines/migration-engine*",
+      "node_modules/@prisma/engines/prisma-fmt*",
+      "node_modules/@prisma/engines/introspection-engine*",
+      "node_modules/@prisma/engines/schema-engine-darwin*",
+      "node_modules/@prisma/engines/schema-engine-linux-arm64*",
+      "node_modules/@prisma/engines/schema-engine-linux-musl*",
+      "node_modules/@prisma/engines/schema-engine-windows*",
+      "node_modules/@prisma/engines/query-engine-darwin*",
+      "node_modules/@prisma/engines/query-engine-linux-arm64*",
+      "node_modules/@prisma/engines/query-engine-linux-musl*",
+      "node_modules/@prisma/engines/query-engine-windows*",
+      "node_modules/@prisma/engines/query_engine-windows*",
+      // Next.js compiled vendor bundles. Webpack/Babel/Terser are only used
+      // at BUILD time; the runtime needs none of them. ~80MB combined.
+      "node_modules/next/dist/compiled/babel/**",
+      "node_modules/next/dist/compiled/babel-packages/**",
+      "node_modules/next/dist/compiled/terser/**",
+      "node_modules/next/dist/compiled/webpack/**",
+      "node_modules/next/dist/compiled/@ampproject/**",
+      "node_modules/next/dist/compiled/sass-loader/**",
+      "node_modules/next/dist/compiled/postcss-scss/**",
+      "node_modules/next/dist/compiled/jest-worker/**",
       // Dev/build-only toolchain
       "node_modules/typescript/**",
       "node_modules/@typescript-eslint/**",
@@ -65,6 +103,9 @@ const nextConfig: NextConfig = {
       "node_modules/eslint-config-next/**",
       "node_modules/@types/**",
       "node_modules/prettier/**",
+      "node_modules/tsx/**",
+      "node_modules/rimraf/**",
+      "node_modules/cross-env/**",
       // Test infra that drifts into node_modules but never runs in prod
       "node_modules/jest/**",
       "node_modules/@jest/**",
@@ -74,8 +115,27 @@ const nextConfig: NextConfig = {
       "node_modules/sharp/vendor/**",
       // Canvas is optional, only pulled in via pdfjs and similar
       "node_modules/canvas/**",
-      // Source maps add ~150MB to the trace work for no runtime value
+      // Tailwind toolchain (CSS already compiled into .next/static/css)
+      "node_modules/tailwindcss/**",
+      "node_modules/@tailwindcss/**",
+      "node_modules/postcss/**",
+      "node_modules/autoprefixer/**",
+      // Source maps and TypeScript .d.ts files: ~200MB combined of pure
+      // build-time metadata the runtime server never reads.
       "**/*.map",
+      "**/*.d.ts",
+      "**/*.d.cts",
+      "**/*.d.mts",
+      // README/CHANGELOG/LICENSE files: tiny each but there are thousands
+      "**/README*",
+      "**/CHANGELOG*",
+      "**/LICENSE*",
+      "**/HISTORY*",
+      // Test fixtures inside published packages
+      "**/test/**",
+      "**/tests/**",
+      "**/__tests__/**",
+      "**/spec/**",
     ],
   },
   images: {
