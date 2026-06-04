@@ -169,7 +169,7 @@ export default function ConversationsPage() {
     <div className="flex flex-1 min-h-0 overflow-hidden">
 
       {/* ════════════════ LEFT: LISTA ════════════════ */}
-      <div className={cn("w-full lg:w-[380px] xl:w-[400px] shrink-0 min-h-0 border-r border-border flex flex-col overflow-hidden", selId ? "hidden lg:flex" : "flex")}>
+      <div className={cn("w-full lg:w-[380px] xl:w-[400px] shrink-0 h-full border-r border-border flex flex-col overflow-hidden", selId ? "hidden lg:flex" : "flex")}>
         <div className="shrink-0 px-5 pt-5 pb-3">
           <div className="flex items-center justify-between mb-1">
             <h1 className="font-display text-[18px] font-semibold text-foreground tracking-tight">{t("title")}</h1>
@@ -296,7 +296,7 @@ export default function ConversationsPage() {
 
       {/* ════════════════ RIGHT: CHAT ════════════════ */}
       {selId && sel ? (
-        <div className="flex-1 min-w-0 min-h-0 flex flex-col overflow-hidden bg-gradient-to-b from-background to-background/95">
+        <div className="flex-1 min-w-0 h-full flex flex-col overflow-hidden bg-gradient-to-b from-background to-background/95">
           <div className="shrink-0 flex items-center justify-between px-4 lg:px-5 py-3 border-b border-border bg-card/40 backdrop-blur-sm">
             <div className="flex items-center gap-3 min-w-0">
               <button onClick={() => setSelId(null)} className="lg:hidden p-1 text-muted-foreground hover:text-foreground rounded-lg cursor-pointer">
