@@ -118,13 +118,19 @@ export default function ConversationsPage() {
         .then((d) => {
           if (cancelled || !d) return;
           setDet(d.conversation);
+          // The API returns messages newest-first (orderBy createdAt desc,
+          // required for cursor pagination). The chat must render oldest at
+          // the top and newest at the bottom, so reverse into chronological
+          // order. Without this the conversation showed up completely
+          // backwards (greeting at the bottom, latest reply at the top).
+          //
           // Only replace the array when the content actually changed. The
           // poll runs every 3.5s; blindly calling setMsgs each tick forces a
           // full re-render (and re-runs the scroll effect) even when nothing
           // is new, which shows up as flicker. Compare a cheap signature of
           // id+status so genuine updates (new message, SENDING→SENT) still
           // flow through.
-          const next: Msg[] = d.messages || [];
+          const next: Msg[] = (d.messages || []).slice().reverse();
           setMsgs((prev) => {
             if (prev.length === next.length &&
                 prev.every((m, i) => m.id === next[i].id && m.status === next[i].status)) {
