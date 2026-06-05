@@ -124,7 +124,15 @@ export async function handleWhatsAppInbound(
   //    import, manual add) NEVER carry this flag, so the AI engages them.
   const leadMetaForGate = (lead.metadata as Record<string, unknown> | null) || {};
   const isUnverifiedInbound = leadMetaForGate.unverifiedInbound === true;
-  if (isUnverifiedInbound && respondToFunnelOnly) {
+  // CRITICAL: in a REACTIVE funnel (whatsapp_direct / social_dm = "lead chama
+  // primeiro") the lead messaging in first IS the funnel entry — there is no
+  // upstream webhook, so every such lead is necessarily flagged
+  // unverifiedInbound. Blocking them with the funnel-only gate makes the AI
+  // permanently silent for these tenants. The gate exists to ignore cold
+  // strangers on PROACTIVE funnels (Meta/web-form leads, where a random DM is
+  // not a funnel lead). For reactive funnels we must engage the inbound lead.
+  const reactiveFunnel = await isReactiveFunnel(accountId);
+  if (isUnverifiedInbound && respondToFunnelOnly && !reactiveFunnel) {
     const content = extractContent(data);
     await prisma.message.create({
       data: {
@@ -388,6 +396,21 @@ async function findOrCreateLead(
 // inbox visibility). The cosmetics-brand case: owner connects WhatsApp,
 // hasn't filled the funnel yet — first stranger message must NOT trigger
 // a generic AI reply.
+// Reactive funnels ("lead chama primeiro") — the lead initiates contact on
+// the channel and there's no upstream lead webhook. Keep in sync with the
+// non-proactive entries of TEMPLATE_OPTIONS in pipeline/page.tsx.
+const REACTIVE_FUNNEL_TEMPLATES = new Set(["whatsapp_direct", "social_dm"]);
+
+async function isReactiveFunnel(accountId: string): Promise<boolean> {
+  const row = await prisma.aIConfig.findUnique({
+    where: { accountId },
+    select: { persona: true },
+  });
+  const persona = (row?.persona as Record<string, unknown> | null) || {};
+  const template = String(persona.pipelineTemplate || "").trim();
+  return REACTIVE_FUNNEL_TEMPLATES.has(template);
+}
+
 async function isPipelineConfigured(accountId: string): Promise<boolean> {
   const row = await prisma.aIConfig.findUnique({
     where: { accountId },
