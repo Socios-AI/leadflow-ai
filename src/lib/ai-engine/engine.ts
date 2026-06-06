@@ -1286,6 +1286,17 @@ ${params.campaignInfo ? `- Campanha: ${params.campaignInfo}` : ""}
 
 OBJETIVO DO FUNIL:
 ${goalInstruction}
+Esse é o destino da conversa, NÃO o que você entrega na primeira resposta. Você chega lá conduzindo o lead passo a passo.
+
+════════════════════════════════════════════════════
+RITMO DA CONVERSA (muito importante)
+════════════════════════════════════════════════════
+Você está CONVERSANDO, não fazendo uma apresentação. Avance UM passo por vez.
+- Responda só ao que o lead realmente perguntou, de forma direta e enxuta. NÃO despeje todo o pitch, nem todos os benefícios, nem o objetivo inteiro de uma vez.
+- Entregue 1 ideia central por resposta. Guarde os outros argumentos para os próximos turnos, conforme o lead for demonstrando interesse.
+- Termine quase sempre com UMA pergunta que faça o lead falar mais sobre a situação e a necessidade dele. É assim que você qualifica de verdade.
+- NÃO convide para call/reunião nem mande link na MESMA resposta em que apresenta a solução. Só puxe o próximo passo (call, agendamento, link) depois de entender a necessidade do lead e percebê-lo aquecido. Cedo demais soa robótico e afasta.
+- Na maioria das respostas use 1 a 3 balões curtos. Bloco gigante com vários parágrafos de uma vez = errado.
 
 ${escalationLine}
 ${conversionLine}
@@ -1293,7 +1304,7 @@ ${schedulingBlock}
 ${closingBlock}
 
 OBSERVAÇÃO SOBRE DEBOUNCE:
-O lead pode ter enviado várias mensagens seguidas. Elas aparecem juntas na última fala como "user". Responda a TUDO de uma vez, de forma coesa, como se tivesse lido tudo antes de responder.`;
+O lead pode ter enviado várias mensagens seguidas — elas aparecem juntas na última fala como "user". Leia todas e responda de forma coesa, endereçando os pontos dele, mas SEM despejar conteúdo: mantenha o ritmo enxuto descrito acima.`;
 }
 
 /**
@@ -1598,16 +1609,22 @@ function extractScheduleBlock(
 }
 
 function describeGoal(goal: string, calendarEnabled: boolean): string {
-  switch (goal) {
-    case "scheduleMeeting":
+  // The funnel UI stores goal ids in snake_case (schedule_meeting, close_sale,
+  // qualify_transfer, collect_send), but this switch used to match camelCase
+  // only — so NOTHING matched and every funnel silently fell back to closeSale,
+  // ignoring the operator's chosen goal. Normalize (strip _/- and lowercase)
+  // so both shapes resolve to the right instruction.
+  const g = goal.replace(/[_-]/g, "").toLowerCase();
+  switch (g) {
+    case "schedulemeeting":
       return calendarEnabled
         ? "Qualificar o lead e agendar uma reunião no calendário. Pergunte disponibilidade e confirme o horário."
         : "Qualificar o lead e agendar uma reunião com o time comercial.";
-    case "qualifyTransfer":
+    case "qualifytransfer":
       return "Fazer as perguntas de qualificação e preparar a transferência para um vendedor humano.";
-    case "collectSend":
+    case "collectsend":
       return "Coletar as informações-chave do lead e indicar que a proposta/material será enviado em seguida.";
-    case "closeSale":
+    case "closesale":
     default:
       return "Conduzir a venda até o fechamento: entender a necessidade, tirar objeções e guiar para o próximo passo de compra.";
   }
