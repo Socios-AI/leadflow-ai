@@ -6,7 +6,7 @@ import { useTranslations, useLocale } from "next-intl";
 import {
   Search, Users, Brain, Phone, Mail, X, Download,
   Loader2, ChevronRight, Clock, Target, Headphones,
-  TrendingUp, Hash, Copy, Check, RefreshCw, AlertTriangle,
+  TrendingUp, Hash, Copy, Check, RefreshCw, AlertTriangle, Trash2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -72,6 +72,7 @@ export default function LeadsPage() {
   const [retryingId, setRetryingId] = useState<string | null>(null);
   const [retryingBulk, setRetryingBulk] = useState(false);
   const [retryToast, setRetryToast] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const reloadLeads = useCallback(async () => {
     try {
@@ -91,6 +92,28 @@ export default function LeadsPage() {
     () => leads.filter((l) => l.firstContactFailed).length,
     [leads]
   );
+
+  async function deleteLead(lead: Lead) {
+    if (!confirm(t("deleteConfirm", { name: lead.name || tc("noName") }))) return;
+    setDeletingId(lead.id);
+    setRetryToast(null);
+    try {
+      const r = await fetch(`/api/leads/${lead.id}`, { method: "DELETE" });
+      if (r.ok) {
+        // Optimistically drop from the visible list and close the drawer. The
+        // lead is only soft-deleted server-side; history stays for commission.
+        setLeads((prev) => prev.filter((x) => x.id !== lead.id));
+        setDetail(null);
+        setRetryToast(t("deleteOk"));
+      } else {
+        setRetryToast(t("deleteError"));
+      }
+    } catch {
+      setRetryToast(t("deleteError"));
+    } finally {
+      setDeletingId(null);
+    }
+  }
 
   async function retryOne(lead: Lead) {
     if (!confirm(t("retryOneConfirm", { name: lead.name || tc("noName") }))) return;
@@ -579,6 +602,21 @@ export default function LeadsPage() {
                   {t("viewConversation")}
                 </a>
               )}
+
+              {/* Soft delete: hides the lead from the list but keeps the full
+                  history + sale records in the DB for commission auditing. */}
+              <button
+                onClick={() => deleteLead(detail)}
+                disabled={deletingId === detail.id}
+                className="w-full flex items-center justify-center gap-2 h-11 rounded-xl border border-rose-500/40 text-rose-500 text-[13px] font-semibold hover:bg-rose-500/10 transition-colors disabled:opacity-60 cursor-pointer"
+              >
+                {deletingId === detail.id ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Trash2 className="w-4 h-4" />
+                )}
+                {t("deleteLead")}
+              </button>
             </div>
           </div>
         </>

@@ -15,7 +15,7 @@ export async function GET() {
       orderBy: { lastMessageAt: { sort: "desc", nulls: "last" } },
       take: 100,
       include: {
-        lead: { select: { name: true, phone: true, email: true } },
+        lead: { select: { name: true, phone: true, email: true, metadata: true } },
         messages: {
           orderBy: { createdAt: "desc" },
           take: 1,
@@ -25,7 +25,15 @@ export async function GET() {
       },
     });
 
-    const items = conversations.map((conv) => ({
+    // Hide conversations belonging to soft-deleted leads (metadata.deletedAt).
+    // Data stays in the DB for commission auditing; it's just removed from the
+    // operator inbox so a "deleted" lead doesn't reappear here.
+    const visible = conversations.filter((conv) => {
+      const m = (conv.lead.metadata as Record<string, unknown> | null) || {};
+      return !m.deletedAt;
+    });
+
+    const items = visible.map((conv) => ({
       id: conv.id,
       leadName: conv.lead.name || conv.lead.phone || conv.lead.email || "Sem nome",
       leadPhone: conv.lead.phone,

@@ -112,7 +112,15 @@ export async function PATCH(
   });
 }
 
-// DELETE - Delete a lead
+// DELETE - SOFT delete a lead.
+//
+// CRITICAL (commission integrity): we charge commission on sales closed by
+// the AI. A hard delete would cascade-remove the conversation, messages and
+// conversion/sale events (onDelete: Cascade in the schema), letting someone
+// erase the evidence of an AI-made sale to dodge the fee. So we NEVER
+// physically delete: we only stamp metadata.deletedAt so the lead disappears
+// from the operator's lists, while the lead row, conversations, messages and
+// EventLog (incl. sale/conversion events) stay fully intact and auditable.
 export async function DELETE(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -122,8 +130,43 @@ export async function DELETE(
 
   const { id } = await params;
 
-  await prisma.lead.deleteMany({
+  const lead = await prisma.lead.findFirst({
     where: { id, accountId: session.accountId },
+  });
+  if (!lead) return NextResponse.json({ error: "Lead not found" }, { status: 404 });
+
+  const meta = (lead.metadata as Record<string, unknown> | null) || {};
+  if (meta.deletedAt) {
+    return NextResponse.json({ success: true, alreadyDeleted: true });
+  }
+
+  await prisma.lead.update({
+    where: { id },
+    data: {
+      metadata: {
+        ...meta,
+        deletedAt: new Date().toISOString(),
+        deletedBy: session.userId,
+      },
+    },
+  });
+
+  // Immutable audit trail — records WHO hid the lead and its status at the
+  // time (e.g. CONVERTED), so a hidden-but-sold lead is still provable for
+  // commission. This event is never deleted.
+  await prisma.eventLog.create({
+    data: {
+      accountId: session.accountId,
+      event: "lead.soft_deleted",
+      data: {
+        leadId: id,
+        deletedBy: session.userId,
+        statusAtDeletion: lead.status,
+        leadName: lead.name,
+        leadPhone: lead.phone,
+        leadEmail: lead.email,
+      },
+    },
   });
 
   return NextResponse.json({ success: true });

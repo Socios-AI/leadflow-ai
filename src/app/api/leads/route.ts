@@ -26,7 +26,15 @@ export async function GET() {
     // never had a SENT sibling. Used by the UI to show the retry button.
     // We also grab the most recent failure reason so the UI can show
     // "Sem WhatsApp" instead of a generic FAILED for invalid numbers.
-    const allConvIds = leads.flatMap((l) => l.conversations.map((c) => c.id));
+    // Hide soft-deleted leads (metadata.deletedAt) from the operator view.
+    // The rows + their conversations/messages/sale events stay in the DB for
+    // commission auditing — see DELETE in /api/leads/[id].
+    const visibleLeads = leads.filter((l) => {
+      const m = (l.metadata as Record<string, unknown> | null) || {};
+      return !m.deletedAt;
+    });
+
+    const allConvIds = visibleLeads.flatMap((l) => l.conversations.map((c) => c.id));
     const failedConvSet = new Set<string>();
     const failReasonByConv = new Map<string, string>();
     if (allConvIds.length > 0) {
@@ -70,7 +78,7 @@ export async function GET() {
       }
     }
 
-    return NextResponse.json(leads.map((l) => {
+    return NextResponse.json(visibleLeads.map((l) => {
       const conv = l.conversations[0];
       const firstContactFailed = conv ? failedConvSet.has(conv.id) : false;
       const firstContactFailReason = conv ? failReasonByConv.get(conv.id) || null : null;
