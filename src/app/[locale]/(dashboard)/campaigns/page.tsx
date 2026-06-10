@@ -3,10 +3,11 @@
 
 import React, { useState, useEffect } from "react";
 import { useTranslations, useLocale } from "next-intl";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
-  Plus, Target, Users, TrendingUp, Clock, ChevronRight,
-  Globe, Video, Image, Type, CheckCircle,
+  Plus, Target, Users, TrendingUp, Clock,
+  Globe, Video, Image, Type, CheckCircle, GitBranch,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -57,6 +58,7 @@ const STATUS_DOT: Record<string, string> = {
 export default function CampaignsPage() {
   const t = useTranslations("campaigns");
   const locale = useLocale();
+  const router = useRouter();
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -219,7 +221,20 @@ export default function CampaignsPage() {
                     <Clock className="w-3 h-3 opacity-60" />
                     {new Date(c.createdAt).toLocaleDateString(locale)}
                   </span>
-                  <ChevronRight className="w-4 h-4 text-muted-foreground/50 group-hover:text-primary group-hover:translate-x-0.5 transition-all" />
+                  {/* Configure THIS campaign's funnel. stopPropagation +
+                      preventDefault so it doesn't follow the card's link. */}
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      router.push(`/pipeline?campaignId=${c.id}`);
+                    }}
+                    className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-primary hover:bg-primary/10 px-2 py-1 rounded-lg transition-colors cursor-pointer"
+                  >
+                    <GitBranch className="w-3.5 h-3.5" />
+                    Configurar funil
+                  </button>
                 </div>
               </Link>
             );

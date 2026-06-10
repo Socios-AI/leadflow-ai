@@ -265,6 +265,13 @@ const TIMING_OPTIONS = [
 export default function PipelinePage() {
   const t = useTranslations("pipeline");
   const tc = useTranslations("common");
+  // When opened as /pipeline?campaignId=X we edit THAT campaign's own funnel
+  // instead of the account-default funnel. Everything else in the editor is
+  // identical — only the load/save target changes. We read the id from
+  // window.location (in the load effect) instead of useSearchParams() to
+  // avoid the Next 15 "wrap in Suspense" CSR-bailout build error.
+  const [campaignId, setCampaignId] = useState<string | null>(null);
+  const [campaignName, setCampaignName] = useState<string | null>(null);
 
   const [config, setConfig] = useState<PipelineConfig>(DEFAULT_CONFIG);
   const [loading, setLoading] = useState(true);
@@ -278,9 +285,11 @@ export default function PipelinePage() {
   const [guidedMode, setGuidedMode] = useState(true);
   const [currentStepIdx, setCurrentStepIdx] = useState(0);
 
-  // ── Load existing pipeline ──
+  // ── Load existing pipeline (account default, or a specific campaign's) ──
   useEffect(() => {
-    fetch("/api/pipeline")
+    const cid = new URLSearchParams(window.location.search).get("campaignId");
+    setCampaignId(cid);
+    fetch(cid ? `/api/pipeline?campaignId=${encodeURIComponent(cid)}` : "/api/pipeline")
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
         if (d) setConfig((prev) => ({ ...prev, ...d }));
@@ -288,6 +297,20 @@ export default function PipelinePage() {
       .catch(() => {})
       .finally(() => setLoading(false));
   }, []);
+
+  // Resolve the campaign name for the "editing campaign funnel" banner.
+  useEffect(() => {
+    if (!campaignId) { setCampaignName(null); return; }
+    fetch("/api/campaigns")
+      .then((r) => (r.ok ? r.json() : []))
+      .then((list) => {
+        if (Array.isArray(list)) {
+          const hit = list.find((c: { id: string }) => c.id === campaignId);
+          setCampaignName(hit?.name || null);
+        }
+      })
+      .catch(() => {});
+  }, [campaignId]);
 
   // ── Derived ──
   const isProactive = PROACTIVE_TEMPLATES.includes(config.template as TemplateId);
@@ -384,7 +407,7 @@ export default function PipelinePage() {
       const r = await fetch("/api/pipeline", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(config),
+        body: JSON.stringify(campaignId ? { ...config, campaignId } : config),
       });
       if (r.ok) {
         const d = await r.json();
@@ -502,6 +525,21 @@ export default function PipelinePage() {
           )}
         >
           {toast.msg}
+        </div>
+      )}
+
+      {/* ═══ CAMPAIGN-SCOPED FUNNEL BANNER ═══ */}
+      {campaignId && (
+        <div className="mb-5 flex items-center justify-between gap-3 px-4 py-3 rounded-2xl border border-primary/30 bg-primary/[0.07]">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <Target className="w-4 h-4 text-primary shrink-0" />
+            <p className="text-[12.5px] text-foreground font-dm-sans truncate">
+              Editando o funil da campanha{campaignName ? <strong className="font-semibold"> {campaignName}</strong> : " selecionada"}. Leads dessa campanha seguem este objetivo; os demais usam o funil padrão da conta.
+            </p>
+          </div>
+          <Link href="/campaigns" className="text-[12px] font-semibold text-primary hover:underline shrink-0">
+            ← Campanhas
+          </Link>
         </div>
       )}
 

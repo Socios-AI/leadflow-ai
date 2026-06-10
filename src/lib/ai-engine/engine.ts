@@ -35,6 +35,13 @@ export interface FirstContactParams {
   campaignCountry?: string;
   /** Optional explicit language override coming from the campaign */
   campaignLanguage?: string;
+  /**
+   * Per-campaign funnel override (persona-shaped pipeline* keys stored in
+   * campaign.metadata.funnel). When present, it wins over the account-level
+   * pipeline for THIS lead, so each campaign can have its own objective /
+   * closing strategy / instructions. Absent = account default funnel.
+   */
+  campaignFunnel?: Record<string, unknown> | null;
 }
 
 export interface GenerateResponseParams {
@@ -50,6 +57,8 @@ export interface GenerateResponseParams {
   leadMetadata?: Record<string, unknown>;
   campaignCountry?: string;
   campaignLanguage?: string;
+  /** Per-campaign funnel override — see FirstContactParams.campaignFunnel. */
+  campaignFunnel?: Record<string, unknown> | null;
 }
 
 export interface AIResponseResult {
@@ -131,7 +140,7 @@ export class AIEngine {
   // FIRST CONTACT
   // ════════════════════════════════════════════════════
   static async generateFirstContact(params: FirstContactParams): Promise<string> {
-    const cfg = await loadConfig(params.accountId);
+    const cfg = await loadConfig(params.accountId, params.campaignFunnel || undefined);
     if (!cfg) return fallbackGreeting(params.leadName);
 
     // EXACT-MESSAGE MODE: the operator typed the literal text the AI must
@@ -205,7 +214,7 @@ export class AIEngine {
     instruction?: string;
     attemptIndex?: number;
   }): Promise<string> {
-    const cfg = await loadConfig(params.accountId);
+    const cfg = await loadConfig(params.accountId, params.campaignFunnel || undefined);
     if (!cfg) return fallbackGreeting(params.leadName);
 
     // Per-follow-up instruction overrides the first-message one. Same
@@ -257,7 +266,7 @@ export class AIEngine {
   static async generateResponse(
     params: GenerateResponseParams
   ): Promise<AIResponseResult> {
-    const cfg = await loadConfig(params.accountId);
+    const cfg = await loadConfig(params.accountId, params.campaignFunnel || undefined);
     if (!cfg) {
       return {
         message: fallbackGreeting(params.leadName),
@@ -575,7 +584,10 @@ export class AIEngine {
 // ════════════════════════════════════════════════════
 // CONFIG LOADER
 // ════════════════════════════════════════════════════
-async function loadConfig(accountId: string): Promise<LoadedConfig | null> {
+async function loadConfig(
+  accountId: string,
+  funnelOverride?: Record<string, unknown> | null
+): Promise<LoadedConfig | null> {
   const row = await prisma.aIConfig.findUnique({ where: { accountId } });
   if (!row) return null;
 
@@ -631,9 +643,20 @@ async function loadConfig(accountId: string): Promise<LoadedConfig | null> {
     "conversionTriggers",
     "debounceSeconds",
   ]);
-  const persona: Record<string, unknown> = overlayPersona
+  const resolvedPersona: Record<string, unknown> = overlayPersona
     ? { ...overlayPersona, ...pickTenantFields(basePersona, TENANT_OWNED_KEYS) }
     : basePersona;
+
+  // Per-campaign funnel wins for THIS lead. The override is persona-shaped
+  // (pipelineGoal, pipelineClosingStrategy, pipelineFirstMessageInstruction,
+  // ...), so a shallow merge over the resolved persona is enough — any field
+  // the campaign didn't set falls back to the account funnel. Only keys with
+  // a real value override (we strip empty string / null / undefined so a
+  // half-filled campaign funnel never blanks out the account default).
+  const persona: Record<string, unknown> =
+    funnelOverride && Object.keys(funnelOverride).length > 0
+      ? { ...resolvedPersona, ...stripEmpty(funnelOverride) }
+      : resolvedPersona;
   const escalation = (overlay?.escalationConfig ?? (row.escalationConfig as Record<string, unknown>)) || {};
   const conversion = (overlay?.conversionConfig ?? (row.conversionConfig as Record<string, unknown>)) || {};
 
@@ -948,6 +971,21 @@ function pickTenantFields(
       const v = base[k];
       if (v !== undefined && v !== null && v !== "") out[k] = v;
     }
+  }
+  return out;
+}
+
+/**
+ * Drop keys whose value is undefined/null/"" so a half-filled per-campaign
+ * funnel never blanks out an account-default field on merge. Arrays, booleans
+ * and numbers are kept as-is (an empty array IS a meaningful "none" choice).
+ */
+function stripEmpty(obj: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const k of Object.keys(obj)) {
+    const v = obj[k];
+    if (v === undefined || v === null || v === "") continue;
+    out[k] = v;
   }
   return out;
 }

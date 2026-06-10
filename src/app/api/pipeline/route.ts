@@ -160,15 +160,30 @@ function asFollowUps(value: unknown): FollowUp[] {
     .slice(0, 10);
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   try {
-    const config = await prisma.aIConfig.findUnique({
-      where: { accountId: session.accountId },
-    });
-    if (!config) return NextResponse.json({});
-    const p = (config.persona as PersonaShape) || {};
+    // When ?campaignId= is present we read THAT campaign's own funnel
+    // (campaign.metadata.funnel); otherwise the account-default funnel
+    // (AIConfig.persona). Same response shape either way.
+    const campaignId = new URL(req.url).searchParams.get("campaignId");
+    let p: PersonaShape;
+    if (campaignId) {
+      const campaign = await prisma.campaign.findFirst({
+        where: { id: campaignId, accountId: session.accountId },
+        select: { metadata: true },
+      });
+      if (!campaign) return NextResponse.json({ error: "Campaign not found" }, { status: 404 });
+      const meta = (campaign.metadata as Record<string, unknown> | null) || {};
+      p = (meta.funnel as PersonaShape) || {};
+    } else {
+      const config = await prisma.aIConfig.findUnique({
+        where: { accountId: session.accountId },
+      });
+      if (!config) return NextResponse.json({});
+      p = (config.persona as PersonaShape) || {};
+    }
 
     // Resolve channels: prefer the new array, fall back to legacy fields.
     let channels = asChannelArray(p.pipelineChannels);
@@ -247,10 +262,30 @@ export async function PUT(req: NextRequest) {
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   try {
     const body = (await req.json()) as Record<string, unknown>;
-    const existing = await prisma.aIConfig.findUnique({
-      where: { accountId: session.accountId },
-    });
-    const existingPersona = (existing?.persona as PersonaShape) || {};
+
+    // When body.campaignId is present we save THIS campaign's own funnel into
+    // campaign.metadata.funnel; otherwise the account-default funnel into
+    // AIConfig.persona. existingPersona is loaded from the matching source so
+    // re-saving preserves whatever the editor didn't touch.
+    const campaignId =
+      typeof body.campaignId === "string" && body.campaignId ? body.campaignId : null;
+
+    let existingPersona: PersonaShape = {};
+    let campaignMeta: Record<string, unknown> = {};
+    if (campaignId) {
+      const campaign = await prisma.campaign.findFirst({
+        where: { id: campaignId, accountId: session.accountId },
+        select: { metadata: true },
+      });
+      if (!campaign) return NextResponse.json({ error: "Campaign not found" }, { status: 404 });
+      campaignMeta = (campaign.metadata as Record<string, unknown> | null) || {};
+      existingPersona = (campaignMeta.funnel as PersonaShape) || {};
+    } else {
+      const existing = await prisma.aIConfig.findUnique({
+        where: { accountId: session.accountId },
+      });
+      existingPersona = (existing?.persona as PersonaShape) || {};
+    }
 
     const webhookId =
       (existingPersona.pipelineWebhookId as string) ||
@@ -325,19 +360,30 @@ export async function PUT(req: NextRequest) {
     // structural check.
     const personaJson = persona as Prisma.InputJsonValue;
 
-    await prisma.aIConfig.upsert({
-      where: { accountId: session.accountId },
-      create: {
-        accountId: session.accountId,
-        provider: "openai",
-        model: "gpt-4o",
-        systemPrompt: "",
-        temperature: 0.7,
-        maxTokens: 500,
-        persona: personaJson,
-      },
-      update: { persona: personaJson, updatedAt: new Date() },
-    });
+    if (campaignId) {
+      // Save into the campaign's own funnel slot, preserving the rest of the
+      // campaign metadata (countries, aiLanguage, etc).
+      await prisma.campaign.update({
+        where: { id: campaignId },
+        data: {
+          metadata: { ...campaignMeta, funnel: personaJson } as Prisma.InputJsonValue,
+        },
+      });
+    } else {
+      await prisma.aIConfig.upsert({
+        where: { accountId: session.accountId },
+        create: {
+          accountId: session.accountId,
+          provider: "openai",
+          model: "gpt-4o",
+          systemPrompt: "",
+          temperature: 0.7,
+          maxTokens: 500,
+          persona: personaJson,
+        },
+        update: { persona: personaJson, updatedAt: new Date() },
+      });
+    }
 
     return NextResponse.json({ success: true, webhookId });
   } catch (e) {

@@ -29,12 +29,27 @@ interface PipelineCfg {
   followUps: { channel: Channel; delayHours: number; instruction: string }[];
 }
 
-async function loadPipelineCfg(accountId: string, fallbackChannel: Channel): Promise<PipelineCfg> {
+async function loadPipelineCfg(
+  accountId: string,
+  fallbackChannel: Channel,
+  funnelOverride?: Record<string, unknown> | null
+): Promise<PipelineCfg> {
   const cfg = await prisma.aIConfig.findUnique({
     where: { accountId },
     select: { persona: true },
   });
-  const p = (cfg?.persona as Record<string, unknown> | null) || {};
+  const base = (cfg?.persona as Record<string, unknown> | null) || {};
+  // Per-campaign funnel wins for pipeline channels / follow-ups. Only override
+  // with meaningfully-set values so a half-filled campaign funnel inherits the
+  // account default for anything it left blank.
+  const p: Record<string, unknown> = { ...base };
+  if (funnelOverride) {
+    for (const [k, v] of Object.entries(funnelOverride)) {
+      if (v === undefined || v === null || v === "") continue;
+      if (Array.isArray(v) && v.length === 0) continue;
+      p[k] = v;
+    }
+  }
   const allowed: Channel[] = ["WHATSAPP", "EMAIL", "SMS"];
 
   let channels: Channel[] = [];
@@ -116,10 +131,18 @@ const leadWorker = new Worker(
       ? `Campaign: ${lead.campaign.name}\n${lead.campaign.description || ""}\n${lead.campaign.transcription || ""}`
       : undefined;
 
+    // Per-campaign funnel (persona-shaped pipeline* keys). When this lead came
+    // from a campaign that has its own funnel, it overrides the account default
+    // for objective / instruction / closing / channels / follow-ups.
+    const campaignFunnel =
+      campaignMeta.funnel && typeof campaignMeta.funnel === "object"
+        ? (campaignMeta.funnel as Record<string, unknown>)
+        : undefined;
+
     // Resolve the channel fan-out from the persisted pipeline config.
     // If the operator chose multiple channels, we send the first contact
     // through each one (subject to having a contactId for that channel).
-    const pipeline = await loadPipelineCfg(accountId, requestedChannel);
+    const pipeline = await loadPipelineCfg(accountId, requestedChannel, campaignFunnel);
     const sendChannels = pipeline.channels.filter(
       (c) => contactFor(lead, c).length > 0
     );
@@ -144,6 +167,7 @@ const leadWorker = new Worker(
         leadMetadata: (lead.metadata as Record<string, unknown>) || undefined,
         campaignCountry,
         campaignLanguage,
+        campaignFunnel,
       });
 
       const conversation = await prisma.conversation.upsert({
@@ -400,6 +424,13 @@ const aiWorker = new Worker(
       ? `Campaign: ${lead.campaign.name}\n${lead.campaign.transcription || ""}`
       : undefined;
 
+    // Per-campaign funnel override (see lead-processing worker). Makes the AI
+    // pursue THIS campaign's objective/closing instead of the account default.
+    const campaignFunnel =
+      campaignMeta.funnel && typeof campaignMeta.funnel === "object"
+        ? (campaignMeta.funnel as Record<string, unknown>)
+        : undefined;
+
     // ── Show typing indicator immediately ──
     // The AI generation takes 5-15s. Without this the lead stares at a
     // silent screen between sending their message and seeing the reply
@@ -429,6 +460,7 @@ const aiWorker = new Worker(
       leadMetadata: (lead.metadata as Record<string, unknown>) || undefined,
       campaignCountry,
       campaignLanguage,
+      campaignFunnel,
     });
 
     // ── Send via channel: split in parts + presence between each ──
