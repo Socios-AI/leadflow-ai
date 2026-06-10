@@ -6,9 +6,10 @@ import { useTranslations, useLocale } from "next-intl";
 import {
   Search, Users, Brain, Phone, Mail, X, Download,
   Loader2, ChevronRight, Clock, Target, Headphones,
-  TrendingUp, Hash, Copy, Check, RefreshCw, AlertTriangle, Trash2,
+  TrendingUp, Hash, Copy, Check, RefreshCw, AlertTriangle, Trash2, Upload,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { LeadImportModal } from "@/components/leads/import-modal";
 
 /* ═══ TYPES ═══ */
 interface Lead {
@@ -73,6 +74,7 @@ export default function LeadsPage() {
   const [retryingBulk, setRetryingBulk] = useState(false);
   const [retryToast, setRetryToast] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [importOpen, setImportOpen] = useState(false);
 
   const reloadLeads = useCallback(async () => {
     try {
@@ -223,6 +225,13 @@ export default function LeadsPage() {
                 {t("retryAllButton", { count: failedCount })}
               </button>
             )}
+            <button
+              onClick={() => setImportOpen(true)}
+              className="inline-flex items-center gap-2 h-10 px-4 rounded-xl text-[12.5px] font-semibold text-primary-foreground btn-brand transition-all cursor-pointer"
+            >
+              <Upload className="w-3.5 h-3.5" />
+              Importar planilha
+            </button>
             <a
               href="/api/leads/export"
               className="inline-flex items-center gap-2 h-10 px-4 rounded-xl text-[12.5px] font-medium text-muted-foreground bg-muted/60 border border-border hover:bg-muted hover:text-foreground transition-all cursor-pointer"
@@ -621,6 +630,12 @@ export default function LeadsPage() {
           </div>
         </>
       )}
+
+      <LeadImportModal
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        onImported={reloadLeads}
+      />
     </>
   );
 }
