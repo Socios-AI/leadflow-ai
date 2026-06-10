@@ -114,8 +114,25 @@ export async function getSession(): Promise<Session | null> {
 
     const {
       data: { user },
+      error: getUserError,
     } = await ssrClient.auth.getUser();
-    if (!user) return null;
+    if (!user) {
+      // Diagnostic: this is the #1 cause of the "login reloads back to login"
+      // loop — the middleware sees the sb-* cookies and lets the request
+      // through, but here the token can't be resolved to a user, so the
+      // dashboard layout bounces back to /login. Log WHY (expired/invalid
+      // JWT, missing session, network) instead of silently returning null.
+      const authCookieNames = cookieStore
+        .getAll()
+        .filter((c) => c.name.startsWith("sb-"))
+        .map((c) => c.name);
+      log.warn("getSession: no user from token", {
+        reason: getUserError?.message || "no_user",
+        authCookieCount: authCookieNames.length,
+        authCookieNames,
+      });
+      return null;
+    }
 
     // Read the persisted SA-onboarding flag from Supabase auth metadata.
     // Server-side write goes through supabase.auth.admin.updateUserById

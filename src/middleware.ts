@@ -9,40 +9,26 @@ const AUTH_PATHS = ["/login", "/register", "/forgot-password"];
 const PUBLIC_PATHS = [...AUTH_PATHS, "/pricing"];
 
 /**
- * Detect Supabase session from cookies.
- * Now also checks if the cookie actually has content (not empty/corrupted).
+ * Detect a Supabase session from cookies — PRESENCE-BASED ONLY.
+ *
+ * We deliberately do NOT parse the cookie or check the access-token expiry
+ * here. With @supabase/ssr 0.10 the cookie value is base64-encoded and often
+ * chunked (sb-<ref>-auth-token.0/.1), so JSON.parse always failed and the old
+ * expiry branch produced false negatives that bounced users with a still-valid
+ * (refreshable) session straight back to /login. The real validity check is
+ * getUser() in the dashboard layout (which also refreshes expired tokens);
+ * the middleware only needs to know whether auth cookies are present at all.
  */
 function hasSupabaseSession(req: NextRequest): boolean {
-  const allCookies = req.cookies.getAll();
-  const authCookies = allCookies.filter(
-    (c) => c.name.startsWith("sb-") && c.name.includes("-auth-token")
-  );
-
-  if (authCookies.length === 0) return false;
-
-  // Check that at least one cookie has a non-empty value
-  // and try to verify it's not expired by parsing the base cookie
-  const baseCookie = authCookies.find((c) => !c.name.match(/\.\d+$/));
-  if (baseCookie) {
-    try {
-      const parsed = JSON.parse(baseCookie.value);
-      // Check if access_token exists and isn't expired
-      if (parsed?.access_token && parsed?.expires_at) {
-        const expiresAt = parsed.expires_at * 1000; // convert to ms
-        if (Date.now() > expiresAt) {
-          return false; // Token expired
-        }
-      }
-      return !!parsed?.access_token;
-    } catch {
-      // If it's chunked, the base cookie won't parse as JSON
-      // In that case, just check that cookies exist with content
-      return authCookies.some((c) => c.value && c.value.length > 10);
-    }
-  }
-
-  // Chunked cookies — just verify they have content
-  return authCookies.some((c) => c.value && c.value.length > 10);
+  return req.cookies
+    .getAll()
+    .some(
+      (c) =>
+        c.name.startsWith("sb-") &&
+        c.name.includes("-auth-token") &&
+        !!c.value &&
+        c.value.length > 10
+    );
 }
 
 export default async function middleware(req: NextRequest) {
@@ -78,14 +64,15 @@ export default async function middleware(req: NextRequest) {
     (cookieLocale && ["pt", "en", "es", "it"].includes(cookieLocale) ? cookieLocale : "pt");
   const pathWithoutLocale = pathname.replace(/^\/(pt|en|es|it)/, "") || "/";
 
-  const isAuthPath = AUTH_PATHS.some((p) => pathWithoutLocale.startsWith(p));
   const isPublicPath = PUBLIC_PATHS.some((p) => pathWithoutLocale.startsWith(p));
   const hasSession = hasSupabaseSession(req);
 
-  // Authenticated users on auth pages → dashboard
-  if (isAuthPath && hasSession) {
-    return NextResponse.redirect(new URL(`/${locale}`, req.url));
-  }
+  // NOTE: we intentionally do NOT redirect "auth page + has-cookie" to the
+  // dashboard here. That rule, combined with the layout redirecting back to
+  // /login whenever getSession() returns null, created an infinite ping-pong
+  // ("login reloads back to login") for users whose cookies are present but
+  // whose token can't be resolved. Letting the login page render breaks the
+  // loop; a genuinely logged-in user simply re-enters from there.
 
   // Unauthenticated users on protected routes → login
   if (!isPublicPath && pathWithoutLocale !== "/" && !hasSession) {
