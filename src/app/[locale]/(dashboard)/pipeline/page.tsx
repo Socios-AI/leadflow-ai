@@ -123,6 +123,12 @@ interface PipelineConfig {
   handoffWebhook: string;
   /** Message AI sends to the lead while a handoff is in flight */
   handoffWaitMessage: string;
+  /** Unlimited human recipients the AI can route a qualified lead to. */
+  handoffRecipients: { id: string; name: string; whatsapp: string; email: string; matchValues: string[] }[];
+  /** How the recipient is chosen: even rotation, or by a lead attribute. */
+  handoffRouting: "round_robin" | "rule";
+  /** The lead attribute used for "rule" routing (e.g. "cidade"). */
+  handoffAttribute: string;
   // ── Manual payment confirmation (Pix / Zelle / TED / etc.) ──
   /** Master toggle. When on, the AI sends instructions and waits for proof. */
   paymentEnabled: boolean;
@@ -183,6 +189,9 @@ const DEFAULT_CONFIG: PipelineConfig = {
   handoffEmail: "",
   handoffWebhook: "",
   handoffWaitMessage: "",
+  handoffRecipients: [],
+  handoffRouting: "round_robin",
+  handoffAttribute: "",
   paymentEnabled: false,
   paymentInstructions: "",
   paymentConfirmerPhones: [],
@@ -468,13 +477,14 @@ export default function PipelinePage() {
       label: t("nav.closing"),
       done:
         config.closingStrategy === "team_handoff"
-          ? !!config.handoffEmail || !!config.handoffWebhook
+          ? !!config.handoffEmail || !!config.handoffWebhook || config.handoffRecipients.length > 0
           : config.closingStrategy === "direct_link"
             ? !!config.closingLink
             : config.qualifyingQuestions.length > 0 ||
               !!config.closingLink ||
               !!config.handoffEmail ||
-              !!config.handoffWebhook,
+              !!config.handoffWebhook ||
+              config.handoffRecipients.length > 0,
     });
   }
   stepsForNav.push({
@@ -1310,6 +1320,108 @@ export default function PipelinePage() {
                       placeholder={t("stepClosing.requiredInfoPlaceholder")}
                     />
                   </Field>
+                )}
+
+                {/* Human recipients + routing (round-robin OR rule) */}
+                {(config.closingStrategy === "team_handoff" ||
+                  config.closingStrategy === "auto") && (
+                  <div className="rounded-xl border border-border bg-card p-4 space-y-4">
+                    <div>
+                      <p className="text-[13px] font-semibold text-foreground">Vendedores que recebem o lead</p>
+                      <p className="text-[11.5px] text-muted-foreground mt-1 leading-relaxed">
+                        A IA transfere o lead qualificado para um humano (WhatsApp + email) com um resumo completo da conversa. Adicione quantos quiser.
+                      </p>
+                    </div>
+
+                    <div className="flex gap-2">
+                      {[
+                        { id: "round_robin", label: "Rodízio (distribui igual)" },
+                        { id: "rule", label: "Por regra (atributo do lead)" },
+                      ].map((m) => (
+                        <button
+                          key={m.id}
+                          type="button"
+                          onClick={() => setConfig((p) => ({ ...p, handoffRouting: m.id as "round_robin" | "rule" }))}
+                          className={cn(
+                            "flex-1 h-9 rounded-lg text-[12px] font-semibold border transition-colors",
+                            config.handoffRouting === m.id
+                              ? "bg-primary text-primary-foreground border-primary"
+                              : "bg-muted text-muted-foreground border-border hover:bg-muted/70"
+                          )}
+                        >
+                          {m.label}
+                        </button>
+                      ))}
+                    </div>
+
+                    {config.handoffRouting === "rule" && (
+                      <Field
+                        label="Atributo de roteamento"
+                        hint="A IA descobre isso na conversa e roteia por ele. Ex: cidade, estado, produto de interesse."
+                      >
+                        <input
+                          value={config.handoffAttribute}
+                          onChange={(e) => setConfig((p) => ({ ...p, handoffAttribute: e.target.value }))}
+                          placeholder="cidade"
+                          className="w-full h-10 px-3.5 rounded-lg bg-muted border border-transparent text-[13px] text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-ring/30"
+                        />
+                      </Field>
+                    )}
+
+                    <div className="space-y-3">
+                      {config.handoffRecipients.map((r, idx) => (
+                        <div key={r.id} className="rounded-lg border border-border/60 bg-muted/20 p-3 space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[11px] font-semibold text-muted-foreground">Vendedor {idx + 1}</span>
+                            <button
+                              type="button"
+                              onClick={() => setConfig((p) => ({ ...p, handoffRecipients: p.handoffRecipients.filter((_, i) => i !== idx) }))}
+                              className="text-rose-500 text-[11px] font-semibold hover:underline cursor-pointer"
+                            >
+                              Remover
+                            </button>
+                          </div>
+                          <input
+                            value={r.name}
+                            onChange={(e) => setConfig((p) => ({ ...p, handoffRecipients: p.handoffRecipients.map((x, i) => (i === idx ? { ...x, name: e.target.value } : x)) }))}
+                            placeholder="Nome do vendedor"
+                            className="w-full h-9 px-3 rounded-lg bg-background border border-border text-[12.5px] text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-ring/30"
+                          />
+                          <input
+                            value={r.whatsapp}
+                            onChange={(e) => setConfig((p) => ({ ...p, handoffRecipients: p.handoffRecipients.map((x, i) => (i === idx ? { ...x, whatsapp: e.target.value } : x)) }))}
+                            placeholder="WhatsApp com DDI (+55 11 9...)"
+                            className="w-full h-9 px-3 rounded-lg bg-background border border-border text-[12.5px] text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-ring/30"
+                          />
+                          <input
+                            value={r.email}
+                            onChange={(e) => setConfig((p) => ({ ...p, handoffRecipients: p.handoffRecipients.map((x, i) => (i === idx ? { ...x, email: e.target.value } : x)) }))}
+                            placeholder="email@empresa.com (opcional)"
+                            className="w-full h-9 px-3 rounded-lg bg-background border border-border text-[12.5px] text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-ring/30"
+                          />
+                          {config.handoffRouting === "rule" && (
+                            <div>
+                              <p className="text-[11px] text-muted-foreground mb-1">
+                                Valores que caem para este vendedor (ex: cidades que ele atende)
+                              </p>
+                              <StringList
+                                items={r.matchValues}
+                                onChange={(items) => setConfig((p) => ({ ...p, handoffRecipients: p.handoffRecipients.map((x, i) => (i === idx ? { ...x, matchValues: items } : x)) }))}
+                                placeholder="São Paulo"
+                              />
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                      <button
+                        type="button"
+                        onClick={() => setConfig((p) => ({ ...p, handoffRecipients: [...p.handoffRecipients, { id: `rcp-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, name: "", whatsapp: "", email: "", matchValues: [] }] }))}
+                        className="w-full h-9 rounded-lg border border-dashed border-border text-[12px] font-semibold text-muted-foreground hover:text-foreground hover:border-primary/40 transition-colors cursor-pointer"
+                      >
+                        + Adicionar vendedor
+                      </button>
+                    </div>
+                  </div>
                 )}
 
                 {/* Closing link: shown when link is involved */}

@@ -160,6 +160,37 @@ function asFollowUps(value: unknown): FollowUp[] {
     .slice(0, 10);
 }
 
+interface HandoffRecipient {
+  id: string;
+  name: string;
+  whatsapp: string;
+  email: string;
+  /** Values that route a lead here in "rule" mode (e.g. cities this seller covers). */
+  matchValues: string[];
+}
+
+/**
+ * Normalize the unlimited list of human recipients the AI can hand a lead off
+ * to. Each must have at least a whatsapp or email to be reachable.
+ */
+function asHandoffRecipients(value: unknown): HandoffRecipient[] {
+  if (!Array.isArray(value)) return [];
+  const out: HandoffRecipient[] = [];
+  for (let i = 0; i < value.length && out.length < 50; i++) {
+    const r = (value[i] || {}) as Record<string, unknown>;
+    const name = String(r.name ?? "").trim().slice(0, 120);
+    const whatsapp = String(r.whatsapp ?? "").replace(/[^\d+]/g, "").slice(0, 20);
+    const email = String(r.email ?? "").trim().slice(0, 200);
+    if (!whatsapp && !email) continue;
+    const matchValues = Array.isArray(r.matchValues)
+      ? r.matchValues.map((v) => String(v ?? "").trim()).filter(Boolean).slice(0, 30)
+      : [];
+    const id = typeof r.id === "string" && r.id ? r.id : `rcp-${i}-${Date.now()}`;
+    out.push({ id, name, whatsapp, email, matchValues });
+  }
+  return out;
+}
+
 export async function GET(req: NextRequest) {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -244,6 +275,10 @@ export async function GET(req: NextRequest) {
       handoffEmail: String(p.pipelineHandoffEmail || ""),
       handoffWebhook: String(p.pipelineHandoffWebhook || ""),
       handoffWaitMessage: String(p.pipelineHandoffWaitMessage || ""),
+      // Unlimited human recipients + routing (round-robin or rule-by-attribute).
+      handoffRecipients: asHandoffRecipients(p.pipelineHandoffRecipients),
+      handoffRouting: p.pipelineHandoffRouting === "rule" ? "rule" : "round_robin",
+      handoffAttribute: String(p.pipelineHandoffAttribute || ""),
       paymentEnabled: !!p.pipelinePaymentEnabled,
       paymentInstructions: String(p.pipelinePaymentInstructions || ""),
       paymentConfirmerPhones: asPhoneArray(p.pipelinePaymentConfirmerPhones),
@@ -346,6 +381,14 @@ export async function PUT(req: NextRequest) {
       pipelineHandoffEmail: String(body.handoffEmail || "").trim().slice(0, 200),
       pipelineHandoffWebhook: String(body.handoffWebhook || "").trim().slice(0, 500),
       pipelineHandoffWaitMessage: String(body.handoffWaitMessage || "").trim().slice(0, 500),
+      pipelineHandoffRecipients: asHandoffRecipients(body.handoffRecipients),
+      pipelineHandoffRouting: body.handoffRouting === "rule" ? "rule" : "round_robin",
+      pipelineHandoffAttribute: String(body.handoffAttribute || "").trim().slice(0, 80),
+      // Preserve the round-robin cursor across saves (worker advances it).
+      pipelineHandoffRrIndex:
+        typeof existingPersona.pipelineHandoffRrIndex === "number"
+          ? existingPersona.pipelineHandoffRrIndex
+          : 0,
       pipelinePaymentEnabled: !!body.paymentEnabled,
       pipelinePaymentInstructions: String(body.paymentInstructions || "").trim().slice(0, 2000),
       pipelinePaymentConfirmerPhones: asPhoneArray(body.paymentConfirmerPhones),

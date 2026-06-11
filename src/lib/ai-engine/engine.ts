@@ -366,15 +366,16 @@ export class AIEngine {
     const closingLinkMsg = String(personaField(cfg.persona, "pipelineClosingMessage", ""));
     const handoffEmail = String(personaField(cfg.persona, "pipelineHandoffEmail", ""));
     const handoffWebhook = String(personaField(cfg.persona, "pipelineHandoffWebhook", ""));
+    const handoffRecipients = personaField(cfg.persona, "pipelineHandoffRecipients", []) as unknown[];
+    const hasRecipients = Array.isArray(handoffRecipients) && handoffRecipients.length > 0;
     const closeWithLink =
       closingParsed.closeWithLink && closingLinkUrl
         ? { url: closingLinkUrl, accompanyingMessage: closingLinkMsg }
         : undefined;
-    // Fire the handoff result when EITHER an email OR a webhook is
-    // configured — previously webhook-only setups silently dropped the
-    // signal even though the worker would have happily POSTed to the URL.
+    // Fire the handoff result when there's somewhere to send it: a recipient
+    // list (new multi-seller routing), OR the legacy single email/webhook.
     const handoff =
-      closingParsed.handoffSummary && (handoffEmail || handoffWebhook)
+      closingParsed.handoffSummary && (hasRecipients || handoffEmail || handoffWebhook)
         ? {
             summary: closingParsed.handoffSummary,
             requestedAction: closingParsed.handoffSummary,
@@ -1371,7 +1372,12 @@ function buildClosingBlock(persona: Record<string, unknown>): string {
   const handoffWaitMessage = String(
     personaField(persona, "pipelineHandoffWaitMessage", "")
   );
-  const hasHandoffTarget = !!handoffEmail || !!handoffWebhook;
+  const handoffRecipients = (personaField(persona, "pipelineHandoffRecipients", []) as unknown[])
+    .map((r) => (r || {}) as Record<string, unknown>)
+    .filter((r) => r.whatsapp || r.email);
+  const handoffRouting = personaField(persona, "pipelineHandoffRouting", "round_robin") === "rule" ? "rule" : "round_robin";
+  const handoffAttribute = String(personaField(persona, "pipelineHandoffAttribute", "")).trim();
+  const hasHandoffTarget = !!handoffEmail || !!handoffWebhook || handoffRecipients.length > 0;
 
   // Manual payment confirmation flow (Pix/Zelle/wire). The actual proof
   // detection + confirmer notification happens in the worker; here we
@@ -1442,6 +1448,32 @@ function buildClosingBlock(persona: Record<string, unknown>): string {
     parts.push("");
     parts.push("INFORMACOES OBRIGATORIAS PRA HANDOFF (capture antes de chamar a equipe):");
     requiredInfo.forEach((f, i) => parts.push(`${i + 1}. ${f}`));
+  }
+
+  // Multi-seller routing + complete summary. Only relevant when there are
+  // recipients to route to and the strategy can hand off.
+  if (handoffRecipients.length > 0 && (strategy === "team_handoff" || strategy === "auto")) {
+    parts.push("");
+    parts.push("TRANSFERENCIA PRA UM VENDEDOR HUMANO:");
+    if (handoffRouting === "rule" && handoffAttribute) {
+      parts.push(
+        `Este negocio roteia o lead por "${handoffAttribute}". Antes de transferir, descubra naturalmente o ${handoffAttribute} do lead (pergunte de forma leve, nao como formulario). Isso decide qual vendedor recebe.`
+      );
+    }
+    parts.push(
+      "Quando o lead estiver qualificado e na hora de passar pra um humano, finalize com a tag invisivel [HANDOFF_TO_TEAM:RESUMO]."
+    );
+    parts.push(
+      "O RESUMO dentro da tag deve ser COMPLETO o suficiente pro vendedor assumir sem ler tudo: quem e o lead, o que ele quer/precisa, o nivel de interesse, objecoes levantadas, respostas das perguntas de qualificacao e o proximo passo sugerido."
+    );
+    if (handoffRouting === "rule" && handoffAttribute) {
+      parts.push(
+        `OBRIGATORIO: inclua no resumo uma linha exatamente assim: "${handoffAttribute}: <valor que o lead informou>" — o sistema usa essa linha pra escolher o vendedor certo.`
+      );
+    }
+    parts.push(
+      "Nao diga ao lead o nome/numero do vendedor; so avise com naturalidade que um especialista vai dar continuidade. O sistema cuida de notificar o vendedor."
+    );
   }
 
   // Link config

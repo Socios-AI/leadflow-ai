@@ -8,6 +8,7 @@
 import { Worker } from "bullmq";
 import { getQueueConnection, getRedis } from "@/lib/redis";
 import prisma from "@/lib/db/prisma";
+import { Prisma } from "@prisma/client";
 import { AIEngine } from "@/lib/ai-engine/engine";
 import { getChannelProvider } from "@/lib/channels/factory";
 import { WhatsAppProvider } from "@/lib/channels/whatsapp";
@@ -86,6 +87,84 @@ async function loadPipelineCfg(
 function contactFor(lead: { email: string | null; phone: string | null }, channel: Channel): string {
   if (channel === "EMAIL") return lead.email || "";
   return lead.phone || "";
+}
+
+// ── Human-handoff routing (unlimited sellers, round-robin OR rule) ──
+interface HandoffRecipient {
+  id?: string;
+  name?: string;
+  whatsapp?: string;
+  email?: string;
+  matchValues?: string[];
+}
+
+/**
+ * Choose which seller receives this lead. In "rule" mode we match the routing
+ * attribute (e.g. city) captured from the conversation against each seller's
+ * matchValues; on no match we fall back to round-robin over everyone. In
+ * "round_robin" mode we just rotate. Returns the next cursor to persist.
+ */
+function pickHandoffRecipient(
+  recipients: HandoffRecipient[],
+  routing: "round_robin" | "rule",
+  attribute: string,
+  capturedInfo: Record<string, string>,
+  rrIndex: number
+): { recipient: HandoffRecipient | null; nextRrIndex: number } {
+  if (recipients.length === 0) return { recipient: null, nextRrIndex: rrIndex };
+  if (routing === "rule" && attribute) {
+    const attrNorm = attribute.toLowerCase();
+    let value = "";
+    for (const [k, v] of Object.entries(capturedInfo || {})) {
+      const kn = k.toLowerCase();
+      if (kn.includes(attrNorm) || attrNorm.includes(kn)) {
+        value = String(v || "");
+        break;
+      }
+    }
+    if (value) {
+      const vNorm = value.toLowerCase();
+      const matches = recipients.filter((r) =>
+        (r.matchValues || []).some((m) => {
+          const mn = String(m).toLowerCase().trim();
+          return mn && (vNorm.includes(mn) || mn.includes(vNorm));
+        })
+      );
+      if (matches.length > 0) {
+        return { recipient: matches[rrIndex % matches.length], nextRrIndex: rrIndex + 1 };
+      }
+    }
+    // no attribute value or no match → round-robin over everyone
+  }
+  return { recipient: recipients[rrIndex % recipients.length], nextRrIndex: rrIndex + 1 };
+}
+
+function buildHandoffWhatsAppText(opts: {
+  leadName: string;
+  leadPhone: string;
+  leadEmail: string;
+  summary: string;
+  capturedInfo: Record<string, string>;
+  conversationId: string;
+  appUrl: string;
+}): string {
+  const info = Object.entries(opts.capturedInfo || {})
+    .map(([k, v]) => `• ${k}: ${v}`)
+    .join("\n");
+  const url = `${opts.appUrl.replace(/\/+$/, "")}/conversations?id=${encodeURIComponent(opts.conversationId)}`;
+  return [
+    "🔔 Novo lead transferido pra você",
+    `Nome: ${opts.leadName || "(sem nome)"}`,
+    `Contato: ${opts.leadPhone || opts.leadEmail || "(sem contato)"}`,
+    "",
+    "Resumo da conversa:",
+    opts.summary || "(sem resumo)",
+    info ? `\nDados capturados:\n${info}` : "",
+    "",
+    `Abrir conversa completa: ${url}`,
+  ]
+    .filter(Boolean)
+    .join("\n");
 }
 
 const leadWorker = new Worker(
@@ -635,46 +714,159 @@ const aiWorker = new Worker(
     // conversation flow.
     if (aiResult.handoff) {
       try {
-        const persona = (await prisma.aIConfig.findUnique({
+        const acctPersona = (await prisma.aIConfig.findUnique({
           where: { accountId },
           select: { persona: true },
         }))?.persona as Record<string, unknown> | null;
-        const handoffEmail = String(persona?.pipelineHandoffEmail || "");
-        const handoffWebhook = String(persona?.pipelineHandoffWebhook || "");
-        if (handoffEmail || handoffWebhook) {
-          const { sendTeamHandoff } = await import("@/lib/notifications/team-handoff");
-          const transcriptLines = history
-            .slice(-10)
-            .map((h) => `${h.role === "user" ? "Lead" : "IA"}: ${h.content}`)
-            .join("\n");
-          const result = await sendTeamHandoff({
-            accountId,
-            conversationId,
-            leadName: lead.name || "",
-            leadPhone: lead.phone || "",
-            leadEmail: lead.email || "",
-            reason: aiResult.handoff.summary,
-            requestedAction: aiResult.handoff.requestedAction,
-            capturedInfo: aiResult.handoff.capturedInfo,
-            transcript: transcriptLines,
-            toEmail: handoffEmail,
-            toWebhook: handoffWebhook || undefined,
-            appUrl: process.env.NEXT_PUBLIC_APP_URL || "https://mktdigital.sociosai.com",
-          });
+        // Effective funnel = account default overlaid by this lead's campaign
+        // funnel (handoff config can be per-campaign).
+        const funnel: Record<string, unknown> = { ...(acctPersona || {}), ...(campaignFunnel || {}) };
+        const recipients = (Array.isArray(funnel.pipelineHandoffRecipients)
+          ? (funnel.pipelineHandoffRecipients as HandoffRecipient[])
+          : []
+        ).filter((r) => r && (r.whatsapp || r.email));
+        const routing = funnel.pipelineHandoffRouting === "rule" ? "rule" : "round_robin";
+        const attribute = String(funnel.pipelineHandoffAttribute || "");
+        const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://mktdigital.sociosai.com";
+        const fullTranscript = history
+          .map((h) => `${h.role === "user" ? "Lead" : "IA"}: ${h.content}`)
+          .join("\n");
+
+        if (recipients.length > 0) {
+          // ── New multi-seller routing (round-robin OR rule) ──
+          const rrIndex =
+            typeof acctPersona?.pipelineHandoffRrIndex === "number"
+              ? (acctPersona.pipelineHandoffRrIndex as number)
+              : 0;
+          const { recipient, nextRrIndex } = pickHandoffRecipient(
+            recipients,
+            routing,
+            attribute,
+            aiResult.handoff.capturedInfo,
+            rrIndex
+          );
+          // Persist the rotation cursor on the account persona (single shared
+          // counter is fine — modulo handles differing list sizes).
+          await prisma.aIConfig
+            .update({
+              where: { accountId },
+              data: { persona: { ...(acctPersona || {}), pipelineHandoffRrIndex: nextRrIndex } as Prisma.InputJsonValue },
+            })
+            .catch(() => {});
+
+          if (recipient) {
+            // 1) WhatsApp the chosen seller (summary + captured info + link)
+            if (recipient.whatsapp) {
+              try {
+                const wa = await getChannelProvider(accountId, "WHATSAPP");
+                if (wa) {
+                  await wa.send(
+                    recipient.whatsapp,
+                    buildHandoffWhatsAppText({
+                      leadName: lead.name || "",
+                      leadPhone: lead.phone || "",
+                      leadEmail: lead.email || "",
+                      summary: aiResult.handoff.summary,
+                      capturedInfo: aiResult.handoff.capturedInfo,
+                      conversationId,
+                      appUrl,
+                    })
+                  );
+                }
+              } catch (e) {
+                console.warn("[ai-response] handoff WhatsApp failed:", e instanceof Error ? e.message : e);
+              }
+            }
+            // 2) Email the seller the full dossier (incl. complete transcript)
+            if (recipient.email) {
+              try {
+                const { sendTeamHandoff } = await import("@/lib/notifications/team-handoff");
+                await sendTeamHandoff({
+                  accountId,
+                  conversationId,
+                  leadName: lead.name || "",
+                  leadPhone: lead.phone || "",
+                  leadEmail: lead.email || "",
+                  reason: aiResult.handoff.summary,
+                  requestedAction: aiResult.handoff.requestedAction,
+                  capturedInfo: aiResult.handoff.capturedInfo,
+                  transcript: fullTranscript,
+                  toEmail: recipient.email,
+                  appUrl,
+                });
+              } catch (e) {
+                console.warn("[ai-response] handoff email failed:", e instanceof Error ? e.message : e);
+              }
+            }
+            // 3) Panel: pause the AI (human takes over) + drop an internal note
+            //    so the operator sees the summary inline in Atendimentos.
+            await prisma.message
+              .create({
+                data: {
+                  accountId,
+                  conversationId,
+                  direction: "OUTBOUND",
+                  content: `🔔 Lead transferido para ${recipient.name || recipient.whatsapp || recipient.email}.\n\nResumo: ${aiResult.handoff.summary}`,
+                  contentType: "TEXT",
+                  isAIGenerated: false,
+                  status: "SENT",
+                  metadata: { role: "handoff_note", recipient: recipient.name || recipient.email || recipient.whatsapp },
+                },
+              })
+              .catch(() => {});
+            await prisma.conversation
+              .update({ where: { id: conversationId }, data: { isAIEnabled: false } })
+              .catch(() => {});
+          }
+
           await prisma.eventLog.create({
             data: {
               accountId,
-              event: "lead.handoff_requested",
+              event: "lead.handoff_routed",
               data: {
                 leadId,
                 conversationId,
+                routing,
+                recipient: recipient ? { name: recipient.name, whatsapp: recipient.whatsapp, email: recipient.email } : null,
                 summary: aiResult.handoff.summary,
-                emailSent: result.emailSent,
-                webhookSent: result.webhookSent,
-                errors: result.errors,
               },
             },
           });
+        } else {
+          // ── Legacy single email/webhook path (unchanged) ──
+          const handoffEmail = String(funnel.pipelineHandoffEmail || "");
+          const handoffWebhook = String(funnel.pipelineHandoffWebhook || "");
+          if (handoffEmail || handoffWebhook) {
+            const { sendTeamHandoff } = await import("@/lib/notifications/team-handoff");
+            const result = await sendTeamHandoff({
+              accountId,
+              conversationId,
+              leadName: lead.name || "",
+              leadPhone: lead.phone || "",
+              leadEmail: lead.email || "",
+              reason: aiResult.handoff.summary,
+              requestedAction: aiResult.handoff.requestedAction,
+              capturedInfo: aiResult.handoff.capturedInfo,
+              transcript: fullTranscript,
+              toEmail: handoffEmail,
+              toWebhook: handoffWebhook || undefined,
+              appUrl,
+            });
+            await prisma.eventLog.create({
+              data: {
+                accountId,
+                event: "lead.handoff_requested",
+                data: {
+                  leadId,
+                  conversationId,
+                  summary: aiResult.handoff.summary,
+                  emailSent: result.emailSent,
+                  webhookSent: result.webhookSent,
+                  errors: result.errors,
+                },
+              },
+            });
+          }
         }
       } catch (err) {
         console.error("[ai-response] handoff failed:", err);
