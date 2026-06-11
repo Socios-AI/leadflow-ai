@@ -16,6 +16,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { randomBytes } from "crypto";
 import prisma from "@/lib/db/prisma";
+import { Prisma } from "@prisma/client";
 import { getSession } from "@/lib/auth/session";
 import { platformEmailDomain } from "@/lib/channels/email";
 
@@ -228,11 +229,11 @@ export async function POST(req: NextRequest) {
       if (channel) {
         await prisma.channel.update({
           where: { id: channel.id },
-          data: { isEnabled: true, config: nextCfg },
+          data: { isEnabled: true, config: nextCfg as Prisma.InputJsonValue },
         });
       } else {
         await prisma.channel.create({
-          data: { accountId: session.accountId, type: "EMAIL", isEnabled: true, config: nextCfg },
+          data: { accountId: session.accountId, type: "EMAIL", isEnabled: true, config: nextCfg as Prisma.InputJsonValue },
         });
       }
       return NextResponse.json({ success: true, mode: nextCfg.mode });
@@ -268,10 +269,10 @@ export async function POST(req: NextRequest) {
       const newSecret = randomBytes(24).toString("hex");
       const nextCfg: EmailConfig = { ...cfg, inboundSecret: newSecret };
       if (channel) {
-        await prisma.channel.update({ where: { id: channel.id }, data: { config: nextCfg } });
+        await prisma.channel.update({ where: { id: channel.id }, data: { config: nextCfg as Prisma.InputJsonValue } });
       } else {
         await prisma.channel.create({
-          data: { accountId: session.accountId, type: "EMAIL", isEnabled: false, config: nextCfg },
+          data: { accountId: session.accountId, type: "EMAIL", isEnabled: false, config: nextCfg as Prisma.InputJsonValue },
         });
       }
       return NextResponse.json({ success: true, inboundSecret: newSecret });

@@ -16,6 +16,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/db/prisma";
+import { Prisma } from "@prisma/client";
 import { getSession } from "@/lib/auth/session";
 
 type SmsConfig = {
@@ -110,11 +111,11 @@ export async function POST(req: NextRequest) {
       if (channel) {
         await prisma.channel.update({
           where: { id: channel.id },
-          data: { isEnabled: true, config: nextCfg },
+          data: { isEnabled: true, config: nextCfg as Prisma.InputJsonValue },
         });
       } else {
         await prisma.channel.create({
-          data: { accountId: session.accountId, type: "SMS", isEnabled: true, config: nextCfg },
+          data: { accountId: session.accountId, type: "SMS", isEnabled: true, config: nextCfg as Prisma.InputJsonValue },
         });
       }
       return NextResponse.json({ success: true });

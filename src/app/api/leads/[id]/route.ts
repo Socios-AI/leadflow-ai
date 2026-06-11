@@ -1,5 +1,6 @@
 // src/app/api/leads/[id]/route.ts
 import { NextRequest, NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 import prisma from "@/lib/db/prisma";
 import { getSession } from "@/lib/auth/session";
 
@@ -147,7 +148,7 @@ export async function DELETE(
         ...meta,
         deletedAt: new Date().toISOString(),
         deletedBy: session.userId,
-      },
+      } as Prisma.InputJsonValue,
     },
   });
 

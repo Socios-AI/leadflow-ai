@@ -17,6 +17,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
 import prisma from "@/lib/db/prisma";
+import { Prisma } from "@prisma/client";
 import { getSession } from "@/lib/auth/session";
 import { configureEvolutionWebhook, webhookBodies } from "@/lib/channels/evolution-webhook";
 import { appUrlFromRequest } from "@/lib/app-url";
@@ -36,6 +37,11 @@ function newInstanceName(accountId: string) {
 function webhookUrlFor(req: Request | NextRequest): string {
   return `${appUrlFromRequest(req)}/api/webhooks/evolution`;
 }
+
+// Prisma's JSON column input is `InputJsonValue`, which a typed interface like
+// WaConfig isn't structurally assignable to (no index signature). Our configs
+// are JSON-serializable at runtime, so cast at the write boundary.
+const asJson = (c: unknown): Prisma.InputJsonValue => c as Prisma.InputJsonValue;
 
 interface WaConfig {
   instanceName?: string;
@@ -114,7 +120,7 @@ async function setWebhook(req: NextRequest, channelId: string, cfg: WaConfig, in
     await prisma.channel.update({
       where: { id: channelId },
       data: {
-        config: { ...cfg, instanceName: instance, webhookConfigured: true, webhookConfiguredAt: new Date().toISOString() },
+        config: asJson({ ...cfg, instanceName: instance, webhookConfigured: true, webhookConfiguredAt: new Date().toISOString() }),
       },
     });
   }
@@ -139,13 +145,13 @@ export async function GET(req: NextRequest) {
             .update({
               where: { id: ch.id },
               data: {
-                config: {
+                config: asJson({
                   ...cfg,
                   instanceName: instance,
                   connected: live.connected,
                   phoneNumber: live.connected ? live.phone : null,
                   lastActivity: live.connected ? new Date().toISOString() : cfg.lastActivity,
-                },
+                }),
               },
             })
             .catch(() => {});
@@ -298,7 +304,7 @@ export async function POST(req: NextRequest) {
       if (live.connected && target) {
         await prisma.channel.update({
           where: { id: target.id },
-          data: { isEnabled: true, config: { ...cfg, instanceName: instance, connected: true, phoneNumber: live.phone, lastActivity: new Date().toISOString() } },
+          data: { isEnabled: true, config: asJson({ ...cfg, instanceName: instance, connected: true, phoneNumber: live.phone, lastActivity: new Date().toISOString() }) },
         });
         if (!cfg.webhookConfigured) await setWebhook(req, target.id, { ...cfg, instanceName: instance }, instance);
         return NextResponse.json({ connected: true, phoneNumber: live.phone, channelId: target.id });
@@ -349,7 +355,7 @@ export async function POST(req: NextRequest) {
       if (result.ok && target) {
         await prisma.channel.update({
           where: { id: target.id },
-          data: { config: { ...cfg, instanceName: instance, webhookConfigured: true, webhookConfiguredAt: new Date().toISOString(), ...(recreatedQr ? { connected: false } : {}) } },
+          data: { config: asJson({ ...cfg, instanceName: instance, webhookConfigured: true, webhookConfiguredAt: new Date().toISOString(), ...(recreatedQr ? { connected: false } : {}) }) },
         });
         return NextResponse.json({ success: true, webhookUrl: webhookUrlFor(req), variant: result.variant, qrCode: recreatedQr, recreated: !!recreatedQr, channelId: target.id });
       }
@@ -371,7 +377,7 @@ export async function POST(req: NextRequest) {
         /* best effort */
       }
       if (target) {
-        await prisma.channel.update({ where: { id: target.id }, data: { isEnabled: false, config: { ...cfg, connected: false, phoneNumber: null } } });
+        await prisma.channel.update({ where: { id: target.id }, data: { isEnabled: false, config: asJson({ ...cfg, connected: false, phoneNumber: null }) } });
       }
       return NextResponse.json({ success: true });
     }
@@ -398,14 +404,14 @@ export async function POST(req: NextRequest) {
 /** Create the channel row (when channelId is unknown) or update it by id. */
 async function upsertChannel(accountId: string, channelId: string | undefined, config: WaConfig) {
   if (channelId) {
-    return prisma.channel.update({ where: { id: channelId }, data: { isEnabled: true, config } });
+    return prisma.channel.update({ where: { id: channelId }, data: { isEnabled: true, config: asJson(config) } });
   }
   // No row yet for this instance — does one already exist with this instanceName?
   const existing = await prisma.channel.findFirst({
     where: { accountId, type: "WHATSAPP", config: { path: ["instanceName"], equals: config.instanceName || "" } },
   });
   if (existing) {
-    return prisma.channel.update({ where: { id: existing.id }, data: { isEnabled: true, config } });
+    return prisma.channel.update({ where: { id: existing.id }, data: { isEnabled: true, config: asJson(config) } });
   }
-  return prisma.channel.create({ data: { accountId, type: "WHATSAPP", isEnabled: true, config } });
+  return prisma.channel.create({ data: { accountId, type: "WHATSAPP", isEnabled: true, config: asJson(config) } });
 }
