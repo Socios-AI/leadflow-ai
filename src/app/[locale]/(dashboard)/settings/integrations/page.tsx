@@ -23,6 +23,7 @@ import {
   Eye,
   EyeOff,
   Facebook,
+  Instagram,
   Link2,
   Loader2,
   Plus,
@@ -256,8 +257,68 @@ function ConnectionsSection({
   return (
     <div className="space-y-5 stagger-children">
       <MetaCard status={meta} onRefresh={onRefresh} />
+      <InstagramCard meta={meta} />
       <GoogleCalendarCard status={google} onRefresh={onRefresh} />
     </div>
+  );
+}
+
+// ── INSTAGRAM ─────────────────────────────────
+// Instagram Direct is authorized together with Meta (the IG account is linked
+// to a Facebook Page). So the card mirrors the Meta connection: once Meta is
+// connected, Instagram rides on the same token. The actual DM send/receive
+// turns on once the Meta app has the instagram messaging permissions approved.
+function InstagramCard({ meta }: { meta: MetaStatus }) {
+  const connect = () => {
+    window.location.href = "/api/integrations/meta/connect";
+  };
+  return (
+    <section className="rounded-xl border border-border bg-card overflow-hidden">
+      <div className="flex items-start gap-4 px-6 py-5 border-b border-border">
+        <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-[#E1306C]/15 to-[#F77737]/15 text-[#E1306C] grid place-items-center shrink-0">
+          <Instagram className="w-5 h-5" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <h2 className="font-display text-[15px] font-semibold text-foreground">Instagram Direct</h2>
+            <StatusPill connected={meta.connected} />
+          </div>
+          <p className="text-[12.5px] text-muted-foreground mt-0.5">
+            Atendimento das DMs do Instagram pela IA. A conta do Instagram é autorizada junto da conexão Meta (vinculada a uma Página do Facebook).
+          </p>
+        </div>
+        {!meta.connected && (
+          <Button onClick={connect} className="shrink-0">
+            <Link2 className="w-4 h-4 mr-1.5" />
+            Conectar
+          </Button>
+        )}
+      </div>
+      <div className="px-6 py-5 space-y-3">
+        {meta.connected ? (
+          <div className="flex items-start gap-2.5 text-[13px] text-foreground/90">
+            <DotIcon className="w-4 h-4 text-primary shrink-0 mt-0.5" />
+            <span>
+              Conta Meta conectada. O atendimento por DM do Instagram é ativado assim que o app do Meta
+              tiver a permissão de mensagens do Instagram aprovada (em revisão).
+            </span>
+          </div>
+        ) : (
+          <ul className="space-y-2.5">
+            {[
+              "A IA responde às DMs do Instagram do mesmo jeito que no WhatsApp.",
+              "Vincule a conta do Instagram a uma Página do Facebook e conecte o Meta uma única vez.",
+              "Os leads que chegam por DM entram no mesmo funil e CRM.",
+            ].map((t, i) => (
+              <li key={i} className="flex items-start gap-2.5 text-[13px] text-foreground/90">
+                <DotIcon className="w-4 h-4 text-primary shrink-0 mt-0.5" />
+                <span>{t}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </section>
   );
 }
 
