@@ -111,8 +111,9 @@ export async function handleWhatsAppInbound(
   //    in cold, not by a funnel webhook" on ALL subsequent messages.
   const { lead } = await findOrCreateLead(accountId, phone, data.pushName);
 
-  // 5. Find or create conversation
-  const conversation = await findOrCreateConversation(accountId, lead.id, phone);
+  // 5. Find or create conversation (pinned to the channel instance the lead
+  //    messaged, so replies go out on the SAME WhatsApp number).
+  const conversation = await findOrCreateConversation(accountId, lead.id, phone, channelRow.id);
 
   // 6. Funnel-only gate. When ON (default) we still RECORD the inbound so
   //    the operator can see "this stranger messaged us" in the inbox, but
@@ -330,6 +331,7 @@ interface ChannelConfig {
 }
 
 type ChannelRow = {
+  id: string;
   accountId: string;
   config: unknown;
 };
@@ -344,13 +346,13 @@ async function resolveChannelByInstance(
         isEnabled: true,
         config: { path: ["instanceName"], equals: instanceName },
       },
-      select: { accountId: true, config: true },
+      select: { id: true, accountId: true, config: true },
     });
     if (ch) return ch;
   }
   const fallback = await prisma.channel.findFirst({
     where: { type: "WHATSAPP", isEnabled: true },
-    select: { accountId: true, config: true },
+    select: { id: true, accountId: true, config: true },
   });
   return fallback;
 }
@@ -426,7 +428,8 @@ async function isPipelineConfigured(accountId: string): Promise<boolean> {
 async function findOrCreateConversation(
   accountId: string,
   leadId: string,
-  phone: string
+  phone: string,
+  channelConfigId?: string
 ) {
   return prisma.conversation.upsert({
     where: {
@@ -437,10 +440,13 @@ async function findOrCreateConversation(
       leadId,
       channel: "WHATSAPP",
       channelIdentifier: `+${phone}`,
+      channelConfigId: channelConfigId || null,
       isActive: true,
       isAIEnabled: true,
     },
-    update: { isActive: true },
+    // Pin/refresh the instance on existing conversations too, so a number that
+    // was migrated/reconnected still replies on the current instance.
+    update: { isActive: true, ...(channelConfigId ? { channelConfigId } : {}) },
   });
 }
 

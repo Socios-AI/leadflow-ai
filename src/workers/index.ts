@@ -10,16 +10,20 @@ import { getQueueConnection, getRedis } from "@/lib/redis";
 import prisma from "@/lib/db/prisma";
 import { Prisma } from "@prisma/client";
 import { AIEngine } from "@/lib/ai-engine/engine";
-import { getChannelProvider } from "@/lib/channels/factory";
+import { getChannelProvider, getProviderForConversation } from "@/lib/channels/factory";
 import { WhatsAppProvider } from "@/lib/channels/whatsapp";
 import { queues } from "@/lib/queues";
 import { flushDebounceBuffer, debounceMessage } from "@/lib/debounce";
 import { sendMessagesInParts } from "@/lib/ai-engine/send-parts";
+import { ensureSchema } from "@/lib/db/ensure-schema";
 
 const connection = getQueueConnection();
 type Channel = "WHATSAPP" | "EMAIL" | "SMS";
 
 console.log("Starting workers...");
+// Apply idempotent additive schema migrations before processing jobs (backstop;
+// the web app also runs this on boot). Fire-and-forget — idempotent + fast.
+void ensureSchema();
 
 // ═══════════════════════════════════════════════════════
 // WORKER 1: LEAD PROCESSING (first contact for new leads)
@@ -574,7 +578,7 @@ const aiWorker = new Worker(
     // silent screen between sending their message and seeing the reply
     // bubbles appear. Fire-and-forget so generation isn't blocked.
     if (channel === "WHATSAPP") {
-      const earlyProvider = await getChannelProvider(accountId, channel);
+      const earlyProvider = await getProviderForConversation(accountId, channel, conversation.channelConfigId);
       const earlyContact =
         conversation.channelIdentifier || lead.phone || "";
       if (earlyProvider && earlyContact && earlyProvider instanceof WhatsAppProvider) {
@@ -607,7 +611,10 @@ const aiWorker = new Worker(
         ? lead.email || ""
         : conversation.channelIdentifier || lead.phone || "";
 
-    const provider = await getChannelProvider(accountId, channel);
+    // Reply on the SAME channel instance the lead is talking to (the number
+    // they messaged). Falls back to the account's channel of this type when the
+    // conversation isn't pinned (legacy / single-channel) — identical behavior.
+    const provider = await getProviderForConversation(accountId, channel, conversation.channelConfigId);
     let firstMessageId: string | null = null;
     let followUpHours: number | null = null;
 

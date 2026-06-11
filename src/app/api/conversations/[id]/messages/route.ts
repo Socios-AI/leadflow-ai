@@ -2,7 +2,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/db/prisma";
 import { getSession } from "@/lib/auth/session";
-import { getChannelProvider } from "@/lib/channels/factory";
+import { getProviderForConversation } from "@/lib/channels/factory";
 
 // GET - List messages for a conversation
 export async function GET(
@@ -118,9 +118,10 @@ export async function POST(
     ? conversation.lead.email!
     : conversation.lead.phone!;
 
-  const provider = await getChannelProvider(
+  const provider = await getProviderForConversation(
     session.accountId,
-    conversation.channel as "WHATSAPP" | "EMAIL" | "SMS"
+    conversation.channel as "WHATSAPP" | "EMAIL" | "SMS",
+    conversation.channelConfigId
   );
 
   if (provider) {
