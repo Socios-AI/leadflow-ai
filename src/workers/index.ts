@@ -226,7 +226,46 @@ const leadWorker = new Worker(
       (c) => contactFor(lead, c).length > 0
     );
     if (sendChannels.length === 0) {
-      console.warn(`[lead-processing] Lead ${leadId} has no usable contact for configured channels`);
+      // VISIBLE failure instead of a silent skip. Before, a lead whose only
+      // contact didn't match the funnel channel (e.g. funnel set to WhatsApp
+      // but the lead has only an email) just vanished — the operator saw the
+      // lead in the CRM and assumed "the AI is broken". Now we record a FAILED
+      // first-contact so the Leads screen shows it (with a retry button) and
+      // says why.
+      const ch = pipeline.channels[0] || requestedChannel;
+      console.warn(`[lead-processing] Lead ${leadId} has no usable contact for channel ${ch}`);
+      try {
+        const conv = await prisma.conversation.upsert({
+          where: { accountId_leadId_channel: { accountId, leadId, channel: ch } },
+          create: {
+            accountId,
+            leadId,
+            channel: ch,
+            channelIdentifier: contactFor(lead, ch) || null,
+            isActive: true,
+            isAIEnabled: true,
+            lastMessageAt: new Date(),
+          },
+          update: {},
+        });
+        await prisma.message.create({
+          data: {
+            accountId,
+            conversationId: conv.id,
+            direction: "OUTBOUND",
+            content: `(Primeiro contato não enviado: este lead não tem ${ch === "EMAIL" ? "email" : "telefone"} para o canal configurado no funil.)`,
+            contentType: "TEXT",
+            isAIGenerated: true,
+            status: "FAILED",
+            metadata: { role: "first_contact", lastSendError: "no_contact_for_channel", failedAt: new Date().toISOString() },
+          },
+        });
+        await prisma.eventLog.create({
+          data: { accountId, event: "lead.first_contact_skipped", data: { leadId, reason: "no_contact_for_channel", channels: pipeline.channels } },
+        });
+      } catch (e) {
+        console.error("[lead-processing] failed to record no-contact failure:", e instanceof Error ? e.message : e);
+      }
       return;
     }
 
@@ -265,7 +304,27 @@ const leadWorker = new Worker(
 
       const provider = await getChannelProvider(accountId, ch);
       if (!provider) {
-        console.error(`[lead-processing] No ${ch} provider for account ${accountId}, skipping channel`);
+        // VISIBLE failure: the channel isn't connected for this account. Record
+        // it on the conversation so the operator sees "first contact failed —
+        // channel not connected" on the Leads screen instead of silence.
+        console.error(`[lead-processing] No ${ch} provider for account ${accountId}, channel not connected`);
+        await prisma.message
+          .create({
+            data: {
+              accountId,
+              conversationId: conversation.id,
+              direction: "OUTBOUND",
+              content: `(Primeiro contato não enviado: o canal ${ch} não está conectado. Conecte em Conexões e reenvie.)`,
+              contentType: "TEXT",
+              isAIGenerated: true,
+              status: "FAILED",
+              metadata: { role: "first_contact", lastSendError: "channel_not_connected", failedAt: new Date().toISOString() },
+            },
+          })
+          .catch(() => {});
+        await prisma.eventLog
+          .create({ data: { accountId, event: "lead.first_contact_skipped", data: { leadId, reason: "channel_not_connected", channel: ch } } })
+          .catch(() => {});
         fanoutSummary.push({ channel: ch, parts: 0, ok: false });
         continue;
       }
