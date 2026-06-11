@@ -164,6 +164,10 @@ model Conversation {
   leadId             String      @map("lead_id")
   channel            ChannelType
   channelIdentifier  String?     @map("channel_identifier")
+  // Which specific channel instance this conversation belongs to (a tenant may
+  // have several WhatsApp numbers / emails of the same type). NULL = legacy /
+  // resolve by type (the single channel of that type). Replies route by this.
+  channelConfigId    String?     @map("channel_config_id")
   isActive           Boolean     @default(true) @map("is_active")
   isAIEnabled        Boolean     @default(true) @map("is_ai_enabled")
   sentiment          String?
@@ -387,6 +391,9 @@ model Channel {
   id        String      @id @default(cuid())
   accountId String      @map("account_id")
   type      ChannelType
+  // Operator-facing name when a tenant has several channels of the same type
+  // (e.g. "Loja Centro", "Loja Shopping"). Optional.
+  label     String?
   isEnabled Boolean     @default(false) @map("is_enabled")
   config    Json
   createdAt DateTime    @default(now()) @map("created_at")
@@ -394,7 +401,11 @@ model Channel {
 
   account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
 
+  // PHASE 1: the unique is kept so nothing breaks yet (still 1 row per type).
+  // Phase 3 drops it (multiple channels per type) together with the CRUD
+  // refactor that stops relying on the accountId_type composite key.
   @@unique([accountId, type])
+  @@index([accountId, type])
   @@map("channels")
 }
 
