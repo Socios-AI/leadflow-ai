@@ -78,11 +78,13 @@ export default function NewCampaignPage() {
     // Video/audio go through server-side ffmpeg extraction so the only
     // hard ceiling is the raw upload size (1GB).
     if (file && (uploadType === "audio" || uploadType === "video")) {
-      if (file.size > 1024 * 1024 * 1024) {
+      // 200MB cap: the server reads the whole upload into memory to parse the
+      // multipart form, so a huge video OOMs the host and surfaces as the
+      // cryptic "failed to parse body" error. For anything bigger, the copy/
+      // caption gives the AI everything it needs anyway.
+      if (file.size > 200 * 1024 * 1024) {
         setAiAnalysis(
-          t("fileTooLargeUpload", {
-            size: (file.size / 1024 / 1024).toFixed(1),
-          })
+          `Esse ${uploadType === "video" ? "vídeo" : "áudio"} tem ${(file.size / 1024 / 1024).toFixed(0)} MB — acima do limite de 200 MB para análise. Use um trecho mais curto/leve, ou cole a legenda/copy do anúncio no campo de texto que a IA analisa do mesmo jeito.`
         );
         return;
       }
@@ -127,11 +129,15 @@ export default function NewCampaignPage() {
   }
 
   function translateAnalyzeError(
-    data: { error?: string; sizeMB?: number; detail?: string },
+    data: { error?: string; sizeMB?: number; detail?: string; message?: string },
     status: number,
     raw: string
   ): string {
     switch (data.error) {
+      case "UPLOAD_FAILED":
+        // Server already wrote a friendly, actionable message — use it.
+        return data.message ||
+          "Não consegui receber o arquivo (muito grande ou conexão instável). Tente um vídeo mais leve ou cole a legenda/copy do anúncio.";
       case "FILE_TOO_LARGE_UPLOAD":
         return t("fileTooLargeUpload", { size: data.sizeMB ?? "?" });
       case "AUDIO_TOO_LONG":
@@ -143,6 +149,8 @@ export default function NewCampaignPage() {
       case "NO_CONTENT":
         return t("noContentToAnalyze");
     }
+    // Any server message wins over the raw dump.
+    if (data.message) return data.message;
     // Proxy or platform-level rejection (typical: Traefik 413 / 502 with
     // an HTML body). Tell the user what was actually wrong.
     if (status === 413) return t("proxyTooLarge");
@@ -157,7 +165,12 @@ export default function NewCampaignPage() {
     if (!name.trim()) return; setSaving(true);
     try {
       const fd = new FormData(); fd.append("name", name.trim()); fd.append("description", description.trim());
-      if (file) fd.append("file", file);
+      // NOTE: we intentionally do NOT re-upload the raw media file on save.
+      // The backend doesn't store it (only the analysis/transcription matters),
+      // and re-sending a large video here hit the same "failed to parse body
+      // as a FormData" error that broke campaign creation. The media format is
+      // sent as a lightweight string instead.
+      if (file) fd.append("mediaFormat", uploadType === "video" ? "video" : uploadType === "image" ? "image" : uploadType === "audio" ? "audio" : "");
       if (uploadType === "text") fd.append("type", "TEXT"); else if (uploadType) fd.append("type", uploadType.toUpperCase()); else fd.append("type", "DIGITAL");
       if (textContent) fd.append("transcription", textContent); if (caption) fd.append("caption", caption);
       if (aiAnalysis) fd.append("transcription", aiAnalysis); if (countries.length > 0) fd.append("countries", JSON.stringify(countries));

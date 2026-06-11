@@ -14,7 +14,12 @@ const log = logger.child({ module: "api/campaigns/analyze" });
 
 const WHISPER_MAX_BYTES = 25 * 1024 * 1024;
 const VISION_MAX_BYTES = 20 * 1024 * 1024;
-const MAX_UPLOAD_BYTES = 2 * 1024 * 1024 * 1024; // 2 GB raw upload ceiling
+// 250 MB ceiling. req.formData() buffers the whole upload in memory to parse
+// it, so a multi-hundred-MB video OOMs the host (~4GB) and surfaces as the
+// cryptic "failed to parse body as a FormData". We reject early (by
+// content-length, before reading the body) with a clean 413. The client caps
+// at 200 MB with a friendlier message, so this is just the server backstop.
+const MAX_UPLOAD_BYTES = 250 * 1024 * 1024;
 
 const WHISPER_PASSTHROUGH = new Set([
   "audio/mpeg", "audio/mp3", "audio/wav", "audio/wave", "audio/x-wav",
@@ -65,10 +70,31 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // Parse the multipart body in its OWN guard. For big videos on a flaky
+  // connection (or a proxy body limit) `req.formData()` throws a raw
+  // "failed to parse body as a FormData" — we turn that into a clean,
+  // actionable message instead of a scary 500. This is the error users were
+  // hitting when uploading campaign videos.
+  let formData: FormData;
+  try {
+    formData = await req.formData();
+  } catch (e) {
+    const detail = e instanceof Error ? e.message : String(e);
+    log.warn("formData parse failed", { detail });
+    return NextResponse.json(
+      {
+        error: "UPLOAD_FAILED",
+        message:
+          "Não consegui receber o arquivo — provavelmente é muito grande ou a conexão caiu durante o envio. Tente um vídeo mais curto/leve, ou cole a legenda/copy do anúncio que a IA analisa por texto.",
+        detail,
+      },
+      { status: 400 }
+    );
+  }
+
   const workDir = await mkdtemp(join(tmpdir(), "mktdigital-analyze-"));
 
   try {
-    const formData = await req.formData();
     const type = String(formData.get("type") || "");
     const file = formData.get("file") as File | null;
     const text = formData.get("text") as string | null;

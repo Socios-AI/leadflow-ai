@@ -1375,7 +1375,7 @@ function buildClosingBlock(persona: Record<string, unknown>): string {
   const handoffRecipients = (personaField(persona, "pipelineHandoffRecipients", []) as unknown[])
     .map((r) => (r || {}) as Record<string, unknown>)
     .filter((r) => r.whatsapp || r.email);
-  const handoffRouting = personaField(persona, "pipelineHandoffRouting", "round_robin") === "rule" ? "rule" : "round_robin";
+  const handoffRouting = String(personaField(persona, "pipelineHandoffRouting", "round_robin")) === "rule" ? "rule" : "round_robin";
   const handoffAttribute = String(personaField(persona, "pipelineHandoffAttribute", "")).trim();
   const hasHandoffTarget = !!handoffEmail || !!handoffWebhook || handoffRecipients.length > 0;
 
