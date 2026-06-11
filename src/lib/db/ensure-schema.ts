@@ -24,6 +24,10 @@ const STATEMENTS: string[] = [
   `ALTER TABLE "channels" ADD COLUMN IF NOT EXISTS "label" TEXT`,
   `ALTER TABLE "conversations" ADD COLUMN IF NOT EXISTS "channel_config_id" TEXT`,
   `CREATE INDEX IF NOT EXISTS "channels_account_id_type_idx" ON "channels" ("account_id", "type")`,
+  // ── Multi-channel — Fase 3: permite vários canais do mesmo tipo ──
+  // Remove a trava de 1-por-tipo. Idempotente (IF EXISTS). Sem ela, é possível
+  // ter vários WhatsApp/Email/SMS por conta.
+  `ALTER TABLE "channels" DROP CONSTRAINT IF EXISTS "channels_account_id_type_key"`,
 ];
 
 let ran = false;

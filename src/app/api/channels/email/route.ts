@@ -71,8 +71,9 @@ export async function GET() {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   try {
-    const channel = await prisma.channel.findUnique({
-      where: { accountId_type: { accountId: session.accountId, type: "EMAIL" } },
+    const channel = await prisma.channel.findFirst({
+      where: { accountId: session.accountId, type: "EMAIL" },
+      orderBy: { createdAt: "asc" },
     });
     const cfg = (channel?.config as EmailConfig | null) || {};
     // Default new accounts to platform mode so the email channel works
@@ -121,8 +122,9 @@ export async function POST(req: NextRequest) {
   const { action } = body;
 
   try {
-    const channel = await prisma.channel.findUnique({
-      where: { accountId_type: { accountId: session.accountId, type: "EMAIL" } },
+    const channel = await prisma.channel.findFirst({
+      where: { accountId: session.accountId, type: "EMAIL" },
+      orderBy: { createdAt: "asc" },
     });
     const cfg = (channel?.config as EmailConfig | null) || {};
 
@@ -223,16 +225,16 @@ export async function POST(req: NextRequest) {
         };
       }
 
-      await prisma.channel.upsert({
-        where: { accountId_type: { accountId: session.accountId, type: "EMAIL" } },
-        create: {
-          accountId: session.accountId,
-          type: "EMAIL",
-          isEnabled: true,
-          config: nextCfg,
-        },
-        update: { isEnabled: true, config: nextCfg },
-      });
+      if (channel) {
+        await prisma.channel.update({
+          where: { id: channel.id },
+          data: { isEnabled: true, config: nextCfg },
+        });
+      } else {
+        await prisma.channel.create({
+          data: { accountId: session.accountId, type: "EMAIL", isEnabled: true, config: nextCfg },
+        });
+      }
       return NextResponse.json({ success: true, mode: nextCfg.mode });
     }
 
@@ -265,16 +267,13 @@ export async function POST(req: NextRequest) {
     if (action === "rotate_inbound_secret") {
       const newSecret = randomBytes(24).toString("hex");
       const nextCfg: EmailConfig = { ...cfg, inboundSecret: newSecret };
-      await prisma.channel.upsert({
-        where: { accountId_type: { accountId: session.accountId, type: "EMAIL" } },
-        create: {
-          accountId: session.accountId,
-          type: "EMAIL",
-          isEnabled: channel?.isEnabled || false,
-          config: nextCfg,
-        },
-        update: { config: nextCfg },
-      });
+      if (channel) {
+        await prisma.channel.update({ where: { id: channel.id }, data: { config: nextCfg } });
+      } else {
+        await prisma.channel.create({
+          data: { accountId: session.accountId, type: "EMAIL", isEnabled: false, config: nextCfg },
+        });
+      }
       return NextResponse.json({ success: true, inboundSecret: newSecret });
     }
 

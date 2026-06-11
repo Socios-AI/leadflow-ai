@@ -401,10 +401,10 @@ model Channel {
 
   account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
 
-  // PHASE 1: the unique is kept so nothing breaks yet (still 1 row per type).
-  // Phase 3 drops it (multiple channels per type) together with the CRUD
-  // refactor that stops relying on the accountId_type composite key.
-  @@unique([accountId, type])
+  // PHASE 3: the (accountId, type) unique is GONE — a tenant can have several
+  // channels of the same type (e.g. multiple WhatsApp numbers). All code that
+  // used the accountId_type composite key now resolves by id or findFirst.
+  // ensure-schema.ts drops the old DB constraint automatically on deploy.
   @@index([accountId, type])
   @@map("channels")
 }

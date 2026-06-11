@@ -42,9 +42,14 @@ export async function PUT(req: NextRequest) {
       return NextResponse.json({ error: "Invalid channel type" }, { status: 400 });
     }
 
-    // Merge with existing config (so partial updates don't wipe secrets)
-    const existing = await prisma.channel.findUnique({
-      where: { accountId_type: { accountId: session.accountId, type } },
+    // Merge with existing config (so partial updates don't wipe secrets).
+    // Multi-channel: an account can have several rows of a type, so we no
+    // longer key by the (accountId,type) composite unique. This generic PUT
+    // edits the FIRST channel of the type (or creates one) — per-instance
+    // edits go through the type-specific routes by channel id.
+    const existing = await prisma.channel.findFirst({
+      where: { accountId: session.accountId, type },
+      orderBy: { createdAt: "asc" },
     });
 
     const existingCfg = (existing?.config as Record<string, any>) || {};
@@ -55,19 +60,19 @@ export async function PUT(req: NextRequest) {
       if (mergedConfig[key] === "") delete mergedConfig[key];
     }
 
-    const channel = await prisma.channel.upsert({
-      where: { accountId_type: { accountId: session.accountId, type } },
-      create: {
-        accountId: session.accountId,
-        type,
-        isEnabled: isEnabled ?? false,
-        config: mergedConfig,
-      },
-      update: {
-        isEnabled: isEnabled ?? existing?.isEnabled ?? false,
-        config: mergedConfig,
-      },
-    });
+    const channel = existing
+      ? await prisma.channel.update({
+          where: { id: existing.id },
+          data: { isEnabled: isEnabled ?? existing.isEnabled ?? false, config: mergedConfig },
+        })
+      : await prisma.channel.create({
+          data: {
+            accountId: session.accountId,
+            type,
+            isEnabled: isEnabled ?? false,
+            config: mergedConfig,
+          },
+        });
 
     return NextResponse.json({ success: true, channelId: channel.id });
   } catch (error) {

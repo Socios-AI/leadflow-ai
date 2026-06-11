@@ -2,487 +2,252 @@
 "use client";
 
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { useTranslations, useLocale } from "next-intl";
+import { useTranslations } from "next-intl";
 import Link from "next/link";
 import {
   Phone, Loader2, QrCode, Unplug, ArrowLeft, RefreshCw,
-  Wifi, WifiOff, Smartphone, Shield, Zap, Clock, Filter, Power,
+  Wifi, WifiOff, Filter, Power, Plus, Trash2, X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-type Status = "loading" | "disconnected" | "connecting" | "qr" | "connected";
+interface WaChannel {
+  id: string;
+  label: string | null;
+  instanceName: string;
+  connected: boolean;
+  phoneNumber: string | null;
+  lastActivity: string | null;
+  webhookConfigured: boolean;
+  respondToFunnelLeadsOnly: boolean;
+}
+
+const API = "/api/channels/whatsapp";
 
 export default function WhatsAppChannelPage() {
   const t = useTranslations("channels.whatsapp");
-  const locale = useLocale();
 
-  const [status, setStatus] = useState<Status>("loading");
-  const [phoneNumber, setPhoneNumber] = useState<string | null>(null);
-  const [qrCode, setQrCode] = useState<string | null>(null);
-  const [lastActivity, setLastActivity] = useState<string | null>(null);
+  const [channels, setChannels] = useState<WaChannel[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [adding, setAdding] = useState(false);
+  // The number currently pairing (showing a QR). channelId may be "new".
+  const [qr, setQr] = useState<{ channelId: string; code: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [disconnecting, setDisconnecting] = useState(false);
-  const [webhookConfigured, setWebhookConfigured] = useState(false);
-  const [webhookUrl, setWebhookUrl] = useState<string>("");
-  const [reconfiguring, setReconfiguring] = useState(false);
-  const [webhookToast, setWebhookToast] = useState<string | null>(null);
-  const [webhookAttempts, setWebhookAttempts] = useState<
-    | {
-        label: string;
-        method: string;
-        url: string;
-        status: number;
-        ok: boolean;
-        detail?: string;
-      }[]
-    | null
-  >(null);
-  const [webhookInstance, setWebhookInstance] = useState<string | null>(null);
-  const [funnelOnly, setFunnelOnly] = useState(true);
-  const [funnelOnlySaving, setFunnelOnlySaving] = useState(false);
-  const [restarting, setRestarting] = useState(false);
-  const [restartToast, setRestartToast] = useState<string | null>(null);
-  const [diagnosing, setDiagnosing] = useState(false);
-  // The whole raw response — operator can copy/paste it to support.
-  const [diagnoseReport, setDiagnoseReport] = useState<unknown>(null);
   const pollRef = useRef<NodeJS.Timeout | null>(null);
 
-  const loadStatus = useCallback(async () => {
+  const post = useCallback(async (payload: Record<string, unknown>) => {
+    const r = await fetch(API, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    return { ok: r.ok, data: await r.json().catch(() => ({})) };
+  }, []);
+
+  const load = useCallback(async () => {
     try {
-      const r = await fetch("/api/channels/whatsapp"); if (!r.ok) return;
+      const r = await fetch(API);
+      if (!r.ok) return;
       const d = await r.json();
-      setWebhookConfigured(!!d.webhookConfigured);
-      setWebhookUrl(d.webhookUrl || "");
-      setFunnelOnly(d.respondToFunnelLeadsOnly !== false);
-      if (d.connected) {
-        setStatus("connected");
-        setPhoneNumber(d.phoneNumber);
-        setLastActivity(d.lastActivity);
-        setQrCode(null);
-        stopPolling();
-      } else if (status === "loading" || status === "connected") {
-        // promote loading -> disconnected, and demote a stale "connected"
-        // when Evolution now reports otherwise.
-        setStatus("disconnected");
-        setPhoneNumber(null);
-      }
-    } catch {}
-  }, [status]);
+      setChannels(Array.isArray(d.channels) ? d.channels : []);
+    } catch {
+      /* ignore */
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
-  useEffect(() => { loadStatus(); return () => stopPolling(); }, [loadStatus]);
-
-  // Background heartbeat: as long as we're not actively showing a QR or
-  // running a connect flow, re-check the live status every 6s so the UI
-  // catches when the operator re-pairs directly inside Evolution.
   useEffect(() => {
-    if (status === "qr" || status === "connecting") return;
-    const id = setInterval(() => { loadStatus(); }, 6000);
+    load();
+    return () => { if (pollRef.current) clearInterval(pollRef.current); };
+  }, [load]);
+
+  // Background heartbeat while not pairing.
+  useEffect(() => {
+    if (qr) return;
+    const id = setInterval(load, 8000);
     return () => clearInterval(id);
-  }, [status, loadStatus]);
+  }, [qr, load]);
 
-  function stopPolling() { if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; } }
+  function stopPolling() {
+    if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+  }
 
-  async function handleReconfigureWebhook() {
-    setReconfiguring(true);
-    setWebhookToast(null);
-    setWebhookAttempts(null);
-    setWebhookInstance(null);
-    try {
-      const r = await fetch("/api/channels/whatsapp", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "configureWebhook" }),
-      });
-      const d = await r.json();
-      if (r.ok && d.success) {
-        setWebhookConfigured(true);
-        if (d.webhookUrl) setWebhookUrl(d.webhookUrl);
-        // When the API had to recreate the instance, it returns a fresh QR
-        // and signals that pairing is needed again. Surface that flow
-        // immediately so the operator scans without a second click.
-        if (d.qrCode && d.recreated) {
-          setQrCode(d.qrCode);
-          setStatus("qr");
-          setPhoneNumber(null);
-          setWebhookToast(t("webhookRecreated"));
-          stopPolling();
-          pollRef.current = setInterval(async () => {
-            try {
-              const sr = await fetch("/api/channels/whatsapp", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ action: "status" }),
-              });
-              const sd = await sr.json();
-              if (sd.connected) {
-                setStatus("connected");
-                setPhoneNumber(sd.phoneNumber);
-                setQrCode(null);
-                stopPolling();
-              }
-            } catch {}
-          }, 4000);
-        } else {
-          setWebhookToast(t("webhookReconfigured"));
-          setTimeout(() => setWebhookToast(null), 4000);
-        }
-      } else {
-        setWebhookToast(d.error || t("webhookReconfigureError"));
-        if (Array.isArray(d.attempts)) setWebhookAttempts(d.attempts);
-        if (typeof d.instanceName === "string") setWebhookInstance(d.instanceName);
+  // Poll the live status of the pairing instance until it connects.
+  function startPairPolling(channelId: string) {
+    stopPolling();
+    pollRef.current = setInterval(async () => {
+      const { data } = await post({ action: "status", channelId });
+      if (data?.connected) {
+        stopPolling();
+        setQr(null);
+        load();
       }
-    } catch {
-      setWebhookToast(t("webhookReconfigureError"));
-    } finally {
-      setReconfiguring(false);
-    }
+    }, 4000);
   }
 
-  async function handleDiagnose(actuallySend: boolean) {
-    setDiagnosing(true);
-    setDiagnoseReport(null);
+  async function connect(channelId?: string, isNew = false) {
+    setError(null);
+    if (isNew) setAdding(true); else setBusyId(channelId || "primary");
     try {
-      const r = await fetch(
-        `/api/channels/whatsapp/diagnose${actuallySend ? "?send=true" : ""}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({}),
-        }
-      );
-      const d = await r.json().catch(() => ({ error: "invalid_response" }));
-      setDiagnoseReport(d);
-    } catch (err) {
-      setDiagnoseReport({ error: err instanceof Error ? err.message : String(err) });
-    } finally {
-      setDiagnosing(false);
-    }
-  }
-
-  async function handleRestart() {
-    if (!confirm(t("restartConfirm"))) return;
-    setRestarting(true);
-    setRestartToast(null);
-    try {
-      const r = await fetch("/api/channels/whatsapp", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "restart" }),
-      });
-      const d = await r.json().catch(() => ({}));
-      setRestartToast(r.ok && d.ok ? t("restartOk") : t("restartError"));
-    } catch {
-      setRestartToast(t("restartError"));
-    } finally {
-      setRestarting(false);
-      setTimeout(() => setRestartToast(null), 5000);
-    }
-  }
-
-  async function toggleFunnelOnly(next: boolean) {
-    // Optimistic flip, the API call confirms (or rolls back on failure).
-    setFunnelOnly(next);
-    setFunnelOnlySaving(true);
-    try {
-      const r = await fetch("/api/channels/whatsapp", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "setRespondToFunnelLeadsOnly",
-          value: next,
-        }),
-      });
-      if (!r.ok) setFunnelOnly(!next);
-    } catch {
-      setFunnelOnly(!next);
-    } finally {
-      setFunnelOnlySaving(false);
-    }
-  }
-
-  async function handleConnect() {
-    setStatus("connecting"); setError(null); setQrCode(null);
-    try {
-      const r = await fetch("/api/channels/whatsapp", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "connect" }) });
-      const d = await r.json();
-      if (d.connected) { setStatus("connected"); setPhoneNumber(d.phoneNumber); setQrCode(null); return; }
-      if (d.qrCode) {
-        setQrCode(d.qrCode); setStatus("qr"); stopPolling();
-        pollRef.current = setInterval(async () => {
-          try { const sr = await fetch("/api/channels/whatsapp", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "status" }) }); const sd = await sr.json(); if (sd.connected) { setStatus("connected"); setPhoneNumber(sd.phoneNumber); setQrCode(null); stopPolling(); } } catch {}
-        }, 4000);
+      const { data } = await post({ action: "connect", channelId, new: isNew });
+      if (data?.connected) { await load(); return; }
+      if (data?.qrCode && data?.channelId) {
+        setQr({ channelId: data.channelId, code: data.qrCode });
+        startPairPolling(data.channelId);
+        await load();
         return;
       }
-      setError(d.error || t("qrError")); setStatus("disconnected");
-    } catch { setError(t("serverError")); setStatus("disconnected"); }
+      setError(data?.error || t("qrError"));
+    } catch {
+      setError(t("serverError"));
+    } finally {
+      setAdding(false);
+      setBusyId(null);
+    }
   }
 
-  async function handleDisconnect() {
+  async function disconnect(channelId: string) {
     if (!confirm(t("disconnectConfirm"))) return;
-    setDisconnecting(true);
-    try { await fetch("/api/channels/whatsapp", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "disconnect" }) }); setStatus("disconnected"); setPhoneNumber(null); setQrCode(null); } catch {}
-    setDisconnecting(false);
+    setBusyId(channelId);
+    try { await post({ action: "disconnect", channelId }); await load(); } finally { setBusyId(null); }
   }
 
-  if (status === "loading") return <div className="flex items-center justify-center py-32"><Loader2 className="w-5 h-5 text-muted-foreground animate-spin" /></div>;
+  async function remove(channelId: string) {
+    if (!confirm("Remover este número? Ele será desconectado e apagado da lista.")) return;
+    setBusyId(channelId);
+    try { await post({ action: "delete", channelId }); await load(); } finally { setBusyId(null); }
+  }
+
+  async function restart(channelId: string) {
+    setBusyId(channelId);
+    try { await post({ action: "restart", channelId }); } finally { setBusyId(null); }
+  }
+
+  async function reconfigureWebhook(channelId: string) {
+    setBusyId(channelId);
+    try {
+      const { data } = await post({ action: "configureWebhook", channelId });
+      if (data?.qrCode && data?.recreated && data?.channelId) {
+        setQr({ channelId: data.channelId, code: data.qrCode });
+        startPairPolling(data.channelId);
+      }
+      await load();
+    } finally { setBusyId(null); }
+  }
+
+  async function toggleFunnel(channelId: string, next: boolean) {
+    setChannels((prev) => prev.map((c) => (c.id === channelId ? { ...c, respondToFunnelLeadsOnly: next } : c)));
+    await post({ action: "setRespondToFunnelLeadsOnly", channelId, value: next });
+  }
+
+  if (loading) {
+    return <div className="flex items-center justify-center py-32"><Loader2 className="w-5 h-5 text-muted-foreground animate-spin" /></div>;
+  }
 
   return (
     <div className="max-w-xl mx-auto space-y-6 pb-12">
+      {/* Header */}
       <div className="flex items-center gap-3">
         <Link href="/" className="w-9 h-9 rounded-lg border border-border flex items-center justify-center hover:bg-muted transition-colors"><ArrowLeft className="w-4 h-4 text-muted-foreground" /></Link>
         <div className="w-10 h-10 rounded-xl bg-[#25D366] flex items-center justify-center"><Phone className="w-5 h-5 text-white" /></div>
-        <div>
+        <div className="flex-1">
           <h1 className="font-space-grotesk text-lg font-bold text-foreground tracking-tight">{t("title")}</h1>
-          <p className="text-[11px] text-muted-foreground font-dm-sans">{t("subtitle")}</p>
+          <p className="text-[11px] text-muted-foreground font-dm-sans">Conecte um ou vários números de WhatsApp.</p>
         </div>
       </div>
 
-      {status === "connected" && (
-        <div className="space-y-4">
-          <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/[0.04] p-6 text-center">
-            <div className="w-14 h-14 rounded-2xl bg-emerald-500/10 flex items-center justify-center mx-auto mb-3"><Wifi className="w-6 h-6 text-emerald-500" /></div>
-            <h2 className="font-space-grotesk text-lg font-bold text-foreground">{t("connected")}</h2>
-            {phoneNumber && <p className="text-emerald-500 font-mono text-[15px] font-semibold mt-1">+{phoneNumber}</p>}
-            <p className="text-[12px] text-muted-foreground mt-2 font-dm-sans">{t("aiReady")}</p>
-            {lastActivity && (
-              <p className="text-[10px] text-muted-foreground/50 mt-1 flex items-center justify-center gap-1">
-                <Clock className="w-3 h-3" />{t("lastActivity")}: {new Date(lastActivity).toLocaleString(locale, { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
-              </p>
-            )}
+      {error && (
+        <div className="px-4 py-2.5 rounded-xl bg-red-500/[0.06] border border-red-500/10 text-[12px] text-red-400 font-dm-sans">{error}</div>
+      )}
+
+      {/* QR modal */}
+      {qr && (
+        <>
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50" onClick={() => { stopPolling(); setQr(null); }} />
+          <div className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-[92vw] max-w-[360px] rounded-2xl border border-primary/20 bg-card p-6 text-center space-y-4 shadow-floating">
+            <button onClick={() => { stopPolling(); setQr(null); }} className="absolute right-3 top-3 text-muted-foreground hover:text-foreground"><X className="w-4 h-4" /></button>
+            <h2 className="font-space-grotesk text-[16px] font-bold text-foreground">{t("scanQR")}</h2>
+            <p className="text-[12px] text-muted-foreground font-dm-sans" dangerouslySetInnerHTML={{ __html: t("scanInstructions") }} />
+            <div className="inline-block p-4 bg-white rounded-2xl shadow-sm"><img src={qr.code} alt="QR Code" className="w-[240px] h-[240px]" /></div>
+            <div className="flex items-center justify-center gap-2"><span className="w-2 h-2 rounded-full bg-primary animate-pulse" /><span className="text-[12px] text-primary font-medium">{t("waitingQR")}</span></div>
           </div>
-          <div className="grid grid-cols-3 gap-2">
-            <button onClick={handleConnect} className="h-10 rounded-xl border border-border text-[12.5px] font-medium text-muted-foreground hover:bg-muted cursor-pointer transition-colors flex items-center justify-center gap-1.5"><RefreshCw className="w-3.5 h-3.5" />{t("reconnect")}</button>
-            <button onClick={handleRestart} disabled={restarting} className="h-10 rounded-xl border border-amber-500/30 text-[12.5px] font-medium text-amber-500 hover:bg-amber-500/10 cursor-pointer transition-colors flex items-center justify-center gap-1.5 disabled:opacity-50">
-              {restarting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Power className="w-3.5 h-3.5" />}{t("restart")}
-            </button>
-            <button onClick={handleDisconnect} disabled={disconnecting} className="h-10 rounded-xl border border-red-500/20 text-[12.5px] font-medium text-red-400 hover:bg-red-500/5 cursor-pointer transition-colors flex items-center justify-center gap-1.5 disabled:opacity-50">
-              {disconnecting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Unplug className="w-3.5 h-3.5" />}{t("disconnect")}
-            </button>
-          </div>
-          {restartToast && (
-            <p className="text-[11.5px] text-foreground text-center">{restartToast}</p>
-          )}
-          <p className="text-[11px] text-muted-foreground/70 text-center leading-relaxed">
-            {t("restartHint")}
-          </p>
-        </div>
+        </>
       )}
 
-      {status === "qr" && qrCode && (
-        <div className="rounded-2xl border border-primary/20 bg-card p-6 text-center space-y-4">
-          <h2 className="font-space-grotesk text-[16px] font-bold text-foreground">{t("scanQR")}</h2>
-          <p className="text-[12px] text-muted-foreground font-dm-sans max-w-sm mx-auto" dangerouslySetInnerHTML={{ __html: t("scanInstructions") }} />
-          <div className="inline-block p-4 bg-white rounded-2xl shadow-sm"><img src={qrCode} alt="QR Code" className="w-[250px] h-[250px]" /></div>
-          <div className="flex items-center justify-center gap-2"><span className="w-2 h-2 rounded-full bg-primary animate-pulse" /><span className="text-[12px] text-primary font-medium">{t("waitingQR")}</span></div>
-          <button onClick={handleConnect} className="text-[11px] text-muted-foreground underline underline-offset-2 hover:text-foreground cursor-pointer">{t("newQR")}</button>
-        </div>
-      )}
-
-      {status === "disconnected" && (
-        <div className="rounded-2xl border border-border bg-card p-8 text-center space-y-4">
-          <div className="w-14 h-14 rounded-2xl bg-muted flex items-center justify-center mx-auto"><WifiOff className="w-6 h-6 text-muted-foreground/40" /></div>
-          <div>
-            <h2 className="font-space-grotesk text-[16px] font-bold text-foreground">{t("notConnected")}</h2>
-            <p className="text-[12px] text-muted-foreground font-dm-sans mt-1 max-w-sm mx-auto">{t("notConnectedDesc")}</p>
-          </div>
-          {error && <div className="px-4 py-2.5 rounded-xl bg-red-500/[0.06] border border-red-500/10 text-[12px] text-red-400 font-dm-sans">{error}</div>}
-          <button onClick={handleConnect} className="w-full max-w-xs mx-auto h-11 rounded-xl btn-brand text-[14px] font-semibold flex items-center justify-center gap-2"><QrCode className="w-5 h-5" />{t("connect")}</button>
-        </div>
-      )}
-
-      {status === "connecting" && (
-        <div className="rounded-2xl border border-border bg-card p-8 text-center">
-          <Loader2 className="w-8 h-8 text-primary animate-spin mx-auto mb-3" />
-          <p className="text-[13px] text-foreground font-medium">{t("preparing")}</p>
-          <p className="text-[11px] text-muted-foreground mt-1">{t("preparingDesc")}</p>
-        </div>
-      )}
-
-      {/* WEBHOOK STATUS, sempre visivel quando nao esta no QR ou conectando.
-          O early return de "loading" la em cima ja garante que aqui status
-          e apenas connected | disconnected | connecting | qr. */}
-      {status !== "connecting" && (
-        <div className={cn(
-          "rounded-2xl border p-4",
-          webhookConfigured
-            ? "border-emerald-500/20 bg-emerald-500/[0.04]"
-            : "border-amber-500/30 bg-amber-500/[0.06]"
-        )}>
-          <div className="flex items-start gap-3">
-            <div className={cn(
-              "w-9 h-9 rounded-xl grid place-items-center shrink-0",
-              webhookConfigured ? "bg-emerald-500/15 text-emerald-500" : "bg-amber-500/20 text-amber-500"
-            )}>
-              {webhookConfigured ? <Wifi className="w-4 h-4" /> : <WifiOff className="w-4 h-4" />}
+      {/* Channel list */}
+      <div className="space-y-3">
+        {channels.length === 0 && (
+          <div className="rounded-2xl border border-border bg-card p-8 text-center space-y-4">
+            <div className="w-14 h-14 rounded-2xl bg-muted flex items-center justify-center mx-auto"><WifiOff className="w-6 h-6 text-muted-foreground/40" /></div>
+            <div>
+              <h2 className="font-space-grotesk text-[16px] font-bold text-foreground">{t("notConnected")}</h2>
+              <p className="text-[12px] text-muted-foreground font-dm-sans mt-1">{t("notConnectedDesc")}</p>
             </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-[13px] font-semibold text-foreground">
-                {webhookConfigured ? t("webhookActive") : t("webhookMissing")}
-              </p>
-              <p className="text-[11.5px] text-muted-foreground mt-1 leading-relaxed">
-                {webhookConfigured ? t("webhookActiveDesc") : t("webhookMissingDesc")}
-              </p>
-              {webhookUrl && (
-                <p className="text-[10.5px] text-muted-foreground/70 font-mono mt-2 break-all">
-                  {webhookUrl}
-                </p>
-              )}
-              {webhookToast && (
-                <p className="text-[11.5px] text-foreground mt-2">{webhookToast}</p>
-              )}
-              {webhookAttempts && webhookAttempts.length > 0 && (
-                <details className="mt-3 text-[10.5px]">
-                  <summary className="cursor-pointer text-muted-foreground hover:text-foreground select-none">
-                    {t("webhookAttemptsTitle", { instance: webhookInstance || "?" })}
-                  </summary>
-                  <div className="mt-2 space-y-1 font-mono">
-                    {webhookAttempts.map((a, i) => (
-                      <div
-                        key={i}
-                        className={cn(
-                          "px-2 py-1.5 rounded border",
-                          a.ok
-                            ? "border-emerald-500/30 bg-emerald-500/[0.05] text-emerald-500"
-                            : "border-border bg-muted/30 text-muted-foreground"
-                        )}
-                      >
-                        <div className="flex items-center gap-2">
-                          <span className="font-bold">{a.method}</span>
-                          <span className="opacity-70">{a.status || "ERR"}</span>
-                          <span className="truncate flex-1">{a.label}</span>
-                        </div>
-                        {a.detail && (
-                          <div className="opacity-60 truncate mt-0.5">{a.detail}</div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </details>
-              )}
-            </div>
-            <button
-              onClick={handleReconfigureWebhook}
-              disabled={reconfiguring}
-              className={cn(
-                "h-9 px-3 rounded-lg text-[11.5px] font-semibold border transition-colors flex items-center gap-1.5 shrink-0 disabled:opacity-50",
-                webhookConfigured
-                  ? "border-border text-muted-foreground hover:bg-muted hover:text-foreground"
-                  : "border-amber-500/40 text-amber-500 hover:bg-amber-500/10"
-              )}
-            >
-              {reconfiguring ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
-              {webhookConfigured ? t("webhookReconfigure") : t("webhookConfigure")}
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Funnel-only gate. Default ON: the AI only engages leads that came
-          in via webhook/funnel. Off lets the AI answer anyone who messages
-          the connected number. */}
-      <div className="rounded-2xl border border-border bg-card p-4">
-        <div className="flex items-start gap-3">
-          <div className="w-9 h-9 rounded-xl bg-primary text-primary-foreground grid place-items-center shadow-sm shrink-0">
-            <Filter className="w-4 h-4" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-[13px] font-semibold text-foreground">
-              {t("funnelOnlyTitle")}
-            </p>
-            <p className="text-[11.5px] text-muted-foreground mt-1 leading-relaxed">
-              {funnelOnly ? t("funnelOnlyOnDesc") : t("funnelOnlyOffDesc")}
-            </p>
-          </div>
-          <button
-            type="button"
-            role="switch"
-            aria-checked={funnelOnly}
-            disabled={funnelOnlySaving}
-            onClick={() => toggleFunnelOnly(!funnelOnly)}
-            className={cn(
-              "relative h-6 w-11 rounded-full transition-colors shrink-0 disabled:opacity-50",
-              funnelOnly ? "bg-primary" : "bg-muted"
-            )}
-          >
-            <span
-              className={cn(
-                "absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform",
-                funnelOnly ? "translate-x-5" : "translate-x-0"
-              )}
-            />
-          </button>
-        </div>
-      </div>
-
-      {/* Diagnose: full trace of every Evolution call. The operator gets
-          a copy-pastable JSON blob to send to support when sends fail. */}
-      <div className="rounded-2xl border border-border bg-card p-4 space-y-3">
-        <div className="flex items-start gap-3">
-          <div className="w-9 h-9 rounded-xl bg-blue-500/15 text-blue-400 grid place-items-center shrink-0">
-            <RefreshCw className="w-4 h-4" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-[13px] font-semibold text-foreground">
-              {t("diagnoseTitle")}
-            </p>
-            <p className="text-[11.5px] text-muted-foreground mt-1 leading-relaxed">
-              {t("diagnoseDesc")}
-            </p>
-          </div>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <button
-            onClick={() => handleDiagnose(false)}
-            disabled={diagnosing}
-            className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg border border-border text-[11.5px] font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors disabled:opacity-50"
-          >
-            {diagnosing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
-            {t("diagnoseRun")}
-          </button>
-          <button
-            onClick={() => handleDiagnose(true)}
-            disabled={diagnosing}
-            className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg border border-amber-500/40 text-[11.5px] font-medium text-amber-500 hover:bg-amber-500/10 transition-colors disabled:opacity-50"
-          >
-            {diagnosing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5" />}
-            {t("diagnoseSend")}
-          </button>
-        </div>
-        {diagnoseReport !== null && (
-          <div className="rounded-xl border border-border/40 bg-muted/30 p-3">
-            <p className="text-[10.5px] font-bold uppercase tracking-wider text-muted-foreground mb-2">
-              {t("diagnoseReport")}
-            </p>
-            <pre className="text-[10.5px] font-mono text-foreground overflow-x-auto whitespace-pre-wrap max-h-96 overflow-y-auto">
-              {JSON.stringify(diagnoseReport, null, 2)}
-            </pre>
-            <button
-              onClick={() => {
-                navigator.clipboard.writeText(JSON.stringify(diagnoseReport, null, 2)).catch(() => {});
-              }}
-              className="mt-2 text-[11px] text-primary hover:underline"
-            >
-              {t("diagnoseCopy")}
-            </button>
           </div>
         )}
-      </div>
 
-      <div className="space-y-2">
-        {[
-          { icon: Shield, titleKey: "secureConnection" as const, descKey: "secureConnectionDesc" as const },
-          { icon: Zap, titleKey: "autoReply" as const, descKey: "autoReplyDesc" as const },
-          { icon: Smartphone, titleKey: "useNormally" as const, descKey: "useNormallyDesc" as const },
-        ].map(info => (
-          <div key={info.titleKey} className="flex items-start gap-3 px-4 py-3 rounded-xl border border-border/30 bg-muted/10">
-            <info.icon className="w-4 h-4 text-muted-foreground/40 mt-0.5 shrink-0" />
-            <div>
-              <p className="text-[12px] font-medium text-foreground">{t(info.titleKey)}</p>
-              <p className="text-[11px] text-muted-foreground/60 font-dm-sans">{t(info.descKey)}</p>
+        {channels.map((c) => (
+          <div key={c.id} className={cn("rounded-2xl border p-4", c.connected ? "border-emerald-500/20 bg-emerald-500/[0.04]" : "border-border bg-card")}>
+            <div className="flex items-start gap-3">
+              <div className={cn("w-10 h-10 rounded-xl grid place-items-center shrink-0", c.connected ? "bg-emerald-500/15 text-emerald-500" : "bg-muted text-muted-foreground/50")}>
+                {c.connected ? <Wifi className="w-5 h-5" /> : <WifiOff className="w-5 h-5" />}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-[13.5px] font-semibold text-foreground">
+                  {c.connected ? (c.phoneNumber ? `+${c.phoneNumber}` : t("connected")) : t("notConnected")}
+                </p>
+                <p className="text-[11px] text-muted-foreground font-mono mt-0.5 truncate">{c.instanceName}</p>
+                {!c.webhookConfigured && (
+                  <p className="text-[10.5px] text-amber-500 mt-1">{t("webhookMissing")}</p>
+                )}
+              </div>
+              {busyId === c.id && <Loader2 className="w-4 h-4 text-muted-foreground animate-spin shrink-0" />}
+            </div>
+
+            {/* Funnel-only toggle per number */}
+            <div className="flex items-center justify-between gap-3 mt-3 pt-3 border-t border-border/40">
+              <div className="flex items-center gap-2 min-w-0">
+                <Filter className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                <span className="text-[11.5px] text-muted-foreground truncate">{t("funnelOnlyTitle")}</span>
+              </div>
+              <button
+                type="button" role="switch" aria-checked={c.respondToFunnelLeadsOnly}
+                onClick={() => toggleFunnel(c.id, !c.respondToFunnelLeadsOnly)}
+                className={cn("relative h-5 w-9 rounded-full transition-colors shrink-0", c.respondToFunnelLeadsOnly ? "bg-primary" : "bg-muted")}
+              >
+                <span className={cn("absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform", c.respondToFunnelLeadsOnly ? "translate-x-4" : "translate-x-0")} />
+              </button>
+            </div>
+
+            {/* Actions */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-3">
+              <button onClick={() => connect(c.id)} disabled={busyId === c.id} className="h-9 rounded-lg border border-border text-[11.5px] font-medium text-muted-foreground hover:bg-muted cursor-pointer flex items-center justify-center gap-1.5 disabled:opacity-50">
+                {c.connected ? <><RefreshCw className="w-3.5 h-3.5" />{t("reconnect")}</> : <><QrCode className="w-3.5 h-3.5" />{t("connect")}</>}
+              </button>
+              <button onClick={() => restart(c.id)} disabled={busyId === c.id} className="h-9 rounded-lg border border-amber-500/30 text-[11.5px] font-medium text-amber-500 hover:bg-amber-500/10 cursor-pointer flex items-center justify-center gap-1.5 disabled:opacity-50">
+                <Power className="w-3.5 h-3.5" />{t("restart")}
+              </button>
+              <button onClick={() => reconfigureWebhook(c.id)} disabled={busyId === c.id} className="h-9 rounded-lg border border-border text-[11.5px] font-medium text-muted-foreground hover:bg-muted cursor-pointer flex items-center justify-center gap-1.5 disabled:opacity-50">
+                <RefreshCw className="w-3.5 h-3.5" />Webhook
+              </button>
+              <button onClick={() => (c.connected ? disconnect(c.id) : remove(c.id))} disabled={busyId === c.id} className="h-9 rounded-lg border border-red-500/20 text-[11.5px] font-medium text-red-400 hover:bg-red-500/5 cursor-pointer flex items-center justify-center gap-1.5 disabled:opacity-50">
+                {c.connected ? <><Unplug className="w-3.5 h-3.5" />{t("disconnect")}</> : <><Trash2 className="w-3.5 h-3.5" />Remover</>}
+              </button>
             </div>
           </div>
         ))}
       </div>
+
+      {/* Add another number */}
+      <button
+        onClick={() => connect(undefined, true)}
+        disabled={adding}
+        className="w-full h-11 rounded-xl btn-brand text-[14px] font-semibold flex items-center justify-center gap-2 disabled:opacity-60"
+      >
+        {adding ? <Loader2 className="w-5 h-5 animate-spin" /> : <Plus className="w-5 h-5" />}
+        {channels.length === 0 ? t("connect") : "Adicionar número"}
+      </button>
     </div>
   );
 }

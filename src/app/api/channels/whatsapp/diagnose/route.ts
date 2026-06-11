@@ -52,8 +52,9 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const channel = await prisma.channel.findUnique({
-    where: { accountId_type: { accountId: session.accountId, type: "WHATSAPP" } },
+  const channel = await prisma.channel.findFirst({
+    where: { accountId: session.accountId, type: "WHATSAPP" },
+    orderBy: { createdAt: "asc" },
   });
   const cfg = (channel?.config as WaConfig | null) || {};
   const instance = cfg.instanceName || `mdai-${session.accountId}`;

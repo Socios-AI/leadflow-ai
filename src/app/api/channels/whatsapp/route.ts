@@ -1,29 +1,36 @@
 // src/app/api/channels/whatsapp/route.ts
 //
-// Evolution API integration. On connect we now ALSO push the webhook
-// config to Evolution so inbound messages flow to /api/webhooks/evolution
-// automatically. The dashboard also exposes a `configureWebhook` action
-// so the owner can backfill instances that were created before this code
-// existed.
+// Evolution API integration — MULTI-NUMBER.
 //
-// ENV VARS:
-//   EVOLUTION_API_URL=https://evo.example.com
-//   EVOLUTION_API_KEY=<global api key>
+// A tenant can connect SEVERAL WhatsApp numbers. Each number is one `channels`
+// row (type WHATSAPP) whose config.instanceName is a distinct Evolution
+// instance. The FIRST/legacy number keeps the historical name `mdai-<account>`
+// so already-connected tenants are untouched; additional numbers get
+// `mdai-<account>-<rand>`.
+//
+// GET  -> { channels: [{ id, label, connected, phoneNumber, ... }, ...] }
+// POST -> actions take an optional `channelId` to target a specific number.
+//         action "connect" with `new: true` creates a brand-new number.
+//
+// ENV: EVOLUTION_API_URL, EVOLUTION_API_KEY
 
 import { NextRequest, NextResponse } from "next/server";
+import crypto from "crypto";
 import prisma from "@/lib/db/prisma";
 import { getSession } from "@/lib/auth/session";
-import {
-  configureEvolutionWebhook,
-  webhookBodies,
-} from "@/lib/channels/evolution-webhook";
+import { configureEvolutionWebhook, webhookBodies } from "@/lib/channels/evolution-webhook";
 import { appUrlFromRequest } from "@/lib/app-url";
 
 const EVO_URL = () => (process.env.EVOLUTION_API_URL || "").replace(/\/$/, "");
 const EVO_KEY = () => process.env.EVOLUTION_API_KEY || "";
 
-function instanceName(accountId: string) {
+/** Legacy/primary instance name (kept so existing connections don't move). */
+function legacyInstanceName(accountId: string) {
   return `mdai-${accountId}`;
+}
+/** Fresh instance name for an additional number. */
+function newInstanceName(accountId: string) {
+  return `mdai-${accountId}-${crypto.randomBytes(3).toString("hex")}`;
 }
 
 function webhookUrlFor(req: Request | NextRequest): string {
@@ -38,346 +45,183 @@ interface WaConfig {
   webhookConfigured?: boolean;
   webhookConfiguredAt?: string | null;
   webhookSecret?: string;
-  // When true (default), the AI only engages leads that already exist in
-  // the funnel (came from a webhook, manual import, CSV, etc.). When false
-  // the AI answers any stranger that messages the connected number.
   respondToFunnelLeadsOnly?: boolean;
 }
 
-/**
- * Best-effort push of the webhook config to Evolution for the given
- * account's instance. Returns a small status object the caller can log
- * or surface. Never throws, never blocks the calling flow.
- */
-async function setWebhookForAccount(
-  req: Request | NextRequest,
-  accountId: string,
-  cfg: WaConfig
-): Promise<{ ok: boolean; detail?: string }> {
+type ChannelRow = { id: string; label: string | null; isEnabled: boolean; config: unknown };
+
+/** All WhatsApp channels for the account, oldest first (primary first). */
+async function listChannels(accountId: string) {
+  return prisma.channel.findMany({
+    where: { accountId, type: "WHATSAPP" },
+    orderBy: { createdAt: "asc" },
+  });
+}
+
+/** Resolve a target channel by id (scoped to account) or the primary (oldest). */
+async function resolveChannel(accountId: string, channelId?: string): Promise<ChannelRow | null> {
+  if (channelId) {
+    return prisma.channel.findFirst({ where: { id: channelId, accountId, type: "WHATSAPP" } });
+  }
+  return prisma.channel.findFirst({
+    where: { accountId, type: "WHATSAPP" },
+    orderBy: { createdAt: "asc" },
+  });
+}
+
+async function liveState(instance: string): Promise<{ connected: boolean; phone: string | null; available: boolean }> {
+  if (!EVO_URL()) return { connected: false, phone: null, available: false };
+  try {
+    const r = await fetch(`${EVO_URL()}/instance/connectionState/${instance}`, {
+      headers: { apikey: EVO_KEY() },
+    });
+    if (!r.ok) return { connected: false, phone: null, available: false };
+    const d = await r.json();
+    const open = d?.instance?.state === "open";
+    let phone: string | null = null;
+    if (open) {
+      try {
+        const ir = await fetch(`${EVO_URL()}/instance/fetchInstances?instanceName=${instance}`, {
+          headers: { apikey: EVO_KEY() },
+        });
+        if (ir.ok) {
+          const data = await ir.json();
+          const inst = Array.isArray(data) ? data[0] : data;
+          phone = inst?.instance?.wuid?.split("@")[0] || null;
+        }
+      } catch {
+        /* phone optional */
+      }
+    }
+    return { connected: open, phone, available: true };
+  } catch {
+    return { connected: false, phone: null, available: false };
+  }
+}
+
+async function setWebhook(req: NextRequest, channelId: string, cfg: WaConfig, instance: string): Promise<void> {
   const baseUrl = EVO_URL();
   const apiKey = EVO_KEY();
-  const inst = cfg.instanceName || instanceName(accountId);
-  if (!baseUrl || !apiKey) return { ok: false, detail: "missing_evolution_env" };
-
+  if (!baseUrl || !apiKey) return;
   const res = await configureEvolutionWebhook({
     baseUrl,
     apiKey,
-    instanceName: inst,
+    instanceName: instance,
     webhookUrl: webhookUrlFor(req),
     webhookSecret: cfg.webhookSecret,
   });
-
   if (res.ok) {
     await prisma.channel.update({
-      where: { accountId_type: { accountId, type: "WHATSAPP" } },
+      where: { id: channelId },
       data: {
-        config: {
-          ...cfg,
-          instanceName: inst,
-          webhookConfigured: true,
-          webhookConfiguredAt: new Date().toISOString(),
-        },
+        config: { ...cfg, instanceName: instance, webhookConfigured: true, webhookConfiguredAt: new Date().toISOString() },
       },
     });
-    return { ok: true };
   }
-  return { ok: false, detail: res.detail || `http_${res.status}` };
 }
 
-/** GET, current WhatsApp status (always cross-checked with Evolution live state) */
+/** GET — list every WhatsApp number with its live status. */
 export async function GET(req: NextRequest) {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   try {
-    const channel = await prisma.channel.findUnique({
-      where: { accountId_type: { accountId: session.accountId, type: "WHATSAPP" } },
-    });
-    const cfg = (channel?.config as WaConfig | null) || {};
-    const targetInstance = cfg.instanceName || instanceName(session.accountId);
+    const rows = await listChannels(session.accountId);
+    const channels = await Promise.all(
+      rows.map(async (ch) => {
+        const cfg = (ch.config as WaConfig | null) || {};
+        const instance = cfg.instanceName || legacyInstanceName(session.accountId);
+        const live = await liveState(instance);
 
-    // ── Live cross-check with Evolution ──
-    // The old code only checked when the cached config said connected=true,
-    // so a successful manual re-pair on Evolution would never propagate
-    // back to this UI ("WhatsApp not connected" even though it was). Now
-    // we always ask Evolution for the truth and reconcile the DB cache in
-    // both directions.
-    let live: { connected: boolean; phone: string | null; available: boolean } = {
-      connected: !!cfg.connected,
-      phone: cfg.phoneNumber || null,
-      available: false,
-    };
-
-    if (EVO_URL()) {
-      try {
-        const r = await fetch(
-          `${EVO_URL()}/instance/connectionState/${targetInstance}`,
-          { headers: { apikey: EVO_KEY() } }
-        );
-        if (r.ok) {
-          const d = await r.json();
-          const open = d?.instance?.state === "open";
-          live = { connected: open, phone: cfg.phoneNumber || null, available: true };
-
-          // When Evolution says open but we have no phone yet, fetch the
-          // instance to pull the paired number for the UI.
-          if (open && !live.phone) {
-            try {
-              const ir = await fetch(
-                `${EVO_URL()}/instance/fetchInstances?instanceName=${targetInstance}`,
-                { headers: { apikey: EVO_KEY() } }
-              );
-              if (ir.ok) {
-                const data = await ir.json();
-                const inst = Array.isArray(data) ? data[0] : data;
-                live.phone = inst?.instance?.wuid?.split("@")[0] || null;
-              }
-            } catch {
-              // phone is optional, ignore
-            }
-          }
+        // Reconcile cache when Evolution disagrees with what we stored.
+        if (live.available && (live.connected !== !!cfg.connected || (live.connected && live.phone && live.phone !== cfg.phoneNumber))) {
+          await prisma.channel
+            .update({
+              where: { id: ch.id },
+              data: {
+                config: {
+                  ...cfg,
+                  instanceName: instance,
+                  connected: live.connected,
+                  phoneNumber: live.connected ? live.phone : null,
+                  lastActivity: live.connected ? new Date().toISOString() : cfg.lastActivity,
+                },
+              },
+            })
+            .catch(() => {});
         }
-      } catch {
-        // Evolution unreachable, fall back to cached state, don't lie to the UI
-      }
-    }
 
-    // Reconcile the DB cache so callers (workers, factories) read fresh data.
-    if (live.available && channel && (live.connected !== !!cfg.connected || (live.connected && live.phone && live.phone !== cfg.phoneNumber))) {
-      await prisma.channel.update({
-        where: { id: channel.id },
-        data: {
-          config: {
-            ...cfg,
-            instanceName: targetInstance,
-            connected: live.connected,
-            phoneNumber: live.connected ? live.phone : null,
-            lastActivity: live.connected ? new Date().toISOString() : cfg.lastActivity,
-          },
-        },
-      });
-    }
+        return {
+          id: ch.id,
+          label: ch.label || null,
+          instanceName: instance,
+          connected: live.available ? live.connected : !!cfg.connected,
+          phoneNumber: (live.available ? live.connected : !!cfg.connected) ? live.phone || cfg.phoneNumber || null : null,
+          lastActivity: cfg.lastActivity || null,
+          webhookConfigured: cfg.webhookConfigured || false,
+          respondToFunnelLeadsOnly: cfg.respondToFunnelLeadsOnly !== false,
+        };
+      })
+    );
 
-    return NextResponse.json({
-      connected: live.connected,
-      phoneNumber: live.connected ? live.phone : null,
-      lastActivity: cfg.lastActivity || null,
-      webhookConfigured: cfg.webhookConfigured || false,
-      webhookConfiguredAt: cfg.webhookConfiguredAt || null,
-      webhookUrl: webhookUrlFor(req),
-      respondToFunnelLeadsOnly: cfg.respondToFunnelLeadsOnly !== false,
-    });
+    return NextResponse.json({ channels, webhookUrl: webhookUrlFor(req) });
   } catch {
-    return NextResponse.json({
-      connected: false,
-      phoneNumber: null,
-      lastActivity: null,
-      webhookConfigured: false,
-      webhookUrl: webhookUrlFor(req),
-      respondToFunnelLeadsOnly: true,
-    });
+    return NextResponse.json({ channels: [], webhookUrl: webhookUrlFor(req) });
   }
 }
 
-/** POST, connect / disconnect / status / configureWebhook */
 export async function POST(req: NextRequest) {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const baseUrl = EVO_URL();
   const apiKey = EVO_KEY();
-
   if (!baseUrl || !apiKey) {
-    return NextResponse.json(
-      { error: "Evolution API nao configurada no servidor" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Evolution API nao configurada no servidor" }, { status: 500 });
   }
 
   const body = await req.json();
   const { action } = body;
-  const instName = instanceName(session.accountId);
+  const channelId: string | undefined = typeof body.channelId === "string" ? body.channelId : undefined;
 
   try {
-    const channel = await prisma.channel.findUnique({
-      where: { accountId_type: { accountId: session.accountId, type: "WHATSAPP" } },
-    });
-    const cfg = (channel?.config as WaConfig | null) || {};
-
-    // ═══ RESTART BAILEYS ═══
-    // Forces Evolution to re-establish the WhatsApp socket without
-    // dropping the paired session. Use when sends fail with "Connection
-    // Closed" or messages are stuck. Probes PUT then POST since
-    // Evolution forks disagree on the verb.
-    if (action === "restart") {
-      const targetInstance = cfg.instanceName || instName;
-      const url = `${baseUrl}/instance/restart/${targetInstance}`;
-      const tried: { method: string; status: number; body?: string }[] = [];
-      let ok = false;
-      for (const method of ["PUT", "POST"] as const) {
-        try {
-          const r = await fetch(url, {
-            method,
-            headers: { "Content-Type": "application/json", apikey: apiKey },
-          });
-          const body = await r.text().catch(() => "");
-          tried.push({ method, status: r.status, body: body.slice(0, 200) });
-          if (r.ok) {
-            ok = true;
-            break;
-          }
-        } catch (err) {
-          tried.push({
-            method,
-            status: 0,
-            body: err instanceof Error ? err.message : String(err),
-          });
-        }
-      }
-      return NextResponse.json({ ok, instanceName: targetInstance, tried }, { status: ok ? 200 : 502 });
-    }
-
-    // ═══ UPDATE FUNNEL-ONLY FLAG ═══
-    if (action === "setRespondToFunnelLeadsOnly") {
-      const value = body.value !== false;
-      await prisma.channel.upsert({
-        where: { accountId_type: { accountId: session.accountId, type: "WHATSAPP" } },
-        create: {
-          accountId: session.accountId,
-          type: "WHATSAPP",
-          isEnabled: true,
-          config: { instanceName: instName, respondToFunnelLeadsOnly: value },
-        },
-        update: {
-          config: { ...cfg, respondToFunnelLeadsOnly: value },
-        },
-      });
-      return NextResponse.json({
-        success: true,
-        respondToFunnelLeadsOnly: value,
-      });
-    }
-
-    // ═══ CONFIGURE WEBHOOK (backfill for existing instances) ═══
-    if (action === "configureWebhook") {
-      const targetInstance = cfg.instanceName || instName;
-      let result = await configureEvolutionWebhook({
-        baseUrl,
-        apiKey,
-        instanceName: targetInstance,
-        webhookUrl: webhookUrlFor(req),
-        webhookSecret: cfg.webhookSecret,
-      });
-
-      // Self-heal: when Evolution says the instance does not exist (was
-      // deleted from the Evolution server but our DB still points at it),
-      // create it with the webhook baked into the create payload and try
-      // again. This is the same path used by the "connect" action so the
-      // operator always lands in a working state with one click.
-      const instanceMissing = result.attempts.some(
-        (a) => a.status === 404 && /instance.*does not exist/i.test(a.detail || "")
-      );
-      let recreatedQr: string | null = null;
-      if (!result.ok && instanceMissing) {
-        const { wrapped: webhookWrapped } = webhookBodies({
-          baseUrl,
-          apiKey,
-          instanceName: targetInstance,
-          webhookUrl: webhookUrlFor(req),
-          webhookSecret: cfg.webhookSecret,
-        });
-        try {
-          const createRes = await fetch(`${baseUrl}/instance/create`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json", apikey: apiKey },
-            body: JSON.stringify({
-              instanceName: targetInstance,
-              integration: "WHATSAPP-BAILEYS",
-              qrcode: true,
-              rejectCall: true,
-              groupsIgnore: true,
-              alwaysOnline: true,
-              readMessages: false,
-              readStatus: false,
-              syncFullHistory: false,
-              ...webhookWrapped,
-            }),
-          });
-          if (createRes.ok) {
-            const createData = await createRes.json().catch(() => ({}));
-            recreatedQr = createData?.qrcode?.base64 || null;
-            // Some Evolution versions don't honor webhook on /create.
-            // Re-attempt the set call, instance now exists.
-            result = await configureEvolutionWebhook({
-              baseUrl,
-              apiKey,
-              instanceName: targetInstance,
-              webhookUrl: webhookUrlFor(req),
-              webhookSecret: cfg.webhookSecret,
-            });
-          }
-        } catch {
-          // fall through to error path below
-        }
-      }
-
-      if (result.ok) {
-        await prisma.channel.update({
-          where: { accountId_type: { accountId: session.accountId, type: "WHATSAPP" } },
-          data: {
-            config: {
-              ...cfg,
-              instanceName: targetInstance,
-              webhookConfigured: true,
-              webhookConfiguredAt: new Date().toISOString(),
-              // If we just recreated the instance, the lead also needs to
-              // pair again, mark connection as stale so the UI prompts QR.
-              ...(recreatedQr ? { connected: false } : {}),
-            },
-          },
-        });
-        return NextResponse.json({
-          success: true,
-          webhookUrl: webhookUrlFor(req),
-          variant: result.variant,
-          // If the instance had to be recreated, surface the QR so the
-          // operator can re-pair without a second click.
-          qrCode: recreatedQr,
-          recreated: !!recreatedQr,
-        });
-      }
-
-      return NextResponse.json(
-        {
-          error: result.detail || "webhook_config_failed",
-          instanceName: targetInstance,
-          attempts: result.attempts,
-        },
-        { status: 502 }
-      );
-    }
-
-    // ═══ CONNECT ═══
+    // ═══ CONNECT (reconnect existing OR add a new number) ═══
     if (action === "connect") {
-      let qrCode: string | null = null;
-      let created = false;
+      const isNew = body.new === true;
+      let target = isNew ? null : await resolveChannel(session.accountId, channelId);
+      const cfg = (target?.config as WaConfig | null) || {};
 
-      // 1. Try to create instance (ignore if already exists).
-      // Pass the webhook config in the create body so brand-new instances
-      // come up already wired, no second round-trip needed.
+      // Decide the instance name: existing target keeps its name; a brand-new
+      // number gets a fresh one; the very first connect for an account uses the
+      // legacy name for backward-compat.
+      let instance: string;
+      if (target) {
+        instance = cfg.instanceName || legacyInstanceName(session.accountId);
+      } else if (isNew) {
+        const existingCount = await prisma.channel.count({ where: { accountId: session.accountId, type: "WHATSAPP" } });
+        instance = existingCount === 0 ? legacyInstanceName(session.accountId) : newInstanceName(session.accountId);
+      } else {
+        instance = legacyInstanceName(session.accountId);
+      }
+
       const { wrapped: webhookWrapped } = webhookBodies({
         baseUrl,
         apiKey,
-        instanceName: instName,
+        instanceName: instance,
         webhookUrl: webhookUrlFor(req),
         webhookSecret: cfg.webhookSecret,
       });
+
+      let qrCode: string | null = null;
+      let created = false;
+
+      // 1. Try to create the instance (idempotent on Evolution side).
       try {
         const createRes = await fetch(`${baseUrl}/instance/create`, {
           method: "POST",
           headers: { "Content-Type": "application/json", apikey: apiKey },
           body: JSON.stringify({
-            instanceName: instName,
+            instanceName: instance,
             integration: "WHATSAPP-BAILEYS",
             qrcode: true,
             rejectCall: true,
@@ -386,239 +230,160 @@ export async function POST(req: NextRequest) {
             readMessages: false,
             readStatus: false,
             syncFullHistory: false,
-            // Evolution v2.x reads the webhook from the create payload.
-            // Older versions ignore unknown keys, so this is safe.
             ...webhookWrapped,
           }),
         });
-
         if (createRes.ok) {
           const createData = await createRes.json();
           if (createData.qrcode?.base64) {
             qrCode = createData.qrcode.base64;
             created = true;
-            await prisma.channel.upsert({
-              where: { accountId_type: { accountId: session.accountId, type: "WHATSAPP" } },
-              create: {
-                accountId: session.accountId,
-                type: "WHATSAPP",
-                isEnabled: true,
-                config: { instanceName: instName, connected: false },
-              },
-              update: { isEnabled: true },
-            });
           }
         }
       } catch {
-        // fall through
+        /* fall through */
       }
 
-      // 2. Instance already exists, fetch connection/QR
+      // 2. Already exists → connect/QR or detect open.
       if (!qrCode) {
         try {
-          const connectRes = await fetch(
-            `${baseUrl}/instance/connect/${instName}`,
-            { method: "GET", headers: { apikey: apiKey } }
-          );
+          const connectRes = await fetch(`${baseUrl}/instance/connect/${instance}`, {
+            method: "GET",
+            headers: { apikey: apiKey },
+          });
           if (connectRes.ok) {
             const connectData = await connectRes.json();
-            const isOpen =
-              connectData.instance?.status === "open" ||
-              connectData.instance?.state === "open";
+            const isOpen = connectData.instance?.status === "open" || connectData.instance?.state === "open";
             if (isOpen) {
               const phone = connectData.instance?.wuid?.split("@")[0] || null;
-              await prisma.channel.upsert({
-                where: { accountId_type: { accountId: session.accountId, type: "WHATSAPP" } },
-                create: {
-                  accountId: session.accountId,
-                  type: "WHATSAPP",
-                  isEnabled: true,
-                  config: {
-                    instanceName: instName,
-                    connected: true,
-                    phoneNumber: phone,
-                    lastActivity: new Date().toISOString(),
-                  },
-                },
-                update: {
-                  isEnabled: true,
-                  config: {
-                    ...cfg,
-                    instanceName: instName,
-                    connected: true,
-                    phoneNumber: phone,
-                    lastActivity: new Date().toISOString(),
-                  },
-                },
-              });
-
-              // Configure webhook now that we are connected, idempotent.
-              await setWebhookForAccount(req, session.accountId, {
+              target = await upsertChannel(session.accountId, target?.id, {
                 ...cfg,
-                instanceName: instName,
-              });
-
-              return NextResponse.json({
+                instanceName: instance,
                 connected: true,
                 phoneNumber: phone,
-                webhookUrl: webhookUrlFor(req),
+                lastActivity: new Date().toISOString(),
               });
+              await setWebhook(req, target.id, { ...cfg, instanceName: instance }, instance);
+              return NextResponse.json({ connected: true, phoneNumber: phone, channelId: target.id, webhookUrl: webhookUrlFor(req) });
             }
             if (connectData.base64) qrCode = connectData.base64;
           }
         } catch {
-          // fall through
+          /* fall through */
         }
       }
 
-      // 3. Try fetching instance directly
-      if (!qrCode) {
-        try {
-          const qrRes = await fetch(
-            `${baseUrl}/instance/fetchInstances?instanceName=${instName}`,
-            { headers: { apikey: apiKey } }
-          );
-          if (qrRes.ok) {
-            const instances = await qrRes.json();
-            const inst = Array.isArray(instances) ? instances[0] : instances;
-            if (inst?.instance?.status === "open") {
-              const phone = inst.instance?.wuid?.split("@")[0] || null;
-              await prisma.channel.upsert({
-                where: { accountId_type: { accountId: session.accountId, type: "WHATSAPP" } },
-                create: {
-                  accountId: session.accountId,
-                  type: "WHATSAPP",
-                  isEnabled: true,
-                  config: { instanceName: instName, connected: true, phoneNumber: phone },
-                },
-                update: {
-                  isEnabled: true,
-                  config: { ...cfg, connected: true, phoneNumber: phone },
-                },
-              });
-              await setWebhookForAccount(req, session.accountId, {
-                ...cfg,
-                instanceName: instName,
-              });
-              return NextResponse.json({
-                connected: true,
-                phoneNumber: phone,
-                webhookUrl: webhookUrlFor(req),
-              });
-            }
-          }
-        } catch {
-          // fall through
-        }
-      }
-
-      // Whether the instance was just created OR was already there, push
-      // the webhook config. Evolution accepts the call even when the
-      // instance is not yet paired, so the next QR scan inherits it.
       if (qrCode) {
-        await setWebhookForAccount(req, session.accountId, {
+        // Persist (create-or-update) the row in the "pending pair" state.
+        target = await upsertChannel(session.accountId, target?.id, {
           ...cfg,
-          instanceName: instName,
+          instanceName: instance,
+          connected: false,
         });
-        return NextResponse.json({
-          qrCode,
-          created,
-          webhookUrl: webhookUrlFor(req),
-        });
+        await setWebhook(req, target.id, { ...cfg, instanceName: instance }, instance);
+        return NextResponse.json({ qrCode, created, channelId: target.id, webhookUrl: webhookUrlFor(req) });
       }
 
-      return NextResponse.json(
-        { error: "Nao foi possivel gerar o QR Code. Tente novamente." },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Nao foi possivel gerar o QR Code. Tente novamente." }, { status: 400 });
     }
+
+    // For every other action we need a resolved target channel.
+    const target = await resolveChannel(session.accountId, channelId);
+    const cfg = (target?.config as WaConfig | null) || {};
+    const instance = cfg.instanceName || legacyInstanceName(session.accountId);
 
     // ═══ STATUS ═══
     if (action === "status") {
-      try {
-        const r = await fetch(`${baseUrl}/instance/connectionState/${instName}`, {
-          headers: { apikey: apiKey },
+      const live = await liveState(instance);
+      if (live.connected && target) {
+        await prisma.channel.update({
+          where: { id: target.id },
+          data: { isEnabled: true, config: { ...cfg, instanceName: instance, connected: true, phoneNumber: live.phone, lastActivity: new Date().toISOString() } },
         });
-        const d = await r.json();
-        const connected = d.instance?.state === "open";
-
-        if (connected) {
-          let phone = cfg.phoneNumber || null;
-          try {
-            const fetchRes = await fetch(
-              `${baseUrl}/instance/fetchInstances?instanceName=${instName}`,
-              { headers: { apikey: apiKey } }
-            );
-            const fetchData = await fetchRes.json();
-            const inst = Array.isArray(fetchData) ? fetchData[0] : fetchData;
-            phone = inst?.instance?.wuid?.split("@")[0] || phone;
-          } catch {
-            // ignore
-          }
-
-          await prisma.channel.upsert({
-            where: { accountId_type: { accountId: session.accountId, type: "WHATSAPP" } },
-            create: {
-              accountId: session.accountId,
-              type: "WHATSAPP",
-              isEnabled: true,
-              config: {
-                instanceName: instName,
-                connected: true,
-                phoneNumber: phone,
-                lastActivity: new Date().toISOString(),
-              },
-            },
-            update: {
-              isEnabled: true,
-              config: {
-                ...cfg,
-                connected: true,
-                phoneNumber: phone,
-                lastActivity: new Date().toISOString(),
-              },
-            },
-          });
-
-          // Self-heal: if the webhook was never configured for this
-          // instance (older record), push it now. Idempotent.
-          if (!cfg.webhookConfigured) {
-            await setWebhookForAccount(req, session.accountId, {
-              ...cfg,
-              instanceName: instName,
-            });
-          }
-
-          return NextResponse.json({ connected: true, phoneNumber: phone });
-        }
-
-        return NextResponse.json({ connected: false });
-      } catch {
-        return NextResponse.json({ connected: false });
+        if (!cfg.webhookConfigured) await setWebhook(req, target.id, { ...cfg, instanceName: instance }, instance);
+        return NextResponse.json({ connected: true, phoneNumber: live.phone, channelId: target.id });
       }
+      return NextResponse.json({ connected: false, channelId: target?.id });
+    }
+
+    // ═══ RESTART ═══
+    if (action === "restart") {
+      const url = `${baseUrl}/instance/restart/${instance}`;
+      const tried: { method: string; status: number; body?: string }[] = [];
+      let ok = false;
+      for (const method of ["PUT", "POST"] as const) {
+        try {
+          const r = await fetch(url, { method, headers: { "Content-Type": "application/json", apikey: apiKey } });
+          const t = await r.text().catch(() => "");
+          tried.push({ method, status: r.status, body: t.slice(0, 200) });
+          if (r.ok) { ok = true; break; }
+        } catch (err) {
+          tried.push({ method, status: 0, body: err instanceof Error ? err.message : String(err) });
+        }
+      }
+      return NextResponse.json({ ok, instanceName: instance, tried }, { status: ok ? 200 : 502 });
+    }
+
+    // ═══ CONFIGURE WEBHOOK (backfill) ═══
+    if (action === "configureWebhook") {
+      let result = await configureEvolutionWebhook({ baseUrl, apiKey, instanceName: instance, webhookUrl: webhookUrlFor(req), webhookSecret: cfg.webhookSecret });
+      const instanceMissing = result.attempts.some((a) => a.status === 404 && /instance.*does not exist/i.test(a.detail || ""));
+      let recreatedQr: string | null = null;
+      if (!result.ok && instanceMissing) {
+        const { wrapped: webhookWrapped } = webhookBodies({ baseUrl, apiKey, instanceName: instance, webhookUrl: webhookUrlFor(req), webhookSecret: cfg.webhookSecret });
+        try {
+          const createRes = await fetch(`${baseUrl}/instance/create`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", apikey: apiKey },
+            body: JSON.stringify({ instanceName: instance, integration: "WHATSAPP-BAILEYS", qrcode: true, rejectCall: true, groupsIgnore: true, alwaysOnline: true, readMessages: false, readStatus: false, syncFullHistory: false, ...webhookWrapped }),
+          });
+          if (createRes.ok) {
+            const createData = await createRes.json().catch(() => ({}));
+            recreatedQr = createData?.qrcode?.base64 || null;
+            result = await configureEvolutionWebhook({ baseUrl, apiKey, instanceName: instance, webhookUrl: webhookUrlFor(req), webhookSecret: cfg.webhookSecret });
+          }
+        } catch {
+          /* fall through */
+        }
+      }
+      if (result.ok && target) {
+        await prisma.channel.update({
+          where: { id: target.id },
+          data: { config: { ...cfg, instanceName: instance, webhookConfigured: true, webhookConfiguredAt: new Date().toISOString(), ...(recreatedQr ? { connected: false } : {}) } },
+        });
+        return NextResponse.json({ success: true, webhookUrl: webhookUrlFor(req), variant: result.variant, qrCode: recreatedQr, recreated: !!recreatedQr, channelId: target.id });
+      }
+      return NextResponse.json({ error: result.detail || "webhook_config_failed", instanceName: instance, attempts: result.attempts }, { status: 502 });
+    }
+
+    // ═══ SET FUNNEL-ONLY FLAG ═══
+    if (action === "setRespondToFunnelLeadsOnly") {
+      const value = body.value !== false;
+      const saved = await upsertChannel(session.accountId, target?.id, { ...cfg, instanceName: instance, respondToFunnelLeadsOnly: value });
+      return NextResponse.json({ success: true, respondToFunnelLeadsOnly: value, channelId: saved.id });
     }
 
     // ═══ DISCONNECT ═══
     if (action === "disconnect") {
       try {
-        await fetch(`${baseUrl}/instance/logout/${instName}`, {
-          method: "DELETE",
-          headers: { apikey: apiKey },
-        });
+        await fetch(`${baseUrl}/instance/logout/${instance}`, { method: "DELETE", headers: { apikey: apiKey } });
       } catch {
-        // best effort
+        /* best effort */
       }
-
-      if (channel) {
-        await prisma.channel.update({
-          where: { id: channel.id },
-          data: {
-            isEnabled: false,
-            config: { ...cfg, connected: false, phoneNumber: null },
-          },
-        });
+      if (target) {
+        await prisma.channel.update({ where: { id: target.id }, data: { isEnabled: false, config: { ...cfg, connected: false, phoneNumber: null } } });
       }
+      return NextResponse.json({ success: true });
+    }
 
+    // ═══ DELETE (remove a number entirely) ═══
+    if (action === "delete") {
+      try {
+        await fetch(`${baseUrl}/instance/delete/${instance}`, { method: "DELETE", headers: { apikey: apiKey } });
+      } catch {
+        /* best effort */
+      }
+      if (target) await prisma.channel.delete({ where: { id: target.id } }).catch(() => {});
       return NextResponse.json({ success: true });
     }
 
@@ -628,4 +393,19 @@ export async function POST(req: NextRequest) {
     console.error("WhatsApp API error:", msg);
     return NextResponse.json({ error: msg }, { status: 500 });
   }
+}
+
+/** Create the channel row (when channelId is unknown) or update it by id. */
+async function upsertChannel(accountId: string, channelId: string | undefined, config: WaConfig) {
+  if (channelId) {
+    return prisma.channel.update({ where: { id: channelId }, data: { isEnabled: true, config } });
+  }
+  // No row yet for this instance — does one already exist with this instanceName?
+  const existing = await prisma.channel.findFirst({
+    where: { accountId, type: "WHATSAPP", config: { path: ["instanceName"], equals: config.instanceName || "" } },
+  });
+  if (existing) {
+    return prisma.channel.update({ where: { id: existing.id }, data: { isEnabled: true, config } });
+  }
+  return prisma.channel.create({ data: { accountId, type: "WHATSAPP", isEnabled: true, config } });
 }

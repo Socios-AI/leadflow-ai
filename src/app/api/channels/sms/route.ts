@@ -45,8 +45,9 @@ export async function GET() {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   try {
-    const channel = await prisma.channel.findUnique({
-      where: { accountId_type: { accountId: session.accountId, type: "SMS" } },
+    const channel = await prisma.channel.findFirst({
+      where: { accountId: session.accountId, type: "SMS" },
+      orderBy: { createdAt: "asc" },
     });
     const cfg = (channel?.config as SmsConfig | null) || {};
     return NextResponse.json({
@@ -84,8 +85,9 @@ export async function POST(req: NextRequest) {
   const { action } = body;
 
   try {
-    const channel = await prisma.channel.findUnique({
-      where: { accountId_type: { accountId: session.accountId, type: "SMS" } },
+    const channel = await prisma.channel.findFirst({
+      where: { accountId: session.accountId, type: "SMS" },
+      orderBy: { createdAt: "asc" },
     });
     const cfg = (channel?.config as SmsConfig | null) || {};
 
@@ -105,16 +107,16 @@ export async function POST(req: NextRequest) {
         messagingServiceSid: body.messagingServiceSid || null,
         inboundEnabled: body.inboundEnabled !== false,
       };
-      await prisma.channel.upsert({
-        where: { accountId_type: { accountId: session.accountId, type: "SMS" } },
-        create: {
-          accountId: session.accountId,
-          type: "SMS",
-          isEnabled: true,
-          config: nextCfg,
-        },
-        update: { isEnabled: true, config: nextCfg },
-      });
+      if (channel) {
+        await prisma.channel.update({
+          where: { id: channel.id },
+          data: { isEnabled: true, config: nextCfg },
+        });
+      } else {
+        await prisma.channel.create({
+          data: { accountId: session.accountId, type: "SMS", isEnabled: true, config: nextCfg },
+        });
+      }
       return NextResponse.json({ success: true });
     }
 
