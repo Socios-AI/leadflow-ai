@@ -11,7 +11,7 @@ import {
   ChevronLeft, ChevronRight, ChevronDown, LogOut,
   Sun, Moon, Laptop, Users,
   Target, Phone, Mail, Smartphone,
-  Globe, Filter, Headphones, Shield, HelpCircle,
+  Globe, Filter, Headphones, Shield, HelpCircle, Instagram,
 } from 'lucide-react'
 import { useTheme } from 'next-themes'
 
@@ -121,6 +121,7 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
       label: t('connections'), icon: Globe, defaultOpen: false,
       items: [
         { href: '/channels/whatsapp', icon: Phone, label: 'WhatsApp' },
+        { href: '/channels/instagram', icon: Instagram, label: 'Instagram' },
         { href: '/channels/email', icon: Mail, label: 'E-mail' },
         { href: '/channels/sms', icon: Smartphone, label: 'SMS' },
       ],
